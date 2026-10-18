@@ -163,16 +163,20 @@ export function App() {
       };
 
       try {
+        // Save plain text and hash locally so employee dashboard can display it
+        localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, authPassword);
+        localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, enteredPasswordHash);
+
         // Save to Supabase Cloud Profiles Table with explicit return preference
         const { error: dbError } = await supabase.from('profiles').upsert(
-      { 
-        identifier: identifierKey, 
-        name: nicknameToSave, 
-        password_hash: enteredPasswordHash, 
-        role: 'regular' 
-      },
-      { onConflict: 'identifier' }
-    );
+          { 
+            identifier: identifierKey, 
+            name: nicknameToSave, 
+            password_hash: enteredPasswordHash, 
+            role: 'regular' 
+          },
+          { onConflict: 'identifier' }
+        );
 
         if (dbError) {
           console.error("Supabase Profile Insert Error:", dbError.message);
