@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock } from 'lucide-react';
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
+import { supabase } from '@/lib/supabase';
 
 export function App() {
   const [authMode, setAuthMode] = useState<'select' | 'regular' | 'guest' | 'employee' | 'forgot'>('select');
@@ -137,7 +138,6 @@ export function App() {
     const ADMIN_HASH = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
     const enteredPasswordHash = await hashPassword(authPassword);
     const identifierKey = authInput.toLowerCase().trim();
-    const storedPwdHash = localStorage.getItem(`veyns_pwd_hash_${identifierKey}`);
 
     if (!isSignUp && identifierKey === 'admin') {
       if (enteredPasswordHash === ADMIN_HASH) {
@@ -163,9 +163,14 @@ export function App() {
       };
 
       try {
+        // Save to Supabase Cloud Profiles Table
+        await supabase.from('profiles').upsert([
+          { identifier: identifierKey, name: nicknameToSave, password_hash: enteredPasswordHash, type: 'regular' }
+        ], { onConflict: 'identifier' });
+
+        // Backup to localStorage for safety
         const existingUsers = JSON.parse(localStorage.getItem('veyns_registered_users') || '[]');
         const existingIndex = existingUsers.findIndex((u: any) => u.identifier.toLowerCase().trim() === identifierKey);
-        
         if (existingIndex >= 0) {
           existingUsers[existingIndex] = userData;
         } else {
@@ -177,7 +182,9 @@ export function App() {
           localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, authPassword);
           localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, enteredPasswordHash);
         }
-      } catch (e) {}
+      } catch (err) {
+        console.error('Supabase signup error:', err);
+      }
 
       setSignUpSuccessMsg(true);
       setIsSignUp(false);
@@ -189,21 +196,35 @@ export function App() {
       return;
     }
 
-    if (!isSignUp) {
+    // Login validation
+    let resolvedName = authInput.split('@')[0] || 'Valued Regular';
+    try {
+      const { data: cloudUser, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('identifier', identifierKey)
+        .single();
+
+      if (cloudUser) {
+        resolvedName = cloudUser.name || resolvedName;
+        if (cloudUser.password_hash && cloudUser.password_hash !== enteredPasswordHash) {
+          alert('Incorrect password. Please check your password or use "Forgot Password".');
+          return;
+        }
+      } else {
+        const storedPwdHash = localStorage.getItem(`veyns_pwd_hash_${identifierKey}`);
+        if (storedPwdHash && storedPwdHash !== enteredPasswordHash) {
+          alert('Incorrect password. Please check your password or use "Forgot Password".');
+          return;
+        }
+      }
+    } catch (e) {
+      const storedPwdHash = localStorage.getItem(`veyns_pwd_hash_${identifierKey}`);
       if (storedPwdHash && storedPwdHash !== enteredPasswordHash) {
         alert('Incorrect password. Please check your password or use "Forgot Password".');
         return;
       }
     }
-
-    let resolvedName = authInput.split('@')[0] || 'Valued Regular';
-    try {
-      const existingUsers = JSON.parse(localStorage.getItem('veyns_registered_users') || '[]');
-      const foundUser = existingUsers.find((u: any) => u.identifier.toLowerCase().trim() === identifierKey);
-      if (foundUser && foundUser.name) {
-        resolvedName = foundUser.name;
-      }
-    } catch (e) {}
 
     const userData = {
       name: resolvedName,
@@ -225,6 +246,7 @@ export function App() {
     const newHash = await hashPassword(newPasswordInput);
     
     try {
+      await supabase.from('profiles').update({ password_hash: newHash }).eq('identifier', identifierKey);
       localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, newPasswordInput);
       localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, newHash);
       setForgotSuccess(true);
@@ -234,7 +256,9 @@ export function App() {
         setNewPasswordInput('');
         setAuthMode('regular');
       }, 2000);
-    } catch (e) {}
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleEmployeeAuth = async (pinValue: string) => {

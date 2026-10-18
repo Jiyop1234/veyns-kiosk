@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { MENU_GRID, UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
+import { supabase } from '@/lib/supabase';
 
 function Photo({ id, alt, className }: { id: string; alt: string; className: string }) {
   const src = menuImages[id];
@@ -147,8 +148,32 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const userIdentifier = isGuest ? 'guest_session_user' : (currentUser.email || currentUser.name || 'admin').toLowerCase().trim();
   const userHistoryStorageKey = `veyns_user_orders_${userIdentifier}`;
 
-  const refreshOrderHistoryFromStorage = () => {
+  const refreshOrderHistoryFromStorage = async () => {
     try {
+      // Try fetching from Supabase first for logged-in users
+      if (!isGuest) {
+        const { data: cloudOrders, error } = await supabase
+          .from('orders')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (cloudOrders && cloudOrders.length > 0) {
+          const formattedCloudOrders = cloudOrders.map((o: any) => ({
+            name: o.customer_name,
+            email: o.email || '',
+            phone: o.phone || '',
+            fulfillment: o.fulfillment || 'delivery',
+            items: o.items || [],
+            total: o.total || 0,
+            orderNumber: o.order_number,
+            date: new Date(o.created_at).toLocaleString(),
+            promoCode: o.promo_code
+          }));
+          setHistoryList(formattedCloudOrders);
+          return;
+        }
+      }
+
       if (isGuest) {
         const saved = sessionStorage.getItem(userHistoryStorageKey);
         setHistoryList(saved ? JSON.parse(saved) : []);
@@ -197,7 +222,26 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   }, [resetKey]);
 
-  const saveOrderToHistory = (newOrder: any) => {
+  const saveOrderToHistory = async (newOrder: any) => {
+    try {
+      // Insert order into Supabase cloud orders table
+      await supabase.from('orders').insert([
+        {
+          order_number: newOrder.orderNumber,
+          customer_name: newOrder.name,
+          email: newOrder.email || '',
+          phone: newOrder.phone || '',
+          fulfillment: newOrder.fulfillment,
+          items: newOrder.items,
+          total: newOrder.total,
+          promo_code: newOrder.promoCode || null,
+          status: 'completed'
+        }
+      ]);
+    } catch (err) {
+      console.error('Supabase order insert error:', err);
+    }
+
     let userSaved = [];
     try {
       if (isGuest) {
