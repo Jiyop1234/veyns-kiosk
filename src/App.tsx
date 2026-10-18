@@ -164,26 +164,22 @@ export function App() {
 
       try {
         // Save to Supabase Cloud Profiles Table
-        await supabase.from('profiles').upsert([
-          { identifier: identifierKey, name: nicknameToSave, password_hash: enteredPasswordHash, type: 'regular' }
+        const { error: dbError } = await supabase.from('profiles').upsert([
+          { 
+            identifier: identifierKey, 
+            name: nicknameToSave, 
+            password_hash: enteredPasswordHash, 
+            role: 'regular' 
+          }
         ], { onConflict: 'identifier' });
 
-        // Backup to localStorage for safety
-        const existingUsers = JSON.parse(localStorage.getItem('veyns_registered_users') || '[]');
-        const existingIndex = existingUsers.findIndex((u: any) => u.identifier.toLowerCase().trim() === identifierKey);
-        if (existingIndex >= 0) {
-          existingUsers[existingIndex] = userData;
+        if (dbError) {
+          console.error("Supabase Profile Insert Error:", dbError.message);
         } else {
-          existingUsers.push(userData);
-        }
-        localStorage.setItem('veyns_registered_users', JSON.stringify(existingUsers));
-
-        if (authPassword) {
-          localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, authPassword);
-          localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, enteredPasswordHash);
+          console.log("Profile successfully saved to Supabase!");
         }
       } catch (err) {
-        console.error('Supabase signup error:', err);
+        console.error('Supabase signup exception:', err);
       }
 
       setSignUpSuccessMsg(true);
