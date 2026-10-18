@@ -6,7 +6,7 @@ import { EmployeeDashboard } from '@/components/employee-dashboard';
 import { CartProvider } from '@/lib/cart';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings } from 'lucide-react';
+import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings, Edit3 } from 'lucide-react';
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
 
@@ -27,6 +27,10 @@ export function App() {
 
   const [showMyOrders, setShowMyOrders] = useState(false);
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
+
+  const [showAccountSettingsPanel, setShowAccountSettingsPanel] = useState(false);
+  const [isUpdatingIdentifier, setIsUpdatingIdentifier] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   const [newIdentifierInput, setNewIdentifierInput] = useState('');
   const [currentPasswordInput, setCurrentPasswordInput] = useState('');
@@ -241,56 +245,38 @@ export function App() {
     loadUserStampsAndPenalties(userData);
   };
 
-  const handleUpdateAccountSettings = async (e: React.FormEvent) => {
+  const handleUpdateIdentifierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser) return;
+    if (!currentUser || !newIdentifierInput) return;
 
     const oldIdentifierKey = currentUser.identifier.toLowerCase().trim();
-    const newIdKey = newIdentifierInput ? newIdentifierInput.toLowerCase().trim() : oldIdentifierKey;
+    const newIdKey = newIdentifierInput.toLowerCase().trim();
 
     try {
-      if (currentPasswordInput && newPasswordSettingInput) {
-        const currentHash = await hashPassword(currentPasswordInput);
-        const storedHash = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
-        if (storedHash && storedHash !== currentHash) {
-          alert('Incorrect current password.');
-          return;
-        }
-        const newHash = await hashPassword(newPasswordSettingInput);
-        await supabase.from('profiles').update({ password_hash: newHash }).eq('identifier', oldIdentifierKey);
-        localStorage.setItem(`veyns_pwd_plain_${newIdKey}`, newPasswordSettingInput);
-        localStorage.setItem(`veyns_pwd_hash_${newIdKey}`, newHash);
-      }
+      await supabase
+        .from('profiles')
+        .update({ identifier: newIdKey })
+        .eq('identifier', oldIdentifierKey);
 
-      if (newIdentifierInput && newIdentifierInput.trim() !== currentUser.identifier) {
-        await supabase
-          .from('profiles')
-          .update({ identifier: newIdKey })
-          .eq('identifier', oldIdentifierKey);
+      const plainPass = localStorage.getItem(`veyns_pwd_plain_${oldIdentifierKey}`);
+      const hashPass = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
+      const detailedStamps = localStorage.getItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
+      const userStamps = localStorage.getItem(`veyns_stamps_${oldIdentifierKey}`);
+      const penalty = localStorage.getItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
 
-        const plainPass = localStorage.getItem(`veyns_pwd_plain_${oldIdentifierKey}`);
-        const hashPass = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
-        const detailedStamps = localStorage.getItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
-        const userStamps = localStorage.getItem(`veyns_stamps_${oldIdentifierKey}`);
-        const penalty = localStorage.getItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
+      if (plainPass) localStorage.setItem(`veyns_pwd_plain_${newIdKey}`, plainPass);
+      if (hashPass) localStorage.setItem(`veyns_pwd_hash_${newIdKey}`, hashPass);
+      if (detailedStamps) localStorage.setItem(`veyns_detailed_stamps_${newIdKey}`, detailedStamps);
+      if (userStamps) localStorage.setItem(`veyns_stamps_${newIdKey}`, userStamps);
+      if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newIdKey}`, penalty);
 
-        if (plainPass) localStorage.setItem(`veyns_pwd_plain_${newIdKey}`, plainPass);
-        if (hashPass) localStorage.setItem(`veyns_pwd_hash_${newIdKey}`, hashPass);
-        if (detailedStamps) localStorage.setItem(`veyns_detailed_stamps_${newIdKey}`, detailedStamps);
-        if (userStamps) localStorage.setItem(`veyns_stamps_${newIdKey}`, userStamps);
-        if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newIdKey}`, penalty);
+      localStorage.removeItem(`veyns_pwd_plain_${oldIdentifierKey}`);
+      localStorage.removeItem(`veyns_pwd_hash_${oldIdentifierKey}`);
+      localStorage.removeItem(`veyns_stamps_${oldIdentifierKey}`);
+      localStorage.removeItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
+      localStorage.removeItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
 
-        localStorage.removeItem(`veyns_pwd_plain_${oldIdentifierKey}`);
-        localStorage.removeItem(`veyns_pwd_hash_${oldIdentifierKey}`);
-        localStorage.removeItem(`veyns_stamps_${oldIdentifierKey}`);
-        localStorage.removeItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
-        localStorage.removeItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
-      }
-
-      const updatedUser = {
-        ...currentUser,
-        identifier: newIdentifierInput ? newIdentifierInput.trim() : currentUser.identifier
-      };
+      const updatedUser = { ...currentUser, identifier: newIdentifierInput.trim() };
       setCurrentUser(updatedUser);
       localStorage.setItem('veyns_current_user', JSON.stringify(updatedUser));
       loadUserStampsAndPenalties(updatedUser);
@@ -298,9 +284,41 @@ export function App() {
       setAccountUpdateSuccess(true);
       setTimeout(() => {
         setAccountUpdateSuccess(false);
+        setIsUpdatingIdentifier(false);
+        setNewIdentifierInput('');
+      }, 2000);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !currentPasswordInput || !newPasswordSettingInput) return;
+
+    const identifierKey = currentUser.identifier.toLowerCase().trim();
+
+    try {
+      const currentHash = await hashPassword(currentPasswordInput);
+      const storedHash = localStorage.getItem(`veyns_pwd_hash_${identifierKey}`);
+
+      if (storedHash && storedHash !== currentHash) {
+        alert('Incorrect current password.');
+        return;
+      }
+
+      const newHash = await hashPassword(newPasswordSettingInput);
+      await supabase.from('profiles').update({ password_hash: newHash }).eq('identifier', identifierKey);
+      
+      localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, newPasswordSettingInput);
+      localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, newHash);
+
+      setAccountUpdateSuccess(true);
+      setTimeout(() => {
+        setAccountUpdateSuccess(false);
+        setIsResettingPassword(false);
         setCurrentPasswordInput('');
         setNewPasswordSettingInput('');
-        setNewIdentifierInput('');
       }, 2000);
     } catch (err) {
       console.error(err);
@@ -700,6 +718,9 @@ export function App() {
           onOpenLoyalty={() => {
             loadUserStampsAndPenalties(currentUser);
             setShowLoyaltyModal(true);
+            setShowAccountSettingsPanel(false);
+            setIsUpdatingIdentifier(false);
+            setIsResettingPassword(false);
           }}
           onLogout={handleLogout}
         />
@@ -828,57 +849,139 @@ export function App() {
 
               {currentUser && currentUser.type === 'regular' && (
                 <div className="mt-6 pt-5 border-t border-emerald-900/60 space-y-3">
-                  <div className="flex items-center gap-2 text-lime-400 font-extrabold text-xs uppercase tracking-wider">
-                    <Settings className="h-4 w-4" /> Account Settings
-                  </div>
-
-                  {accountUpdateSuccess ? (
-                    <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-1">
-                      <CheckCircle2 className="h-6 w-6 text-lime-400 mx-auto" />
-                      <p className="font-bold text-lime-400 text-xs">Account settings successfully updated!</p>
-                    </div>
+                  {!showAccountSettingsPanel ? (
+                    <Button
+                      onClick={() => setShowAccountSettingsPanel(true)}
+                      className="w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow"
+                    >
+                      <Settings className="h-4 w-4" /> Account Settings
+                    </Button>
                   ) : (
-                    <form onSubmit={handleUpdateAccountSettings} className="space-y-3 text-xs">
-                      <div className="space-y-1">
-                        <label className="font-bold text-emerald-300 uppercase tracking-wider block text-[10px]">Update Email or Phone Number</label>
-                        <input
-                          type="text"
-                          defaultValue={currentUser?.identifier || ''}
-                          onChange={(e) => setNewIdentifierInput(e.target.value)}
-                          className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
-                          placeholder="Enter new email or phone"
-                        />
+                    <div className="bg-[#051813] border border-emerald-800 rounded-2xl p-4 space-y-4 text-xs">
+                      <div className="flex items-center justify-between border-b border-emerald-900/60 pb-2">
+                        <span className="font-extrabold text-lime-400 uppercase">Account Settings</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAccountSettingsPanel(false);
+                            setIsUpdatingIdentifier(false);
+                            setIsResettingPassword(false);
+                          }}
+                          className="text-emerald-400 hover:text-white text-[11px] underline cursor-pointer"
+                        >
+                          Close Settings
+                        </button>
                       </div>
 
                       <div className="space-y-1">
-                        <label className="font-bold text-emerald-300 uppercase tracking-wider block text-[10px]">Current Password (Required for Password Change)</label>
-                        <input
-                          type="password"
-                          value={currentPasswordInput}
-                          onChange={(e) => setCurrentPasswordInput(e.target.value)}
-                          className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
-                          placeholder="Enter current password"
-                        />
+                        <span className="text-[10px] text-emerald-400 uppercase tracking-wider block font-bold">Your Registered Number / Email</span>
+                        <p className="text-sm font-mono font-bold text-white bg-[#041913] p-2.5 rounded-xl border border-emerald-800/80">
+                          {currentUser.identifier}
+                        </p>
                       </div>
 
-                      <div className="space-y-1">
-                        <label className="font-bold text-emerald-300 uppercase tracking-wider block text-[10px]">New Password (Optional)</label>
-                        <input
-                          type="password"
-                          value={newPasswordSettingInput}
-                          onChange={(e) => setNewPasswordSettingInput(e.target.value)}
-                          className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
-                          placeholder="Enter new password"
-                        />
-                      </div>
+                      {accountUpdateSuccess && (
+                        <div className="bg-[#061d16] border border-lime-400/60 rounded-xl p-3 text-center space-y-1">
+                          <CheckCircle2 className="h-5 w-5 text-lime-400 mx-auto" />
+                          <p className="font-bold text-lime-400 text-[11px]">Successfully updated!</p>
+                        </div>
+                      )}
 
-                      <Button
-                        type="submit"
-                        className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg mt-2"
-                      >
-                        Save Account Changes
-                      </Button>
-                    </form>
+                      {!isUpdatingIdentifier && !isResettingPassword && (
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setIsUpdatingIdentifier(true);
+                              setNewIdentifierInput(currentUser.identifier);
+                            }}
+                            className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-[11px] cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" /> Update Number/Email
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={() => setIsResettingPassword(true)}
+                            className="bg-[#04261d] hover:bg-emerald-900 text-amber-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-[11px] cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            <KeyRound className="h-3.5 w-3.5" /> Reset Password
+                          </Button>
+                        </div>
+                      )}
+
+                      {isUpdatingIdentifier && (
+                        <form onSubmit={handleUpdateIdentifierSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
+                          <div className="space-y-1">
+                            <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">New Phone Number or Email</label>
+                            <input
+                              type="text"
+                              required
+                              value={newIdentifierInput}
+                              onChange={(e) => setNewIdentifierInput(e.target.value)}
+                              className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
+                              placeholder="Enter new email/phone"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              onClick={() => setIsUpdatingIdentifier(false)}
+                              className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="submit"
+                              className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer shadow"
+                            >
+                              Save New ID
+                            </Button>
+                          </div>
+                        </form>
+                      )}
+
+                      {isResettingPassword && (
+                        <form onSubmit={handleResetPasswordSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
+                          <div className="space-y-1">
+                            <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">Current Password</label>
+                            <input
+                              type="password"
+                              required
+                              value={currentPasswordInput}
+                              onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                              className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
+                              placeholder="Enter current password"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">New Password</label>
+                            <input
+                              type="password"
+                              required
+                              value={newPasswordSettingInput}
+                              onChange={(e) => setNewPasswordSettingInput(e.target.value)}
+                              className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
+                              placeholder="Enter new password"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              onClick={() => setIsResettingPassword(false)}
+                              className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="submit"
+                              className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer shadow"
+                            >
+                              Confirm Password
+                            </Button>
+                          </div>
+                        </form>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -886,7 +989,7 @@ export function App() {
 
             <Button
               onClick={() => setShowLoyaltyModal(false)}
-              className="w-full bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-extrabold py-3 rounded-xl text-xs transition-all shadow"
+              className="w-full bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-extrabold py-3 rounded-xl text-xs transition-all shadow mt-4"
             >
               Close
             </Button>
