@@ -136,11 +136,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
 
     setPromos(getActivePromoCodes());
-
-    // Fetch live orders and customer profiles directly from Supabase
     fetchCloudData();
 
-    // Listen for live incoming orders in real-time
     const orderChannel = supabase
       .channel('public:orders')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
@@ -155,8 +152,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
   const fetchCloudData = async () => {
     try {
-      // 1. Fetch live orders from Supabase
-      const { data: cloudOrders, error: orderError } = await supabase
+      const { data: cloudOrders } = await supabase
         .from('orders')
         .select('*')
         .order('created_at', { ascending: false });
@@ -176,22 +172,36 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         setOrders(formattedOrders);
       }
 
-      // 2. Fetch registered customer profiles from Supabase cloud table
-      const { data: cloudProfiles, error: profileError } = await supabase
+      const { data: cloudProfiles } = await supabase
         .from('profiles')
         .select('*');
 
       if (cloudProfiles && cloudProfiles.length > 0) {
-        const formattedProfiles = cloudProfiles.map((p: any) => ({
-          name: p.name || 'Valued Regular',
-          identifier: p.identifier,
-          type: p.role || 'regular',
-        }));
+        const formattedProfiles = cloudProfiles.map((p: any) => {
+          // Sync cloud profile stamps and penalties into local storage cache so user view matches Supabase
+          const identifierKey = (p.identifier || '').toLowerCase().trim();
+          if (p.stamps_data) {
+            localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(p.stamps_data));
+            const validDates = p.stamps_data.filter((s: any) => s && s.status === 'valid').map((s: any) => s.date);
+            localStorage.setItem(`veyns_stamps_${identifierKey}`, JSON.stringify(validDates));
+          }
+          if (p.penalty_data) {
+            localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(p.penalty_data));
+          }
+
+          return {
+            name: p.name || 'Valued Regular',
+            identifier: p.identifier,
+            type: p.role || 'regular',
+            stamps_data: p.stamps_data,
+            penalty_data: p.penalty_data
+          };
+        });
         setCustomers(formattedProfiles);
       } else {
         setCustomers([
-          { name: 'Admin Regular', identifier: 'admin', type: 'regular', phone: '09123456789' },
-          { name: 'Geoff Perez', identifier: 'geoff@gmail.com', type: 'regular', phone: '09987654321' }
+          { name: 'Admin Regular', identifier: 'admin', type: 'regular' },
+          { name: 'Geoff Perez', identifier: 'geoff@gmail.com', type: 'regular' }
         ]);
       }
     } catch (e) {
@@ -300,13 +310,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     const newIdentifierKey = newIdentifierInput.toLowerCase().trim();
 
     try {
-      // Update identifier in Supabase profiles table
       await supabase
         .from('profiles')
         .update({ identifier: newIdentifierKey })
         .eq('identifier', oldIdentifierKey);
 
-      // Migrate local storage credentials & stamps to new key
       const plainPass = localStorage.getItem(`veyns_pwd_plain_${oldIdentifierKey}`);
       const hashPass = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
       const detailedStamps = localStorage.getItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
@@ -319,7 +327,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       if (userStamps) localStorage.setItem(`veyns_stamps_${newIdentifierKey}`, userStamps);
       if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newIdentifierKey}`, penalty);
 
-      // Clean up old keys
       localStorage.removeItem(`veyns_pwd_plain_${oldIdentifierKey}`);
       localStorage.removeItem(`veyns_pwd_hash_${oldIdentifierKey}`);
       localStorage.removeItem(`veyns_stamps_${oldIdentifierKey}`);
@@ -380,6 +387,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           return parsed[idx] || { status: 'empty', date: '' };
         });
         setCustomerStampsDetailed(normalized);
+      } else if (cust.stamps_data && Array.isArray(cust.stamps_data)) {
+        const normalized = Array.from({ length: 12 }).map((_, idx) => {
+          return cust.stamps_data[idx] || { status: 'empty', date: '' };
+        });
+        setCustomerStampsDetailed(normalized);
       } else {
         const userStamps = localStorage.getItem(`veyns_stamps_${identifierKey}`);
         const parsedStamps: string[] = userStamps ? JSON.parse(userStamps) : [];
@@ -397,7 +409,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
-  const handleSaveStamps = () => {
+  const handleSaveStamps = async () => {
     if (!stampTargetUser) return;
     try {
       const identifierKey = stampTargetUser.identifier.toLowerCase().trim();
@@ -437,6 +449,16 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         });
       }
 
+      // Save to Supabase Cloud Profiles Table
+      await supabase
+        .from('profiles')
+        .update({
+          stamps_data: slotsToSave,
+          penalty_data: penaltyStatus && !isCleared ? penaltyStatus : null
+        })
+        .eq('identifier', identifierKey);
+
+      // Also update local cache
       localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(slotsToSave));
 
       if (penaltyStatus && !isCleared) {
@@ -452,8 +474,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       }
 
       window.dispatchEvent(new Event('storage'));
-      alert(`Stamp card & penalties successfully updated and synced for ${stampTargetUser.name}!`);
-    } catch (e) {}
+      alert(`Stamp card & penalties successfully synced to Supabase for ${stampTargetUser.name}!`);
+      fetchCloudData();
+    } catch (e) {
+      console.error(e);
+    }
     setStampTargetUser(null);
   };
 
@@ -486,24 +511,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           return parsed.filter((s: any) => s && s.status === 'valid').length;
         }
       }
-      const userStamps = localStorage.getItem(`veyns_stamps_${identifierKey}`);
-      if (userStamps) {
-        const parsedStamps = JSON.parse(userStamps);
-        if (Array.isArray(parsedStamps)) return parsedStamps.length;
-      }
     } catch (e) {}
-
-    const customerOrders = orders.filter((o) => (o.name || '').toLowerCase() === (customerName || '').toLowerCase());
-    const uniqueDays = new Set(
-      customerOrders.map((o) => {
-        try {
-          return new Date(o.date).toISOString().split('T')[0];
-        } catch (e) {
-          return o.date ? o.date.split(',')[0] : '';
-        }
-      })
-    );
-    return Math.min(12, uniqueDays.size);
+    return 0;
   };
 
   return (
@@ -1026,9 +1035,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white text-sm focus:outline-none focus:border-lime-400"
                   placeholder="Enter new email or phone"
                 />
-                <p className="text-[11px] text-emerald-400/70">
-                  ℹ️ This will update the login identifier in Supabase and migrate stored stamps & passwords.
-                </p>
               </div>
 
               <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
@@ -1070,9 +1076,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-mono text-sm focus:outline-none focus:border-lime-400"
                   placeholder="Enter new password"
                 />
-                <p className="text-[11px] text-emerald-400/70">
-                  ℹ️ This will update the secure password and let the customer log in immediately.
-                </p>
               </div>
 
               <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
@@ -1101,7 +1104,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   <Award className="h-5 w-5 text-lime-400" /> Fair Play Stamp Manager: {stampTargetUser.name}
                 </DialogTitle>
                 <DialogDescription className="text-xs text-emerald-300">
-                  Click slot status to toggle: <span className="text-lime-400 font-bold">Valid</span> ➔ <span className="text-amber-400 font-bold">To Be Cleared (Orange)</span> ➔ <span className="text-red-400 font-bold">Invalid</span>.
+                  Use the dropdown on each slot to set status: <span className="text-lime-400 font-bold">Add (Valid)</span>, <span className="text-amber-400 font-bold">To Be Cleared</span>, <span className="text-red-400 font-bold">Invalid</span>, or <span className="text-emerald-500 font-bold">Empty</span>.
                 </DialogDescription>
               </div>
 
@@ -1121,18 +1124,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                       </option>
                     ))}
                   </select>
-                  <p className="text-[10px] text-emerald-400/70">
-                    ℹ️ "Active Account", "Penalties Waived", and "No Violation till card clears" completely clear all penalties and notices from the customer view.
-                  </p>
                 </div>
 
                 <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 text-center space-y-1">
                   <p className="text-xs text-emerald-300">Active Valid Stamps:</p>
                   <p className="text-3xl font-black text-lime-400 font-display">
                     {customerStampsDetailed.filter(s => s.status === 'valid').length} / 12 Stamps
-                  </p>
-                  <p className="text-[10px] text-amber-400 font-semibold">
-                    {customerStampsDetailed.filter(s => s.status === 'to_clear' || s.status === 'invalid').length} slot(s) pending clearance.
                   </p>
                 </div>
 
@@ -1143,6 +1140,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     const isSixth = idx === 5;
                     const isNinth = idx === 8;
                     const isTwelfth = idx === 11;
+
+                    let selectValue = 'empty';
+                    if (status === 'valid') selectValue = 'valid';
+                    else if (status === 'to_clear') selectValue = 'to_clear';
+                    else if (status === 'invalid') selectValue = 'invalid';
 
                     return (
                       <div
@@ -1159,40 +1161,45 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                       >
                         <div className="flex items-center justify-between w-full px-1">
                           <span className="text-[9px] font-mono opacity-80">#{idx + 1}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = [...customerStampsDetailed];
-                              const todayStr = new Date().toISOString().split('T')[0];
-
-                              while (updated.length <= idx) {
-                                updated.push({ status: 'empty', date: '' });
-                              }
-
-                              if (status === 'empty' || status === 'invalid') {
-                                updated[idx] = { status: 'valid', date: todayStr };
-                              } else if (status === 'valid') {
-                                updated[idx] = { status: 'to_clear', date: todayStr, penaltyReason: 'To Be Cleared' };
-                              } else if (status === 'to_clear') {
-                                updated[idx] = { status: 'empty', date: '', penaltyReason: undefined };
-                              } else {
-                                updated[idx] = { status: 'empty', date: '', penaltyReason: undefined };
-                              }
-
-                              setCustomerStampsDetailed(updated);
-                            }}
-                            className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-black/50 hover:bg-black text-white cursor-pointer"
-                          >
-                            {status === 'empty' ? 'Add' : status === 'valid' ? 'Mark Cleared' : status === 'to_clear' ? 'Make Empty' : 'Clear'}
-                          </button>
                         </div>
 
                         <div className="flex flex-col items-center justify-center my-auto">
-                          {status === 'valid' && <CheckCircle2 className="size-5 text-lime-400 mb-0.5" />}
-                          {status === 'to_clear' && <Clock className="size-5 text-amber-400 mb-0.5" />}
-                          {status === 'invalid' && <XCircle className="size-5 text-red-400 mb-0.5" />}
-                          {status === 'empty' && <span className="text-[10px] text-emerald-600 font-mono">Slot #{idx + 1}</span>}
+                          {status === 'valid' && <CheckCircle2 className="size-4 text-lime-400 mb-0.5" />}
+                          {status === 'to_clear' && <Clock className="size-4 text-amber-400 mb-0.5" />}
+                          {status === 'invalid' && <XCircle className="size-4 text-red-400 mb-0.5" />}
+                          {status === 'empty' && <span className="text-[9px] text-emerald-600 font-mono">Empty</span>}
                         </div>
+
+                        <select
+                          value={selectValue}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const updated = [...customerStampsDetailed];
+                            const todayStr = new Date().toISOString().split('T')[0];
+
+                            while (updated.length <= idx) {
+                              updated.push({ status: 'empty', date: '' });
+                            }
+
+                            if (val === 'valid') {
+                              updated[idx] = { status: 'valid', date: todayStr };
+                            } else if (val === 'to_clear') {
+                              updated[idx] = { status: 'to_clear', date: todayStr, penaltyReason: 'To Be Cleared' };
+                            } else if (val === 'invalid') {
+                              updated[idx] = { status: 'invalid', date: todayStr, penaltyReason: 'Invalidated' };
+                            } else {
+                              updated[idx] = { status: 'empty', date: '' };
+                            }
+
+                            setCustomerStampsDetailed(updated);
+                          }}
+                          className="w-full bg-black/80 border border-emerald-800 text-[10px] text-lime-300 rounded px-1 py-0.5 focus:outline-none cursor-pointer text-center font-bold"
+                        >
+                          <option value="empty">EMPTY</option>
+                          <option value="valid">ADD</option>
+                          <option value="to_clear">TO BE CLEARED</option>
+                          <option value="invalid">INVALID</option>
+                        </select>
 
                         {isSixth && (
                           <span className="absolute -top-2 -right-1 bg-amber-500 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full z-10">
@@ -1212,14 +1219,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                       </div>
                     );
                   })}
-                </div>
-
-                <div className="bg-[#04140f] border border-emerald-900/80 rounded-xl p-3 space-y-1.5 text-[11px] text-emerald-300">
-                  <p className="font-bold text-lime-400 uppercase tracking-wider">🚨 Slot Rules:</p>
-                  <ul className="list-disc list-inside space-y-1 text-emerald-200">
-                    <li><strong className="text-amber-400">Orange Clock:</strong> Slot is marked "To Be Cleared".</li>
-                    <li>Selecting <strong>"Active Account"</strong>, <strong>"Penalties Waived"</strong>, or <strong>"No Violation till card clears"</strong> clears all penalties and notice banners from the customer view.</li>
-                  </ul>
                 </div>
               </div>
 
