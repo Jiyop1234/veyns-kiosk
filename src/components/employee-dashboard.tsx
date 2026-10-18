@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
 import { menuImages } from '@/lib/menu-images';
+import { supabase } from '@/lib/supabase';
 
 function Photo({ id, alt, className }: { id: string; alt: string; className: string }) {
   const src = menuImages[id];
@@ -133,15 +134,65 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
     setPromos(getActivePromoCodes());
 
-    try {
-      const savedOrders = localStorage.getItem('veyns_order_history');
-      if (savedOrders) {
-        setOrders(JSON.parse(savedOrders));
-      }
-    } catch (e) {}
+    // Fetch live orders and customer profiles directly from Supabase
+    fetchCloudData();
 
-    loadCustomers();
+    // Listen for live incoming orders in real-time
+    const orderChannel = supabase
+      .channel('public:orders')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        fetchCloudData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(orderChannel);
+    };
   }, []);
+
+  const fetchCloudData = async () => {
+    try {
+      // 1. Fetch live orders from Supabase
+      const { data: cloudOrders, error: orderError } = await supabase
+        .from('orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (cloudOrders) {
+        const formattedOrders = cloudOrders.map((o: any) => ({
+          name: o.customer_name,
+          email: o.email || '',
+          phone: o.phone || '',
+          fulfillment: o.fulfillment || 'delivery',
+          items: o.items || [],
+          total: o.total || 0,
+          orderNumber: o.order_number,
+          date: new Date(o.created_at).toLocaleString(),
+          promoCode: o.promo_code
+        }));
+        setOrders(formattedOrders);
+      }
+
+      // 2. Fetch registered customer profiles from Supabase
+      const { data: cloudProfiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('*');
+
+      if (cloudProfiles && cloudProfiles.length > 0) {
+        const formattedProfiles = cloudProfiles.map((p: any) => ({
+          name: p.name || 'Valued Regular',
+          identifier: p.identifier,
+          type: p.role || 'regular',
+        }));
+        setCustomers(formattedProfiles);
+      } else {
+        loadCustomers();
+      }
+    } catch (e) {
+      console.error('Error fetching cloud data:', e);
+      loadCustomers();
+    }
+  };
 
   const loadCustomers = () => {
     try {
@@ -219,11 +270,15 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     saveActivePromoCodes(updated);
   };
 
-  const handleClearSalesLog = () => {
-    setOrders([]);
+  const handleClearSalesLog = async () => {
+    if (!confirm('Are you sure you want to clear all sales logs from Supabase?')) return;
     try {
+      await supabase.from('orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      setOrders([]);
       localStorage.removeItem('veyns_order_history');
-    } catch (e) {}
+    } catch (e) {
+      setOrders([]);
+    }
   };
 
   const hashPassword = async (password: string) => {
@@ -239,6 +294,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     const hashedNewPass = await hashPassword(newTempPassword);
     
     try {
+      await supabase.from('profiles').update({ password_hash: hashedNewPass }).eq('identifier', identifierKey);
       localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, newTempPassword);
       localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, hashedNewPass);
       alert(`Password successfully reset for ${resetTargetUser.name}! New password: "${newTempPassword}"`);
@@ -249,10 +305,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     loadCustomers();
   };
 
-  const handleDeleteCustomer = (identifier: string) => {
+  const handleDeleteCustomer = async (identifier: string) => {
     if (!confirm('Are you sure you want to delete this customer account?')) return;
     try {
       const identifierKey = identifier.toLowerCase().trim();
+      await supabase.from('profiles').delete().eq('identifier', identifierKey);
+
       const updated = customers.filter((c) => c.identifier.toLowerCase().trim() !== identifierKey);
       setCustomers(updated);
       localStorage.setItem('veyns_registered_users', JSON.stringify(updated));
