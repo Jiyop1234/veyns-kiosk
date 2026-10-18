@@ -1,0 +1,143 @@
+export interface MenuItem {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  description: string;
+  bestSeller?: boolean;
+  isCustomizable?: boolean;
+  hasBrothEggOption?: boolean; // Controls whether Step 1 (Egg in Broth) is displayed
+  discountPercent?: number;    // Linked with Employee Dashboard item-level discounts
+  isAvailable?: boolean;       // Stock / visibility status control
+}
+
+export interface PromoCode {
+  code: string;
+  discountPercent: number;
+}
+
+export const formatPeso = (amount: number) => {
+  return `₱${amount.toFixed(2)}`;
+};
+
+export const menuCategories = [
+  'All items',
+  'Rice Bowls',
+  'Noodle Bowls',
+  'Sides'
+];
+
+export const CATEGORIES = menuCategories;
+
+export const UPSELL_ITEMS: MenuItem[] = [
+  {
+    id: 'fries',
+    name: "Crispy French Fries (Salted w/ Cane's Dip)",
+    category: 'Sides',
+    price: 59,
+    description: "Crispy salted french fries served with signature Raising Cane's dipping sauce."
+  },
+  {
+    id: 'extra-egg',
+    name: 'Extra Fried / Hardboiled Egg',
+    category: 'Sides',
+    price: 15,
+    description: 'Freshly prepared egg cooked to order.'
+  },
+  {
+    id: 'extra-rice',
+    name: 'Extra Rice (220g Portion)',
+    category: 'Sides',
+    price: 20,
+    description: 'Hot steamed rice (220g portion).'
+  },
+  {
+    id: 'extra-pork-katsu',
+    name: 'Extra Pork Katsu Piece (72.8g)',
+    category: 'Sides',
+    price: 40,
+    description: 'Crispy breaded pork katsu cutlet (72.8g).'
+  },
+  {
+    id: 'canes-sauce-drizzle',
+    name: "Raising Cane's Dipping Sauce Drizzle",
+    category: 'Sides',
+    price: 15,
+    description: "Signature house Raising Cane's sauce drizzle."
+  },
+  {
+    id: 'canes-sauce-cup',
+    name: "Extra Raising Cane's Dipping Sauce Cup (1 oz)",
+    category: 'Sides',
+    price: 20,
+    description: "1 oz cup of Raising Cane's dipping sauce."
+  },
+  {
+    id: 'toyomansi-dip-cup',
+    name: 'Extra Toyomansi / Onion Dip Cup',
+    category: 'Sides',
+    price: 10,
+    description: '1 oz cup of toyomansi or savory onion dip.'
+  }
+];
+
+export const menuItems: MenuItem[] = [
+  {
+    id: 'pork-sinugba',
+    name: 'Pork Sugba Rice Bowl',
+    category: 'Rice Bowls',
+    price: 109,
+    description: 'Grilled pork with rice, a 1 oz cup of toyomansi and 4 cucumber slices, served in a kraft paper bowl.',
+    bestSeller: true
+  },
+  {
+    id: 'pork-sisig',
+    name: 'Pork Sisig Rice Bowl',
+    category: 'Rice Bowls',
+    price: 119,
+    description: 'Sizzling savory chopped pork seasoned with calamansi, onions, and creamy dressing over rice.'
+  },
+  {
+    id: 'pork-katsu',
+    name: 'Pork Katsu Meal',
+    category: 'Rice Bowls',
+    price: 89,
+    description: 'Single piece crispy breaded pork katsu served over hot steamed rice with savory drizzle.'
+  },
+  {
+    id: 'ramen-katsu',
+    name: 'Shin Ramen',
+    category: 'Noodle Bowls',
+    price: 119,
+    description: 'Rich savory soup broth with noodles, fresh scallions, and your choice of egg or katsu toppings.',
+    isCustomizable: true,
+    hasBrothEggOption: true
+  },
+  {
+    id: 'buldak',
+    name: 'Cheesy Buldak',
+    category: 'Noodle Bowls',
+    price: 134,
+    description: 'Spicy Korean fire noodles tossed in signature hot sauce with melted cheese.',
+    isCustomizable: true,
+    hasBrothEggOption: false
+  },
+  {
+    id: 'fries',
+    name: "Crispy French Fries (Salted w/ Cane's Dip)",
+    category: 'Sides',
+    price: 59,
+    description: "Crispy salted french fries served in our classic kiosk cup with Raising Cane's dipping sauce."
+  }
+];
+
+export const MENU_GRID = menuItems;
+
+// Helper to retrieve active promo codes created in Employee Dashboard (starts empty)
+export const getActivePromoCodes = (): PromoCode[] => {
+  try {
+    const saved = localStorage.getItem('veyns_promo_codes');
+    if (saved) return JSON.parse(saved);
+  } catch (e) {}
+  return [];
+};

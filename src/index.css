@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.21798 0.03250 174.252);
+  --foreground: oklch(0.97652 0.00980 87.470);
+  --card: oklch(0.24425 0.03052 170.067);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.79927 0.20918 128.240);
+  --primary-foreground: oklch(0.21798 0.03250 174.252);
+  --secondary: oklch(0.37805 0.07303 168.940);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.21236 0.00841 153.186);
+  --muted-foreground: oklch(0.90470 0.03216 89.147);
+  --accent: oklch(0.74044 0.09921 86.941);
+  --accent-foreground: var(--background);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.98 0.01 85);
+  --border: oklch(0.47003 0.09269 167.321);
+  --input: var(--border);
+  --ring: var(--primary);
+  --hero: var(--secondary);
+  --hero-foreground: var(--foreground);
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html, body, #root {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: "Nunito Sans", ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: 0;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.animate-fade-up {
+  animation: fade-up 0.7s ease-out both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
