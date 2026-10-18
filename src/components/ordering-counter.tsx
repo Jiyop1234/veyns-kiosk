@@ -227,12 +227,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         {
           order_number: newOrder.orderNumber,
           customer_name: newOrder.name,
-          email: newOrder.email || '',
-          phone: newOrder.phone || '',
-          fulfillment: newOrder.fulfillment,
           items: newOrder.items,
           total: newOrder.total,
-          promo_code: newOrder.promoCode || null,
           status: 'completed'
         }
       ]);
