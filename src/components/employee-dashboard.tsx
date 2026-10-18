@@ -295,6 +295,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     if (!confirm('Are you sure you want to delete this customer account?')) return;
     try {
       const identifierKey = identifier.toLowerCase().trim();
+      // Delete record directly from Supabase table
       await supabase.from('profiles').delete().eq('identifier', identifierKey);
 
       const updated = customers.filter((c) => c.identifier.toLowerCase().trim() !== identifierKey);
