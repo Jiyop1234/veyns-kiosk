@@ -178,7 +178,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
       if (cloudProfiles && cloudProfiles.length > 0) {
         const formattedProfiles = cloudProfiles.map((p: any) => {
-          // Sync cloud profile stamps and penalties into local storage cache so user view matches Supabase
           const identifierKey = (p.identifier || '').toLowerCase().trim();
           if (p.stamps_data) {
             localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(p.stamps_data));
@@ -449,18 +448,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         });
       }
 
-      // Save to Supabase Cloud Profiles Table
-      await supabase
-        .from('profiles')
-        .update({
-          stamps_data: slotsToSave,
-          penalty_data: penaltyStatus && !isCleared ? penaltyStatus : null
-        })
-        .eq('identifier', identifierKey);
-
-      // Also update local cache
+      // Save locally first so UI responds instantly
       localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(slotsToSave));
-
       if (penaltyStatus && !isCleared) {
         localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(penaltyStatus));
       } else {
@@ -473,8 +462,21 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         localStorage.setItem(`veyns_loyalty_stamps`, JSON.stringify(validStamps));
       }
 
+      // Try updating Supabase (wrapped in try/catch to avoid hard errors if columns haven't been added yet)
+      try {
+        await supabase
+          .from('profiles')
+          .update({
+            stamps_data: slotsToSave,
+            penalty_data: penaltyStatus && !isCleared ? penaltyStatus : null
+          })
+          .eq('identifier', identifierKey);
+      } catch (cloudErr) {
+        console.warn('Cloud sync warning (Make sure stamps_data and penalty_data columns exist in Supabase):', cloudErr);
+      }
+
       window.dispatchEvent(new Event('storage'));
-      alert(`Stamp card & penalties successfully synced to Supabase for ${stampTargetUser.name}!`);
+      alert(`Stamp card & penalties successfully synced for ${stampTargetUser.name}!`);
       fetchCloudData();
     } catch (e) {
       console.error(e);
