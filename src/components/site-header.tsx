@@ -2,6 +2,7 @@
 import { Award, Lock, LogOut, ShoppingBag, UtensilsCrossed } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export function SiteHeader({ 
   onOpenOrders, 
@@ -18,6 +19,7 @@ export function SiteHeader({
 }) {
   const cart = useCart() || {};
   const count = cart.count || 0;
+  const isMobile = useIsMobile();
   
   const isGuest = currentUser?.type === 'guest';
   const nickname = currentUser?.name ? currentUser.name.split(' ')[0] : 'Account';
@@ -64,14 +66,15 @@ export function SiteHeader({
             </Button>
           ) : null}
 
-          {/* My Order Button */}
+          {/* My Order / Shopping Bag Button (Icon-only on mobile, text on desktop) */}
           <Button 
             variant="outline"
             onClick={onOpenOrders}
             className="relative flex items-center gap-2 bg-[#061d16] border-emerald-700/80 text-white hover:border-lime-400 hover:bg-[#082a20] cursor-pointer"
+            title="My order"
           >
             <ShoppingBag className="size-4 text-lime-400" />
-            <span className="hidden sm:inline">My order</span>
+            {!isMobile && <span>My order</span>}
             {count > 0 && (
               <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-lime-400 text-xs font-bold text-black">
                 {count}
