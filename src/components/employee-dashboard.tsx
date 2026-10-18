@@ -38,6 +38,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [newTempPassword, setNewTempPassword] = useState('');
   const [visiblePasswords, setVisiblePasswords] = useState<{ [key: string]: boolean }>({});
 
+  const [editIdentifierUser, setEditIdentifierUser] = useState<any>(null);
+  const [newIdentifierInput, setNewIdentifierInput] = useState('');
+
   const [stampTargetUser, setStampTargetUser] = useState<any>(null);
   const [customerStampsDetailed, setCustomerStampsDetailed] = useState<{ status: 'valid' | 'invalid' | 'to_clear' | 'empty'; date: string; penaltyReason?: string }[]>([]);
   const [selectedInfractionPreset, setSelectedInfractionPreset] = useState('');
@@ -291,11 +294,52 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     fetchCloudData();
   };
 
+  const handleUpdateIdentifierSubmit = async () => {
+    if (!editIdentifierUser || !newIdentifierInput) return;
+    const oldIdentifierKey = editIdentifierUser.identifier.toLowerCase().trim();
+    const newIdentifierKey = newIdentifierInput.toLowerCase().trim();
+
+    try {
+      // Update identifier in Supabase profiles table
+      await supabase
+        .from('profiles')
+        .update({ identifier: newIdentifierKey })
+        .eq('identifier', oldIdentifierKey);
+
+      // Migrate local storage credentials & stamps to new key
+      const plainPass = localStorage.getItem(`veyns_pwd_plain_${oldIdentifierKey}`);
+      const hashPass = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
+      const detailedStamps = localStorage.getItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
+      const userStamps = localStorage.getItem(`veyns_stamps_${oldIdentifierKey}`);
+      const penalty = localStorage.getItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
+
+      if (plainPass) localStorage.setItem(`veyns_pwd_plain_${newIdentifierKey}`, plainPass);
+      if (hashPass) localStorage.setItem(`veyns_pwd_hash_${newIdentifierKey}`, hashPass);
+      if (detailedStamps) localStorage.setItem(`veyns_detailed_stamps_${newIdentifierKey}`, detailedStamps);
+      if (userStamps) localStorage.setItem(`veyns_stamps_${newIdentifierKey}`, userStamps);
+      if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newIdentifierKey}`, penalty);
+
+      // Clean up old keys
+      localStorage.removeItem(`veyns_pwd_plain_${oldIdentifierKey}`);
+      localStorage.removeItem(`veyns_pwd_hash_${oldIdentifierKey}`);
+      localStorage.removeItem(`veyns_stamps_${oldIdentifierKey}`);
+      localStorage.removeItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
+      localStorage.removeItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
+
+      alert(`Login identifier successfully updated to "${newIdentifierInput}" for ${editIdentifierUser.name}!`);
+    } catch (e) {
+      console.error(e);
+    }
+
+    setEditIdentifierUser(null);
+    setNewIdentifierInput('');
+    fetchCloudData();
+  };
+
   const handleDeleteCustomer = async (identifier: string) => {
     if (!confirm('Are you sure you want to delete this customer account?')) return;
     try {
       const identifierKey = identifier.toLowerCase().trim();
-      // Delete record directly from Supabase table
       await supabase.from('profiles').delete().eq('identifier', identifierKey);
 
       const updated = customers.filter((c) => c.identifier.toLowerCase().trim() !== identifierKey);
@@ -681,7 +725,22 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     return (
                       <tr key={idx} className="hover:bg-[#071F19]/50 transition-colors">
                         <td className="p-3 font-bold text-white">{cust.name}</td>
-                        <td className="p-3 text-lime-400 font-mono">{cust.identifier}</td>
+                        <td className="p-3 text-lime-400 font-mono">
+                          <div className="flex items-center gap-2">
+                            <span>{cust.identifier}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditIdentifierUser(cust);
+                                setNewIdentifierInput(cust.identifier);
+                              }}
+                              className="text-emerald-400 hover:text-lime-400 p-1 cursor-pointer"
+                              title="Edit Email/Phone"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
                         <td className="p-3 font-mono">
                           <div className="flex items-center gap-2">
                             <span>{isVisible ? plainPassword : '••••••••'}</span>
@@ -940,6 +999,50 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg"
                 >
                   Save Changes
+                </Button>
+              </div>
+            </DialogContent>
+          )}
+        </Dialog>
+
+        <Dialog open={!!editIdentifierUser} onOpenChange={(open) => !open && setEditIdentifierUser(null)}>
+          {editIdentifierUser && (
+            <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
+              <div className="space-y-1 border-b border-emerald-900/60 pb-3">
+                <DialogTitle className="font-display text-xl font-extrabold text-white">
+                  Edit Identifier for {editIdentifierUser.name}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-emerald-300">
+                  Update customer's login email or phone number.
+                </DialogDescription>
+              </div>
+
+              <div className="space-y-3 my-4 text-xs">
+                <label className="font-bold text-lime-400 uppercase tracking-wider block">New Email or Phone Number</label>
+                <input
+                  type="text"
+                  value={newIdentifierInput}
+                  onChange={(e) => setNewIdentifierInput(e.target.value)}
+                  className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white text-sm focus:outline-none focus:border-lime-400"
+                  placeholder="Enter new email or phone"
+                />
+                <p className="text-[11px] text-emerald-400/70">
+                  ℹ️ This will update the login identifier in Supabase and migrate stored stamps & passwords.
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
+                <Button
+                  onClick={() => setEditIdentifierUser(null)}
+                  className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2.5 rounded-xl text-xs cursor-pointer"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleUpdateIdentifierSubmit}
+                  className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg"
+                >
+                  Save New Identifier
                 </Button>
               </div>
             </DialogContent>
