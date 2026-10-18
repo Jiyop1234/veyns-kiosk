@@ -27,7 +27,6 @@ export function App() {
 
   const [showMyOrders, setShowMyOrders] = useState(false);
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
-  const [showAccountSettings, setShowAccountSettings] = useState(false);
 
   const [newIdentifierInput, setNewIdentifierInput] = useState('');
   const [currentPasswordInput, setCurrentPasswordInput] = useState('');
@@ -299,7 +298,6 @@ export function App() {
       setAccountUpdateSuccess(true);
       setTimeout(() => {
         setAccountUpdateSuccess(false);
-        setShowAccountSettings(false);
         setCurrentPasswordInput('');
         setNewPasswordSettingInput('');
         setNewIdentifierInput('');
@@ -368,7 +366,6 @@ export function App() {
   const handleResetMenu = () => {
     setShowMyOrders(false);
     setShowLoyaltyModal(false);
-    setShowAccountSettings(false);
     setResetTrigger((prev) => prev + 1);
   };
 
@@ -435,7 +432,7 @@ export function App() {
           <div className="space-y-3 pt-2">
             <Button
               onClick={() => { setAuthInput(''); setAuthPassword(''); setAuthName(''); setAuthMode('regular'); setIsSignUp(false); }}
-              className="w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-white border border-emerald-700/80 py-4 px-3 h-auto rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 transition-all shadow-md cursor-pointer text-center"
+              className="w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-white border border-emerald-700/80 py-4 px-3 h-auto rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 transition-all shadow-lg cursor-pointer text-center"
             >
               <User className="size-4 text-lime-400 shrink-0" />
               <span className="leading-tight">Login as Regular <span className="block sm:inline font-normal opacity-90">(Earn Stamps & History)</span></span>
@@ -696,35 +693,6 @@ export function App() {
   return (
     <CartProvider>
       <div className="min-h-screen bg-[#071F19] text-white flex flex-col">
-        <header className="bg-[#03120d] border-b border-emerald-900/60 px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src={veynsSymbol} alt="VEYNS" className="h-10 w-10 object-contain" />
-            <div>
-              <h1 className="font-display font-extrabold text-white text-sm tracking-wide">VEYNS. KIOSK</h1>
-              <p className="text-[10px] text-emerald-400">Logged in as: <strong className="text-white">{currentUser?.name}</strong> ({currentUser?.identifier})</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {currentUser && currentUser.type === 'regular' && (
-              <Button
-                onClick={() => setShowAccountSettings(true)}
-                size="sm"
-                className="bg-[#061d16] hover:bg-emerald-900 text-lime-400 border border-emerald-800 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer"
-              >
-                <Settings className="h-4 w-4" /> Account Settings
-              </Button>
-            )}
-            <Button
-              onClick={handleLogout}
-              size="sm"
-              className="bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-800/80 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer"
-            >
-              <LogOut className="h-4 w-4" /> Logout
-            </Button>
-          </div>
-        </header>
-
         <SiteHeader 
           onOpenOrders={() => setShowMyOrders(true)} 
           onResetMenu={handleResetMenu}
@@ -747,79 +715,8 @@ export function App() {
           />
         </main>
 
-        <Dialog open={showAccountSettings} onOpenChange={setShowAccountSettings}>
-          <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
-            <div className="space-y-1 border-b border-emerald-900/60 pb-3">
-              <DialogTitle className="font-display text-xl font-extrabold text-white flex items-center gap-2">
-                <Settings className="h-5 w-5 text-lime-400" /> Customer Account Settings
-              </DialogTitle>
-              <DialogDescription className="text-xs text-emerald-300/80">
-                Update your login email/phone or change your password.
-              </DialogDescription>
-            </div>
-
-            {accountUpdateSuccess ? (
-              <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-6 text-center space-y-2 my-4">
-                <CheckCircle2 className="h-10 w-10 text-lime-400 mx-auto" />
-                <p className="font-bold text-lime-400 text-sm">Account settings successfully updated!</p>
-              </div>
-            ) : (
-              <form onSubmit={handleUpdateAccountSettings} className="space-y-4 my-4 text-xs">
-                <div className="space-y-1">
-                  <label className="font-bold text-lime-400 uppercase tracking-wider block text-[11px]">Update Email or Phone Number</label>
-                  <input
-                    type="text"
-                    defaultValue={currentUser?.identifier || ''}
-                    onChange={(e) => setNewIdentifierInput(e.target.value)}
-                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white focus:outline-none focus:border-lime-400"
-                    placeholder="Enter new email or phone"
-                  />
-                </div>
-
-                <div className="space-y-1 pt-2 border-t border-emerald-900/40">
-                  <label className="font-bold text-lime-400 uppercase tracking-wider block text-[11px]">Current Password (Required for Password Change)</label>
-                  <input
-                    type="password"
-                    value={currentPasswordInput}
-                    onChange={(e) => setCurrentPasswordInput(e.target.value)}
-                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white focus:outline-none focus:border-lime-400"
-                    placeholder="Enter current password"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-lime-400 uppercase tracking-wider block text-[11px]">New Password (Optional)</label>
-                  <input
-                    type="password"
-                    value={newPasswordSettingInput}
-                    onChange={(e) => setNewPasswordSettingInput(e.target.value)}
-                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white focus:outline-none focus:border-lime-400"
-                    placeholder="Enter new password"
-                  />
-                </div>
-
-                <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
-                  <Button
-                    type="button"
-                    onClick={() => setShowAccountSettings(false)}
-                    className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-3 rounded-xl text-xs cursor-pointer"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs cursor-pointer shadow-lg"
-                  >
-                    Save Changes
-                  </Button>
-                </div>
-              </form>
-            )}
-          </DialogContent>
-        </Dialog>
-
         <Dialog open={showLoyaltyModal} onOpenChange={setShowLoyaltyModal}>
-          <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
+          <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
             <div className="space-y-1 text-left border-b border-emerald-900/60 pb-3">
               <DialogTitle className="font-display text-xl font-extrabold text-white flex items-center gap-2">
                 <Award className="h-5 w-5 text-lime-400" /> VEYNS. Loyalty Stamp Card
@@ -928,13 +825,70 @@ export function App() {
                   );
                 })}
               </div>
+
+              {currentUser && currentUser.type === 'regular' && (
+                <div className="mt-6 pt-5 border-t border-emerald-900/60 space-y-3">
+                  <div className="flex items-center gap-2 text-lime-400 font-extrabold text-xs uppercase tracking-wider">
+                    <Settings className="h-4 w-4" /> Account Settings
+                  </div>
+
+                  {accountUpdateSuccess ? (
+                    <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-1">
+                      <CheckCircle2 className="h-6 w-6 text-lime-400 mx-auto" />
+                      <p className="font-bold text-lime-400 text-xs">Account settings successfully updated!</p>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleUpdateAccountSettings} className="space-y-3 text-xs">
+                      <div className="space-y-1">
+                        <label className="font-bold text-emerald-300 uppercase tracking-wider block text-[10px]">Update Email or Phone Number</label>
+                        <input
+                          type="text"
+                          defaultValue={currentUser?.identifier || ''}
+                          onChange={(e) => setNewIdentifierInput(e.target.value)}
+                          className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
+                          placeholder="Enter new email or phone"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-bold text-emerald-300 uppercase tracking-wider block text-[10px]">Current Password (Required for Password Change)</label>
+                        <input
+                          type="password"
+                          value={currentPasswordInput}
+                          onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                          className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
+                          placeholder="Enter current password"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-bold text-emerald-300 uppercase tracking-wider block text-[10px]">New Password (Optional)</label>
+                        <input
+                          type="password"
+                          value={newPasswordSettingInput}
+                          onChange={(e) => setNewPasswordSettingInput(e.target.value)}
+                          className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
+                          placeholder="Enter new password"
+                        />
+                      </div>
+
+                      <Button
+                        type="submit"
+                        className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg mt-2"
+                      >
+                        Save Account Changes
+                      </Button>
+                    </form>
+                  )}
+                </div>
+              )}
             </div>
 
             <Button
               onClick={() => setShowLoyaltyModal(false)}
-              className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg"
+              className="w-full bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-extrabold py-3 rounded-xl text-xs transition-all shadow"
             >
-              Close Loyalty Card
+              Close
             </Button>
           </DialogContent>
         </Dialog>
