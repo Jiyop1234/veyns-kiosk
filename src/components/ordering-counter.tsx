@@ -150,7 +150,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const refreshOrderHistoryFromStorage = async () => {
     try {
-      // Try fetching from Supabase first for logged-in users
       if (!isGuest) {
         const { data: cloudOrders, error } = await supabase
           .from('orders')
@@ -224,8 +223,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const saveOrderToHistory = async (newOrder: any) => {
     try {
-      // Insert order into Supabase cloud orders table
-      await supabase.from('orders').insert([
+      const { error: orderError } = await supabase.from('orders').insert([
         {
           order_number: newOrder.orderNumber,
           customer_name: newOrder.name,
@@ -238,8 +236,14 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           status: 'completed'
         }
       ]);
+
+      if (orderError) {
+        console.error('Supabase order insert error:', orderError.message);
+      } else {
+        console.log('Order successfully saved to Supabase!');
+      }
     } catch (err) {
-      console.error('Supabase order insert error:', err);
+      console.error('Supabase order exception:', err);
     }
 
     let userSaved = [];
