@@ -42,10 +42,38 @@ export function App() {
   const [stamps, setStamps] = useState<any[]>([]);
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
 
-  const loadUserStampsAndPenalties = (userObj: any) => {
+  const loadUserStampsAndPenalties = async (userObj: any) => {
     if (!userObj) return;
     try {
       const identifierKey = (userObj.identifier || 'default').toLowerCase().trim();
+      
+      // Fetch live data from Supabase profiles table
+      const { data: cloudProfile, error } = await supabase
+        .from('profiles')
+        .select('stamps_data, penalty_data')
+        .eq('identifier', identifierKey)
+        .single();
+
+      if (cloudProfile) {
+        if (cloudProfile.stamps_data && Array.isArray(cloudProfile.stamps_data)) {
+          const normalized = Array.from({ length: 12 }).map((_, idx) => {
+            return cloudProfile.stamps_data[idx] || { status: 'empty', date: '' };
+          });
+          setStamps(normalized);
+          localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(normalized));
+        }
+
+        if (cloudProfile.penalty_data) {
+          setFairPlayPenalty(cloudProfile.penalty_data);
+          localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(cloudProfile.penalty_data));
+        } else {
+          setFairPlayPenalty(null);
+          localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
+        }
+        return;
+      }
+
+      // Fallback to local storage if offline or cloud profile not found
       const detailedStampsKey = `veyns_detailed_stamps_${identifierKey}`;
       const penaltyKey = `veyns_fair_play_penalty_${identifierKey}`;
       
@@ -74,32 +102,7 @@ export function App() {
         });
         setStamps(normalized);
       } else {
-        const userStampsKey = `veyns_stamps_${identifierKey}`;
-        const userSavedStamps = localStorage.getItem(userStampsKey);
-        if (userSavedStamps) {
-          const parsedDates = JSON.parse(userSavedStamps);
-          const fullSlots = Array.from({ length: 12 }).map((_, idx) => {
-            if (parsedDates[idx]) {
-              return { status: 'valid' as const, date: parsedDates[idx] };
-            }
-            return { status: 'empty' as const, date: '' };
-          });
-          setStamps(fullSlots);
-        } else {
-          const altSaved = localStorage.getItem('veyns_loyalty_stamps');
-          if (identifierKey === 'admin' && altSaved) {
-            const parsedDates = JSON.parse(altSaved);
-            const fullSlots = Array.from({ length: 12 }).map((_, idx) => {
-              if (parsedDates[idx]) {
-                return { status: 'valid' as const, date: parsedDates[idx] };
-              }
-              return { status: 'empty' as const, date: '' };
-            });
-            setStamps(fullSlots);
-          } else {
-            setStamps(Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })));
-          }
-        }
+        setStamps(Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })));
       }
     } catch (e) {
       setStamps(Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })));
@@ -387,7 +390,7 @@ export function App() {
     setResetTrigger((prev) => prev + 1);
   };
 
-  const recordOrderForLoyalty = () => {
+  const recordOrderForLoyalty = async () => {
     if (!currentUser || currentUser.type === 'guest') return;
     
     const todayStr = new Date().toISOString().split('T')[0];
@@ -423,6 +426,13 @@ export function App() {
           if (identifierKey === 'admin') {
             localStorage.setItem('veyns_loyalty_stamps', JSON.stringify(validDates));
           }
+
+          // Sync order stamp to Supabase
+          await supabase
+            .from('profiles')
+            .update({ stamps_data: currentStamps })
+            .eq('identifier', identifierKey);
+
           window.dispatchEvent(new Event('storage'));
         }
       }
