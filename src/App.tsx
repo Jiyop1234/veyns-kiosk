@@ -340,9 +340,10 @@ export function App() {
           <div className="space-y-3 pt-2">
             <Button
               onClick={() => { setAuthInput(''); setAuthPassword(''); setAuthName(''); setAuthMode('regular'); setIsSignUp(false); }}
-              className="w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-white border border-emerald-700/80 py-4 rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 transition-all shadow-md cursor-pointer"
+              className="w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-white border border-emerald-700/80 py-4 px-3 h-auto rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 transition-all shadow-md cursor-pointer text-center"
             >
-              <User className="size-4 text-lime-400" /> Login as Regular (Earn Stamps & History)
+              <User className="size-4 text-lime-400 shrink-0" />
+              <span className="leading-tight">Login as Regular <span className="block sm:inline font-normal opacity-90">(Earn Stamps & History)</span></span>
             </Button>
 
             <Button
