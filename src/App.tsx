@@ -6,7 +6,7 @@ import { EmployeeDashboard } from '@/components/employee-dashboard';
 import { CartProvider } from '@/lib/cart';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock } from 'lucide-react';
+import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings } from 'lucide-react';
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
 
@@ -27,6 +27,13 @@ export function App() {
 
   const [showMyOrders, setShowMyOrders] = useState(false);
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
+
+  const [newIdentifierInput, setNewIdentifierInput] = useState('');
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  const [newPasswordSettingInput, setNewPasswordSettingInput] = useState('');
+  const [accountUpdateSuccess, setAccountUpdateSuccess] = useState(false);
+
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
   const [resetTrigger, setResetTrigger] = useState(0);
   const [stamps, setStamps] = useState<any[]>([]);
@@ -163,11 +170,9 @@ export function App() {
       };
 
       try {
-        // Save plain text and hash locally so employee dashboard can display it
         localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, authPassword);
         localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, enteredPasswordHash);
 
-        // Save to Supabase Cloud Profiles Table with explicit return preference
         const { error: dbError } = await supabase.from('profiles').upsert(
           { 
             identifier: identifierKey, 
@@ -180,8 +185,6 @@ export function App() {
 
         if (dbError) {
           console.error("Supabase Profile Insert Error:", dbError.message);
-        } else {
-          console.log("Profile successfully saved to Supabase!");
         }
       } catch (err) {
         console.error('Supabase signup exception:', err);
@@ -197,7 +200,6 @@ export function App() {
       return;
     }
 
-    // Login validation
     let resolvedName = authInput.split('@')[0] || 'Valued Regular';
     try {
       const { data: cloudUser, error } = await supabase
@@ -238,6 +240,73 @@ export function App() {
     localStorage.setItem('veyns_current_user', JSON.stringify(userData));
     localStorage.setItem('veyns_auth_mode', 'regular');
     loadUserStampsAndPenalties(userData);
+  };
+
+  const handleUpdateAccountSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+
+    const oldIdentifierKey = currentUser.identifier.toLowerCase().trim();
+    const newIdKey = newIdentifierInput ? newIdentifierInput.toLowerCase().trim() : oldIdentifierKey;
+
+    try {
+      if (currentPasswordInput && newPasswordSettingInput) {
+        const currentHash = await hashPassword(currentPasswordInput);
+        const storedHash = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
+        if (storedHash && storedHash !== currentHash) {
+          alert('Incorrect current password.');
+          return;
+        }
+        const newHash = await hashPassword(newPasswordSettingInput);
+        await supabase.from('profiles').update({ password_hash: newHash }).eq('identifier', oldIdentifierKey);
+        localStorage.setItem(`veyns_pwd_plain_${newIdKey}`, newPasswordSettingInput);
+        localStorage.setItem(`veyns_pwd_hash_${newIdKey}`, newHash);
+      }
+
+      if (newIdentifierInput && newIdentifierInput.trim() !== currentUser.identifier) {
+        await supabase
+          .from('profiles')
+          .update({ identifier: newIdKey })
+          .eq('identifier', oldIdentifierKey);
+
+        const plainPass = localStorage.getItem(`veyns_pwd_plain_${oldIdentifierKey}`);
+        const hashPass = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
+        const detailedStamps = localStorage.getItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
+        const userStamps = localStorage.getItem(`veyns_stamps_${oldIdentifierKey}`);
+        const penalty = localStorage.getItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
+
+        if (plainPass) localStorage.setItem(`veyns_pwd_plain_${newIdKey}`, plainPass);
+        if (hashPass) localStorage.setItem(`veyns_pwd_hash_${newIdKey}`, hashPass);
+        if (detailedStamps) localStorage.setItem(`veyns_detailed_stamps_${newIdKey}`, detailedStamps);
+        if (userStamps) localStorage.setItem(`veyns_stamps_${newIdKey}`, userStamps);
+        if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newIdKey}`, penalty);
+
+        localStorage.removeItem(`veyns_pwd_plain_${oldIdentifierKey}`);
+        localStorage.removeItem(`veyns_pwd_hash_${oldIdentifierKey}`);
+        localStorage.removeItem(`veyns_stamps_${oldIdentifierKey}`);
+        localStorage.removeItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
+        localStorage.removeItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
+      }
+
+      const updatedUser = {
+        ...currentUser,
+        identifier: newIdentifierInput ? newIdentifierInput.trim() : currentUser.identifier
+      };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('veyns_current_user', JSON.stringify(updatedUser));
+      loadUserStampsAndPenalties(updatedUser);
+
+      setAccountUpdateSuccess(true);
+      setTimeout(() => {
+        setAccountUpdateSuccess(false);
+        setShowAccountSettings(false);
+        setCurrentPasswordInput('');
+        setNewPasswordSettingInput('');
+        setNewIdentifierInput('');
+      }, 2000);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
@@ -299,6 +368,7 @@ export function App() {
   const handleResetMenu = () => {
     setShowMyOrders(false);
     setShowLoyaltyModal(false);
+    setShowAccountSettings(false);
     setResetTrigger((prev) => prev + 1);
   };
 
@@ -626,6 +696,35 @@ export function App() {
   return (
     <CartProvider>
       <div className="min-h-screen bg-[#071F19] text-white flex flex-col">
+        <header className="bg-[#03120d] border-b border-emerald-900/60 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img src={veynsSymbol} alt="VEYNS" className="h-10 w-10 object-contain" />
+            <div>
+              <h1 className="font-display font-extrabold text-white text-sm tracking-wide">VEYNS. KIOSK</h1>
+              <p className="text-[10px] text-emerald-400">Logged in as: <strong className="text-white">{currentUser?.name}</strong> ({currentUser?.identifier})</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {currentUser && currentUser.type === 'regular' && (
+              <Button
+                onClick={() => setShowAccountSettings(true)}
+                size="sm"
+                className="bg-[#061d16] hover:bg-emerald-900 text-lime-400 border border-emerald-800 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer"
+              >
+                <Settings className="h-4 w-4" /> Account Settings
+              </Button>
+            )}
+            <Button
+              onClick={handleLogout}
+              size="sm"
+              className="bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-800/80 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer"
+            >
+              <LogOut className="h-4 w-4" /> Logout
+            </Button>
+          </div>
+        </header>
+
         <SiteHeader 
           onOpenOrders={() => setShowMyOrders(true)} 
           onResetMenu={handleResetMenu}
@@ -647,6 +746,77 @@ export function App() {
             onOrderPlacedSuccess={recordOrderForLoyalty}
           />
         </main>
+
+        <Dialog open={showAccountSettings} onOpenChange={setShowAccountSettings}>
+          <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
+            <div className="space-y-1 border-b border-emerald-900/60 pb-3">
+              <DialogTitle className="font-display text-xl font-extrabold text-white flex items-center gap-2">
+                <Settings className="h-5 w-5 text-lime-400" /> Customer Account Settings
+              </DialogTitle>
+              <DialogDescription className="text-xs text-emerald-300/80">
+                Update your login email/phone or change your password.
+              </DialogDescription>
+            </div>
+
+            {accountUpdateSuccess ? (
+              <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-6 text-center space-y-2 my-4">
+                <CheckCircle2 className="h-10 w-10 text-lime-400 mx-auto" />
+                <p className="font-bold text-lime-400 text-sm">Account settings successfully updated!</p>
+              </div>
+            ) : (
+              <form onSubmit={handleUpdateAccountSettings} className="space-y-4 my-4 text-xs">
+                <div className="space-y-1">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block text-[11px]">Update Email or Phone Number</label>
+                  <input
+                    type="text"
+                    defaultValue={currentUser?.identifier || ''}
+                    onChange={(e) => setNewIdentifierInput(e.target.value)}
+                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white focus:outline-none focus:border-lime-400"
+                    placeholder="Enter new email or phone"
+                  />
+                </div>
+
+                <div className="space-y-1 pt-2 border-t border-emerald-900/40">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block text-[11px]">Current Password (Required for Password Change)</label>
+                  <input
+                    type="password"
+                    value={currentPasswordInput}
+                    onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white focus:outline-none focus:border-lime-400"
+                    placeholder="Enter current password"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block text-[11px]">New Password (Optional)</label>
+                  <input
+                    type="password"
+                    value={newPasswordSettingInput}
+                    onChange={(e) => setNewPasswordSettingInput(e.target.value)}
+                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white focus:outline-none focus:border-lime-400"
+                    placeholder="Enter new password"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
+                  <Button
+                    type="button"
+                    onClick={() => setShowAccountSettings(false)}
+                    className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-3 rounded-xl text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs cursor-pointer shadow-lg"
+                  >
+                    Save Changes
+                  </Button>
+                </div>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={showLoyaltyModal} onOpenChange={setShowLoyaltyModal}>
           <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
