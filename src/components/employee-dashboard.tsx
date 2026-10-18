@@ -173,7 +173,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         setOrders(formattedOrders);
       }
 
-      // 2. Fetch registered customer profiles from Supabase
+      // 2. Fetch registered customer profiles from Supabase cloud table
       const { data: cloudProfiles, error: profileError } = await supabase
         .from('profiles')
         .select('*');
@@ -186,28 +186,14 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         }));
         setCustomers(formattedProfiles);
       } else {
-        loadCustomers();
+        setCustomers([
+          { name: 'Admin Regular', identifier: 'admin', type: 'regular', phone: '09123456789' },
+          { name: 'Geoff Perez', identifier: 'geoff@gmail.com', type: 'regular', phone: '09987654321' }
+        ]);
       }
     } catch (e) {
       console.error('Error fetching cloud data:', e);
-      loadCustomers();
     }
-  };
-
-  const loadCustomers = () => {
-    try {
-      const savedUsers = localStorage.getItem('veyns_registered_users');
-      if (savedUsers) {
-        setCustomers(JSON.parse(savedUsers));
-      } else {
-        const initialAccounts = [
-          { name: 'Admin Regular', identifier: 'admin', type: 'regular', phone: '09123456789' },
-          { name: 'Geoff Perez', identifier: 'geoff@gmail.com', type: 'regular', phone: '09987654321' }
-        ];
-        setCustomers(initialAccounts);
-        localStorage.setItem('veyns_registered_users', JSON.stringify(initialAccounts));
-      }
-    } catch (e) {}
   };
 
   const saveActivePromoCodes = (codes: any[]) => {
@@ -302,7 +288,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
     setResetTargetUser(null);
     setNewTempPassword('');
-    loadCustomers();
+    fetchCloudData();
   };
 
   const handleDeleteCustomer = async (identifier: string) => {
@@ -313,7 +299,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
       const updated = customers.filter((c) => c.identifier.toLowerCase().trim() !== identifierKey);
       setCustomers(updated);
-      localStorage.setItem('veyns_registered_users', JSON.stringify(updated));
       localStorage.removeItem(`veyns_pwd_plain_${identifierKey}`);
       localStorage.removeItem(`veyns_pwd_hash_${identifierKey}`);
       localStorage.removeItem(`veyns_stamps_${identifierKey}`);
