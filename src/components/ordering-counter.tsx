@@ -99,6 +99,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           discountPercent: Number(m.discount_percent || 0),
           isAvailable: m.is_available,
           bestSeller: m.best_seller,
+          sortOrder: Number(m.sort_order || 100),
           isCustomizable: m.is_customizable,
           hasBrothEggOption: m.has_broth_egg_option,
           image: m.image_url
@@ -112,12 +113,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       console.error('Error fetching cloud menu:', e);
     }
 
+    // Strict Sorting Sequence: Apparel at the bottom, everything else ordered by sortOrder
     mergedMenu.sort((a, b) => {
       if (a.category === 'Apparel' && b.category !== 'Apparel') return 1;
       if (a.category !== 'Apparel' && b.category === 'Apparel') return -1;
-      if (a.bestSeller && !b.bestSeller) return -1;
-      if (!a.bestSeller && b.bestSeller) return 1;
-      return 0;
+      return (a.sortOrder || 100) - (b.sortOrder || 100);
     });
 
     setCurrentMenuGrid(mergedMenu);
@@ -764,7 +764,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   </span>
                 )}
               </div>
-              <DialogDescription className="text-xs text-emerald-200/90 leading-relaxed">{selected.description}</DialogDescription>
+              <DialogDescription className="text-xs text-emerald-200/95 leading-relaxed">{selected.description}</DialogDescription>
             </div>
 
             <div className="my-4 flex justify-center">

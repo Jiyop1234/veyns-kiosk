@@ -93,7 +93,7 @@ export const menuItems: MenuItem[] = [
     price: 109,
     description: 'Grilled pork with rice, a 1 oz cup of toyomansi and 4 cucumber slices, served in a kraft paper bowl.',
     bestSeller: true,
-    sortOrder: 1 // Pinned #1 Best Seller at the absolute top
+    sortOrder: 1
   },
   {
     id: 'pork-sisig',
