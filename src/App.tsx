@@ -172,7 +172,6 @@ export function App() {
         return;
       }
 
-      // Password Validation: Minimum 8 chars, 1 capital letter, 1 number, 1 symbol
       const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
       if (!passwordRegex.test(authPassword)) {
         alert('Password must be at least 8 characters long, include at least 1 capital letter, 1 number, and 1 symbol.');
@@ -180,7 +179,6 @@ export function App() {
       }
 
       try {
-        // Check if Nickname or Identifier already exists in Supabase database
         const { data: existingProfiles, error: checkError } = await supabase
           .from('profiles')
           .select('*')
@@ -758,6 +756,28 @@ export function App() {
             setIsResettingPassword(false);
           }}
           onLogout={handleLogout}
+          onOpenAccountSettings={(tab) => {
+            loadUserStampsAndPenalties(currentUser);
+            setShowLoyaltyModal(true);
+            setShowAccountSettingsPanel(true);
+            if (tab === 'update') {
+              setIsUpdatingIdentifier(true);
+              setIsResettingPassword(false);
+              setNewIdentifierInput(currentUser?.identifier || '');
+            } else if (tab === 'password') {
+              setIsResettingPassword(true);
+              setIsUpdatingIdentifier(false);
+            }
+          }}
+          onOpenSignUp={() => {
+            setCurrentUser(null);
+            setAuthMode('regular');
+            setIsSignUp(true);
+            setAuthInput('');
+            setAuthPassword('');
+            setAuthName('');
+          }}
+          onExitGuest={handleLogout}
         />
         <main className="flex-1">
           <OrderingCounter 
@@ -1005,7 +1025,7 @@ export function App() {
                               onClick={() => setIsResettingPassword(false)}
                               className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
                             >
-                              Cancel`
+                              Cancel
                             </Button>
                             <Button
                               type="submit"
