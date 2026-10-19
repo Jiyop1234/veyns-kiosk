@@ -185,7 +185,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const markerInstanceRef = useRef<any>(null);
   const geocodeTimeoutRef = useRef<any>(null);
 
-  // Store Point A Coordinates: Julio B. Alinsug, Basak, Mandaue City, Cebu 6014 (Imaginary Center)
+  // Store Point A Coordinates: Julio B. Alinsug, Basak, Mandaue City, Cebu 6014 (Store Center)
   const STORE_LAT = 10.3475;
   const STORE_LNG = 123.9388;
 
@@ -229,20 +229,19 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     const L = window.L;
     if (!L) return;
 
-    // Center map around store area
-    const map = L.map(mapRef.current).setView([STORE_LAT, STORE_LNG], 14);
+    const map = L.map(mapRef.current).setView([STORE_LAT, STORE_LNG], 15);
     mapInstanceRef.current = map;
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // Customer Movable Pin ONLY (No store marker or radius circles displayed)
-    const customerInitialLat = STORE_LAT + 0.005;
-    const customerInitialLng = STORE_LNG + 0.005;
+    // Customer pin starts directly at the store coordinates (0.0 km)
+    const customerInitialLat = STORE_LAT;
+    const customerInitialLng = STORE_LNG;
 
     const marker = L.marker([customerInitialLat, customerInitialLng], { draggable: true }).addTo(map);
-    marker.bindPopup('<b>Drop your pin here!</b>').openPopup();
+    marker.bindPopup('<b>Store Location / Drag to your house!</b>').openPopup();
     markerInstanceRef.current = marker;
 
     marker.on('dragend', async () => {
@@ -397,7 +396,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const saveOrderToHistory = async (newOrder: any) => {
     try {
-      const { error: orderError } = await supabase.from('orders').insert([
+      const { error: orderError } = await supabase.from('orders'].insert([
         {
           order_number: newOrder.orderNumber,
           customer_name: newOrder.name,
