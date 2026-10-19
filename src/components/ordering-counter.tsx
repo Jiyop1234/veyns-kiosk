@@ -576,13 +576,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       orderNumber: `#${Math.floor(1000 + Math.random() * 9000)}`,
       accountNickname: currentUser ? (currentUser.name || currentUser.identifier || 'User') : 'Guest User',
       name: customerName || (currentUser ? currentUser.name : 'Valued Customer'),
-      email: customerEmail,
-      phone: customerPhone,
-      location: customerLocation,
-      landmark: nearestLandmark,
+      email: fulfillment === 'delivery' ? customerEmail : '',
+      phone: fulfillment === 'delivery' ? customerPhone : '',
+      location: fulfillment === 'delivery' ? customerLocation : 'Pick Up at Store',
+      landmark: fulfillment === 'delivery' ? nearestLandmark : 'N/A',
       fulfillment,
       deliveryOption,
-      deliveryDistanceKm,
+      deliveryDistanceKm: fulfillment === 'delivery' ? deliveryDistanceKm : 0,
       deliveryFee: deliveryFeeTotal,
       paymentOption: 'Cash on Pickup / Delivery',
       items: [...lines],
@@ -1497,8 +1497,21 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   </div>
                 </div>
               ) : (
-                <div className="space-y-2 bg-[#061d16] border border-emerald-800/60 rounded-2xl p-3.5 my-3 text-xs w-full overflow-hidden">
-                  <div className="space-y-1">
+                <div className="space-y-3 bg-[#061d16] border border-emerald-800/60 rounded-2xl p-3.5 my-3 text-xs w-full overflow-hidden">
+                  <div className="space-y-1.5">
+                    <h5 className="font-bold text-lime-400 flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5" /> Pick Up Details
+                    </h5>
+                    <input
+                      type="text"
+                      placeholder="Name of Person Picking Up *"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
+                    />
+                  </div>
+
+                  <div className="space-y-1 pt-1">
                     <h5 className="font-bold text-lime-400 flex items-center gap-1.5">
                       <MapPin className="h-3.5 w-3.5" /> Pick Up Location
                     </h5>
@@ -1555,7 +1568,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 <Button
                   disabled={
                     lines.length === 0 ||
-                    (fulfillment === 'delivery' && (!customerName || !customerEmail || !customerPhone || !customerLocation || !nearestLandmark))
+                    (fulfillment === 'delivery' && (!customerName || !customerEmail || !customerPhone || !customerLocation || !nearestLandmark)) ||
+                    (fulfillment === 'pickup' && !customerName)
                   }
                   onClick={handleConfirmOrder}
                   className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-sm transition-all shadow-lg disabled:opacity-50 cursor-pointer"
