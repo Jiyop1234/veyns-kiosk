@@ -20,7 +20,13 @@ export function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
   const [signUpSuccessMsg, setSignUpSuccessMsg] = useState(false);
-  const [showPassword, setShowPassword] = useState(false); // Password visibility state
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Validation & Error States
+  const [nicknameError, setNicknameError] = useState('');
+  const [identifierError, setIdentifierError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [loginError, setLoginError] = useState('');
 
   const [forgotInput, setForgotInput] = useState('');
   const [newPasswordInput, setNewPasswordInput] = useState('');
@@ -154,9 +160,45 @@ export function App() {
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
   };
 
+  // Validation helpers
+  const validateIdentifier = (val: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const phPhoneRegex = /^\+639\d{9}$/;
+    return emailRegex.test(val) || phPhoneRegex.test(val);
+  };
+
+  const validatePasswordStrength = (pass: string) => {
+    // Min 8 characters, at least 1 number, at least 1 symbol
+    const minLength = pass.length >= 8;
+    const hasNumber = /\d/.test(pass);
+    const hasSymbol = /[\W_]/.test(pass);
+    return minLength && hasNumber && hasSymbol;
+  };
+
   const handleRegularAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!authInput) return;
+    setNicknameError('');
+    setIdentifierError('');
+    setPasswordError('');
+    setLoginError('');
+
+    if (!authInput.trim()) {
+      if (isSignUp) {
+        setIdentifierError('Please enter a valid email address or phone number.');
+      } else {
+        setLoginError('Please enter your email or phone number.');
+      }
+      return;
+    }
+
+    if (!authPassword) {
+      if (isSignUp) {
+        setPasswordError('Password must be at least 8 characters long and include at least one number and one symbol.');
+      } else {
+        setLoginError('Please enter your password.');
+      }
+      return;
+    }
 
     const ADMIN_HASH = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
     const enteredPasswordHash = await hashPassword(authPassword);
@@ -172,7 +214,7 @@ export function App() {
         loadUserStampsAndPenalties(adminUserData);
         return;
       } else {
-        alert('Authentication failed: Encrypted password mismatch.');
+        setLoginError('Incorrect email or phone number or password.');
         return;
       }
     }
@@ -180,13 +222,17 @@ export function App() {
     if (isSignUp) {
       const nicknameToSave = authName.trim();
       if (!nicknameToSave) {
-        alert('Nickname is required.');
+        setNicknameError('Please choose your unique nickname.');
         return;
       }
 
-      const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-      if (!passwordRegex.test(authPassword)) {
-        alert('Password must be at least 8 characters long, include at least 1 capital letter, 1 number, and 1 symbol.');
+      if (!validateIdentifier(authInput)) {
+        setIdentifierError('Please enter a valid email address or phone number.');
+        return;
+      }
+
+      if (!validatePasswordStrength(authPassword)) {
+        setPasswordError('Password must be at least 8 characters long and include at least one number and one symbol.');
         return;
       }
 
@@ -197,15 +243,18 @@ export function App() {
           .or(`identifier.eq.${identifierKey},name.eq.${nicknameToSave}`);
 
         if (existingProfiles && existingProfiles.length > 0) {
-          const match = existingProfiles[0];
-          if (match.identifier.toLowerCase() === identifierKey) {
-            alert('This email or phone number is already registered. Please login or delete the account first.');
-            return;
-          }
-          if (match.name.toLowerCase() === nicknameToSave.toLowerCase()) {
-            alert('This nickname is unavailable. Please choose another nickname.');
-            return;
-          }
+          let hasConflict = false;
+          existingProfiles.forEach((match: any) => {
+            if (match.identifier.toLowerCase() === identifierKey) {
+              setIdentifierError('This email or phone number is already registered.');
+              hasConflict = true;
+            }
+            if (match.name.toLowerCase() === nicknameToSave.toLowerCase()) {
+              setNicknameError('This nickname is already taken. Please choose another.');
+              hasConflict = true;
+            }
+          });
+          if (hasConflict) return;
         }
 
         localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, authPassword);
@@ -223,12 +272,12 @@ export function App() {
 
         if (dbError) {
           console.error("Supabase Profile Insert Error:", dbError.message);
-          alert('Error registering account. Please try again.');
+          setIdentifierError('Error registering account. Please try again.');
           return;
         }
       } catch (err) {
         console.error('Supabase signup exception:', err);
-        alert('Database connection error during signup.');
+        setIdentifierError('Database connection error during signup.');
         return;
       }
 
@@ -253,20 +302,20 @@ export function App() {
       if (cloudUser) {
         resolvedName = cloudUser.name || resolvedName;
         if (cloudUser.password_hash && cloudUser.password_hash !== enteredPasswordHash) {
-          alert('Incorrect password. Please check your password or use "Forgot Password".');
+          setLoginError('Incorrect email or phone number or password.');
           return;
         }
       } else {
         const storedPwdHash = localStorage.getItem(`veyns_pwd_hash_${identifierKey}`);
-        if (storedPwdHash && storedPwdHash !== enteredPasswordHash) {
-          alert('Incorrect password. Please check your password or use "Forgot Password".');
+        if (!storedPwdHash || storedPwdHash !== enteredPasswordHash) {
+          setLoginError('Incorrect email or phone number or password.');
           return;
         }
       }
     } catch (e) {
       const storedPwdHash = localStorage.getItem(`veyns_pwd_hash_${identifierKey}`);
-      if (storedPwdHash && storedPwdHash !== enteredPasswordHash) {
-        alert('Incorrect password. Please check your password or use "Forgot Password".');
+      if (!storedPwdHash || storedPwdHash !== enteredPasswordHash) {
+        setLoginError('Incorrect email or phone number or password.');
         return;
       }
     }
@@ -291,6 +340,11 @@ export function App() {
   const handleUpdateIdentifierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.type === 'guest' || !newIdentifierInput) return;
+
+    if (!validateIdentifier(newIdentifierInput)) {
+      alert('Please enter a valid email address or Philippine mobile number (+639...).');
+      return;
+    }
 
     const oldIdentifierKey = currentUser.identifier.toLowerCase().trim();
     const newIdKey = newIdentifierInput.toLowerCase().trim();
@@ -339,6 +393,11 @@ export function App() {
     e.preventDefault();
     if (!currentUser || currentUser.type === 'guest' || !currentPasswordInput || !newPasswordSettingInput) return;
 
+    if (!validatePasswordStrength(newPasswordSettingInput)) {
+      alert('Password must be at least 8 characters long and include at least one number and one symbol.');
+      return;
+    }
+
     const identifierKey = currentUser.identifier.toLowerCase().trim();
 
     try {
@@ -371,6 +430,12 @@ export function App() {
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!forgotInput || !newPasswordInput) return;
+
+    if (!validatePasswordStrength(newPasswordInput)) {
+      alert('Password must be at least 8 characters long and include at least one number and one symbol.');
+      return;
+    }
+
     const identifierKey = forgotInput.toLowerCase().trim();
     const newHash = await hashPassword(newPasswordInput);
     
@@ -421,6 +486,10 @@ export function App() {
     setAuthInput('');
     setAuthPassword('');
     setAuthName('');
+    setNicknameError('');
+    setIdentifierError('');
+    setPasswordError('');
+    setLoginError('');
     setStamps([]);
     setFairPlayPenalty(null);
     setOrderHistory([]);
@@ -503,7 +572,7 @@ export function App() {
 
           <div className="space-y-3 pt-2">
             <Button
-              onClick={() => { setAuthInput(''); setAuthPassword(''); setAuthName(''); setAuthMode('regular'); setIsSignUp(false); }}
+              onClick={() => { setAuthInput(''); setAuthPassword(''); setAuthName(''); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError(''); setAuthMode('regular'); setIsSignUp(false); }}
               className="w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-white border border-emerald-700/80 py-4 px-3 h-auto rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 transition-all shadow-lg cursor-pointer text-center"
             >
               <User className="size-4 text-lime-400 shrink-0" />
@@ -549,6 +618,12 @@ export function App() {
             </div>
           )}
 
+          {loginError && !isSignUp && (
+            <div className="bg-red-950/80 border border-red-500 rounded-xl p-3 text-center">
+              <p className="text-xs font-bold text-red-400">{loginError}</p>
+            </div>
+          )}
+
           <form onSubmit={handleRegularAuth} className="space-y-4">
             {isSignUp && (
               <div className="space-y-1">
@@ -556,11 +631,17 @@ export function App() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Chef Geoff"
+                  placeholder="Choose your unique nickname"
                   value={authName}
-                  onChange={(e) => setAuthName(e.target.value)}
-                  className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
+                  onChange={(e) => {
+                    setAuthName(e.target.value);
+                    if (nicknameError) setNicknameError('');
+                  }}
+                  className={`w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none ${
+                    nicknameError ? 'border-red-500 focus:border-red-500' : 'border-emerald-800/80 focus:border-lime-400'
+                  }`}
                 />
+                {nicknameError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{nicknameError}</p>}
               </div>
             )}
 
@@ -569,11 +650,18 @@ export function App() {
               <input
                 type="text"
                 required
-                placeholder="e.g. admin or name@gmail.com"
+                placeholder="Enter your email or phone number"
                 value={authInput}
-                onChange={(e) => setAuthInput(e.target.value)}
-                className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
+                onChange={(e) => {
+                  setAuthInput(e.target.value);
+                  if (identifierError) setIdentifierError('');
+                  if (loginError) setLoginError('');
+                }}
+                className={`w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none ${
+                  identifierError || (loginError && !isSignUp) ? 'border-red-500 focus:border-red-500' : 'border-emerald-800/80 focus:border-lime-400'
+                }`}
               />
+              {identifierError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{identifierError}</p>}
             </div>
 
             <div className="space-y-1">
@@ -589,14 +677,23 @@ export function App() {
                   </button>
                 )}
               </div>
+              {isSignUp && (
+                <p className="text-[10px] text-emerald-300/80 mb-1">Minimum 8 characters, including numbers and symbols.</p>
+              )}
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  placeholder="Min 8 chars, 1 capital, 1 number, 1 symbol"
+                  placeholder={isSignUp ? "Create a strong password" : "Enter your password"}
                   value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 pr-10 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
+                  onChange={(e) => {
+                    setAuthPassword(e.target.value);
+                    if (passwordError) setPasswordError('');
+                    if (loginError) setLoginError('');
+                  }}
+                  className={`w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 pr-10 text-xs text-white placeholder:text-emerald-600 focus:outline-none ${
+                    passwordError || (loginError && !isSignUp) ? 'border-red-500 focus:border-red-500' : 'border-emerald-800/80 focus:border-lime-400'
+                  }`}
                 />
                 <button
                   type="button"
@@ -606,6 +703,7 @@ export function App() {
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {passwordError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{passwordError}</p>}
             </div>
 
             <Button
@@ -618,14 +716,24 @@ export function App() {
 
           <div className="text-center pt-2 border-t border-emerald-900/60 space-y-2">
             <button
-              onClick={() => { setIsSignUp(!isSignUp); setAuthInput(''); setAuthPassword(''); setAuthName(''); setSignUpSuccessMsg(false); }}
+              onClick={() => { 
+                setIsSignUp(!isSignUp); 
+                setAuthInput(''); 
+                setAuthPassword(''); 
+                setAuthName(''); 
+                setSignUpSuccessMsg(false);
+                setNicknameError('');
+                setIdentifierError('');
+                setPasswordError('');
+                setLoginError('');
+              }}
               className="text-xs font-bold text-lime-400 hover:underline cursor-pointer"
             >
               {isSignUp ? 'Already have an account? Login here' : "Don't have an account? Be part of us"}
             </button>
             <div>
               <button
-                onClick={() => { setAuthInput(''); setAuthPassword(''); setAuthName(''); setAuthMode('select'); setSignUpSuccessMsg(false); }}
+                onClick={() => { setAuthInput(''); setAuthPassword(''); setAuthName(''); setAuthMode('select'); setSignUpSuccessMsg(false); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError(''); }}
                 className="text-[11px] text-emerald-400/60 hover:text-white cursor-pointer"
               >
                 ← Back to role selection
@@ -663,7 +771,7 @@ export function App() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. name@gmail.com"
+                  placeholder="Enter your email or phone number"
                   value={forgotInput}
                   onChange={(e) => setForgotInput(e.target.value)}
                   className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
@@ -672,10 +780,11 @@ export function App() {
 
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">New Password</label>
+                <p className="text-[10px] text-emerald-300/80 mb-1">Minimum 8 characters, including numbers and symbols.</p>
                 <input
                   type="password"
                   required
-                  placeholder="Enter new password"
+                  placeholder="Create a strong password"
                   value={newPasswordInput}
                   onChange={(e) => setNewPasswordInput(e.target.value)}
                   className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
@@ -814,6 +923,10 @@ export function App() {
             setAuthInput('');
             setAuthPassword('');
             setAuthName('');
+            setNicknameError('');
+            setIdentifierError('');
+            setPasswordError('');
+            setLoginError('');
           }}
           onExitGuest={handleLogout}
         />
@@ -840,6 +953,10 @@ export function App() {
               setAuthInput('');
               setAuthPassword('');
               setAuthName('');
+              setNicknameError('');
+              setIdentifierError('');
+              setPasswordError('');
+              setLoginError('');
             }}
           />
         </main>
@@ -909,7 +1026,7 @@ export function App() {
                             value={newIdentifierInput}
                             onChange={(e) => setNewIdentifierInput(e.target.value)}
                             className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
-                            placeholder="Enter new email/phone"
+                            placeholder="Enter new email or phone number"
                           />
                         </div>
                         <div className="flex gap-2">
@@ -945,13 +1062,14 @@ export function App() {
                         </div>
                         <div className="space-y-1">
                           <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">New Password</label>
+                          <p className="text-[10px] text-emerald-300/80 mb-1">Minimum 8 characters, including numbers and symbols.</p>
                           <input
                             type="password"
                             required
                             value={newPasswordSettingInput}
                             onChange={(e) => setNewPasswordSettingInput(e.target.value)}
                             className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
-                            placeholder="Enter new password"
+                            placeholder="Create a strong password"
                           />
                         </div>
 
