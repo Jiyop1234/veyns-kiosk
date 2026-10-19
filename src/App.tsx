@@ -751,7 +751,7 @@ export function App() {
           onOpenLoyalty={() => {
             loadUserStampsAndPenalties(currentUser);
             setShowLoyaltyModal(true);
-            setShowAccountSettingsPanel(false);
+            setShowAccountSettingsPanel(true);
             setIsUpdatingIdentifier(false);
             setIsResettingPassword(false);
           }}
@@ -795,249 +795,130 @@ export function App() {
           <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
             <div className="space-y-1 text-left border-b border-emerald-900/60 pb-3">
               <DialogTitle className="font-display text-xl font-extrabold text-white flex items-center gap-2">
-                <Award className="h-5 w-5 text-lime-400" /> VEYNS. Loyalty Stamp Card
+                <Settings className="h-5 w-5 text-lime-400" /> Account Settings
               </DialogTitle>
               <DialogDescription className="text-xs text-emerald-300/80">
-                Rule: 1 order per day = 1 stamp. "To Be Cleared" slots must be stamped first before progressing.
+                Manage your account details and security credentials.
               </DialogDescription>
             </div>
 
             <div className="my-4 space-y-4">
-              <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 text-center space-y-2">
-                <p className="text-xs text-emerald-300">Active Valid Stamps:</p>
-                <p className="text-3xl font-black text-lime-400 font-display">{validStampsCount} / 12 Stamps</p>
-                
-                {fairPlayPenalty && fairPlayPenalty.appliedPenalties && fairPlayPenalty.appliedPenalties.length > 0 ? (
-                  <div className="bg-red-950/80 border border-red-500/80 rounded-xl p-3 text-left space-y-1.5 mt-2">
-                    <p className="text-[10px] font-extrabold text-red-400 uppercase flex items-center gap-1">
-                      <AlertTriangle className="size-3.5" /> Fair Play Infraction Notice:
-                    </p>
-                    <p className="text-[10px] text-red-200 font-medium">
-                      Offense Recorded: <strong>{fairPlayPenalty.appliedPenalties.join(', ')}</strong>
-                    </p>
-                    <div className="text-[10px] text-amber-300 pt-1 border-t border-red-900/60 space-y-0.5">
-                      <p>• 6th Stamp Reward: <strong>{fairPlayPenalty.sixthReward}</strong></p>
-                      <p>• 9th Stamp Reward: <strong>{fairPlayPenalty.ninthReward}</strong></p>
-                      <p>• 12th Stamp Reward: <strong>{fairPlayPenalty.twelfthReward}</strong></p>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="grid grid-cols-4 gap-2.5">
-                {Array.from({ length: 12 }).map((_, idx) => {
-                  const stampEntry = stamps[idx];
-                  const status = stampEntry ? stampEntry.status : 'empty';
-                  const isSixth = idx === 5;
-                  const isNinth = idx === 8;
-                  const isTwelfth = idx === 11;
-
-                  let sixthText = '25% OFF';
-                  let ninthText = '50% OFF';
-                  let twelfthText = 'FREE';
-
-                  if (fairPlayPenalty && fairPlayPenalty.appliedPenalties && fairPlayPenalty.appliedPenalties.length > 0) {
-                    if (fairPlayPenalty.sixthReward) sixthText = fairPlayPenalty.sixthReward;
-                    if (fairPlayPenalty.ninthReward) ninthText = fairPlayPenalty.ninthReward;
-                    if (fairPlayPenalty.twelfthReward) twelfthText = fairPlayPenalty.twelfthReward;
-                  }
-
-                  return (
-                    <div
-                      key={idx}
-                      className={`relative aspect-square rounded-2xl border flex flex-col items-center justify-center text-xs font-extrabold transition-all p-1 text-center ${
-                        status === 'valid'
-                          ? 'bg-[#082d22] border-lime-400 text-lime-400 shadow-md'
-                          : status === 'to_clear'
-                          ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-md animate-pulse'
-                          : status === 'invalid'
-                          ? 'bg-red-950/80 border-red-500 text-red-400 shadow-md'
-                          : 'bg-[#041913] border-emerald-800/60 text-emerald-600'
-                      }`}
-                    >
-                      {status === 'valid' && <CheckCircle2 className="size-5 text-lime-400 mb-0.5" />}
-                      {status === 'to_clear' && <Clock className="size-5 text-amber-400 mb-0.5" />}
-                      {status === 'invalid' && <XCircle className="size-5 text-red-400 mb-0.5" />}
-                      {status === 'empty' && <span className="text-xs font-mono">#{idx + 1}</span>}
-
-                      {fairPlayPenalty && fairPlayPenalty.appliedPenalties && fairPlayPenalty.appliedPenalties.length > 0 ? (
-                        <>
-                          {isSixth && (
-                            <span className={`absolute -top-2 -right-1 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow ${sixthText.includes('Invalid') || sixthText.includes('CANCELLED') ? 'bg-red-500 text-white' : 'bg-amber-500'}`}>
-                              {sixthText}
-                            </span>
-                          )}
-                          {isNinth && (
-                            <span className={`absolute -top-2 -right-1 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow ${ninthText.includes('Invalid') || ninthText.includes('CANCELLED') ? 'bg-red-500 text-white' : 'bg-amber-400'}`}>
-                              {ninthText}
-                            </span>
-                          )}
-                          {isTwelfth && (
-                            <span className={`absolute -top-2 -right-1 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow ${twelfthText.includes('Cancelled') || twelfthText.includes('Invalid') ? 'bg-red-500 text-white' : twelfthText === '25% OFF' ? 'bg-amber-400' : 'bg-lime-400'}`}>
-                              {twelfthText}
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          {isSixth && (
-                            <span className="absolute -top-2 -right-1 bg-amber-500 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">
-                              25% OFF
-                            </span>
-                          )}
-                          {isNinth && (
-                            <span className="absolute -top-2 -right-1 bg-amber-400 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">
-                              50% OFF
-                            </span>
-                          )}
-                          {isTwelfth && (
-                            <span className="absolute -top-2 -right-1 bg-lime-400 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">
-                              FREE
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
               {currentUser && currentUser.type === 'regular' && (
-                <div className="mt-6 pt-5 border-t border-emerald-900/60 space-y-3">
-                  {!showAccountSettingsPanel ? (
-                    <Button
-                      onClick={() => setShowAccountSettingsPanel(true)}
-                      className="w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow"
-                    >
-                      <Settings className="h-4 w-4" /> Account Settings
-                    </Button>
-                  ) : (
-                    <div className="bg-[#051813] border border-emerald-800 rounded-2xl p-4 space-y-4 text-xs">
-                      <div className="flex items-center justify-between border-b border-emerald-900/60 pb-2">
-                        <span className="font-extrabold text-lime-400 uppercase">Account Settings</span>
-                        <button
+                <div className="space-y-3">
+                  <div className="bg-[#051813] border border-emerald-800 rounded-2xl p-4 space-y-4 text-xs">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-emerald-400 uppercase tracking-wider block font-bold">Your Registered Number / Email</span>
+                      <p className="text-sm font-mono font-bold text-white bg-[#041913] p-2.5 rounded-xl border border-emerald-800/80">
+                        {currentUser.identifier}
+                      </p>
+                    </div>
+
+                    {accountUpdateSuccess && (
+                      <div className="bg-[#061d16] border border-lime-400/60 rounded-xl p-3 text-center space-y-1">
+                        <CheckCircle2 className="h-5 w-5 text-lime-400 mx-auto" />
+                        <p className="font-bold text-lime-400 text-[11px]">Successfully updated!</p>
+                      </div>
+                    )}
+
+                    {!isUpdatingIdentifier && !isResettingPassword && (
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <Button
                           type="button"
                           onClick={() => {
-                            setShowAccountSettingsPanel(false);
-                            setIsUpdatingIdentifier(false);
+                            setIsUpdatingIdentifier(true);
                             setIsResettingPassword(false);
+                            setNewIdentifierInput(currentUser.identifier || '');
                           }}
-                          className="text-emerald-400 hover:text-white text-[11px] underline cursor-pointer"
+                          className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-[11px] cursor-pointer flex items-center justify-center gap-1"
                         >
-                          Close Settings
-                        </button>
+                          <Edit3 className="h-3.5 w-3.5" /> Update Number/Email
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setIsResettingPassword(true);
+                            setIsUpdatingIdentifier(false);
+                          }}
+                          className="bg-[#04261d] hover:bg-emerald-900 text-amber-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-[11px] cursor-pointer flex items-center justify-center gap-1"
+                        >
+                          <KeyRound className="h-3.5 w-3.5" /> Reset Password
+                        </Button>
                       </div>
+                    )}
 
-                      <div className="space-y-1">
-                        <span className="text-[10px] text-emerald-400 uppercase tracking-wider block font-bold">Your Registered Number / Email</span>
-                        <p className="text-sm font-mono font-bold text-white bg-[#041913] p-2.5 rounded-xl border border-emerald-800/80">
-                          {currentUser.identifier}
-                        </p>
-                      </div>
-
-                      {accountUpdateSuccess && (
-                        <div className="bg-[#061d16] border border-lime-400/60 rounded-xl p-3 text-center space-y-1">
-                          <CheckCircle2 className="h-5 w-5 text-lime-400 mx-auto" />
-                          <p className="font-bold text-lime-400 text-[11px]">Successfully updated!</p>
+                    {isUpdatingIdentifier && (
+                      <form onSubmit={handleUpdateIdentifierSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
+                        <div className="space-y-1">
+                          <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">New Phone Number or Email</label>
+                          <input
+                            type="text"
+                            required
+                            value={newIdentifierInput}
+                            onChange={(e) => setNewIdentifierInput(e.target.value)}
+                            className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
+                            placeholder="Enter new email/phone"
+                          />
                         </div>
-                      )}
-
-                      {!isUpdatingIdentifier && !isResettingPassword && (
-                        <div className="grid grid-cols-2 gap-2 pt-1">
+                        <div className="flex gap-2">
                           <Button
                             type="button"
-                            onClick={() => {
-                              setIsUpdatingIdentifier(true);
-                              setNewIdentifierInput(currentUser.identifier);
-                            }}
-                            className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-[11px] cursor-pointer flex items-center justify-center gap-1"
+                            onClick={() => setIsUpdatingIdentifier(false)}
+                            className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
                           >
-                            <Edit3 className="h-3.5 w-3.5" /> Update Number/Email
+                            Cancel
                           </Button>
                           <Button
-                            type="button"
-                            onClick={() => setIsResettingPassword(true)}
-                            className="bg-[#04261d] hover:bg-emerald-900 text-amber-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-[11px] cursor-pointer flex items-center justify-center gap-1"
+                            type="submit"
+                            className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer shadow"
                           >
-                            <KeyRound className="h-3.5 w-3.5" /> Reset Password
+                            Save New ID
                           </Button>
                         </div>
-                      )}
+                      </form>
+                    )}
 
-                      {isUpdatingIdentifier && (
-                        <form onSubmit={handleUpdateIdentifierSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
-                          <div className="space-y-1">
-                            <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">New Phone Number or Email</label>
-                            <input
-                              type="text"
-                              required
-                              value={newIdentifierInput}
-                              onChange={(e) => setNewIdentifierInput(e.target.value)}
-                              className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
-                              placeholder="Enter new email/phone"
-                            />
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              onClick={() => setIsUpdatingIdentifier(false)}
-                              className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              type="submit"
-                              className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer shadow"
-                            >
-                              Save New ID
-                            </Button>
-                          </div>
-                        </form>
-                      )}
-
-                      {isResettingPassword && (
-                        <form onSubmit={handleResetPasswordSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
-                          <div className="space-y-1">
-                            <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">Current Password</label>
-                            <input
-                              type="password"
-                              required
-                              value={currentPasswordInput}
-                              onChange={(e) => setCurrentPasswordInput(e.target.value)}
-                              className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
-                              placeholder="Enter current password"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">New Password</label>
-                            <input
-                              type="password"
-                              required
-                              value={newPasswordSettingInput}
-                              onChange={(e) => setNewPasswordSettingInput(e.target.value)}
-                              className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
-                              placeholder="Enter new password"
-                            />
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              onClick={() => setIsResettingPassword(false)}
-                              className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              type="submit"
-                              className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer shadow"
-                            >
-                              Confirm Password
-                            </Button>
-                          </div>
-                        </form>
-                      )}
-                    </div>
-                  )}
+                    {isResettingPassword && (
+                      <form onSubmit={handleResetPasswordSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
+                        <div className="space-y-1">
+                          <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">Current Password</label>
+                          <input
+                            type="password"
+                            required
+                            value={currentPasswordInput}
+                            onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                            className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
+                            placeholder="Enter current password"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">New Password</label>
+                          <input
+                            type="password"
+                            required
+                            value={newPasswordSettingInput}
+                            onChange={(e) => setNewPasswordSettingInput(e.target.value)}
+                            className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
+                            placeholder="Enter new password"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            onClick={() => setIsResettingPassword(false)}
+                            className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="submit"
+                            className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer shadow"
+                          >
+                            Confirm Password
+                          </Button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
