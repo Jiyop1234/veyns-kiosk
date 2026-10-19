@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar } from 'lucide-react';
+import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
@@ -20,7 +20,7 @@ function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; 
   return <img src={src} alt={alt} width={512} height={512} className={className} />;
 }
 
-export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, setOrderHistory, resetKey, currentUser, onOrderPlacedSuccess }: any) {
+export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, setOrderHistory, resetKey, currentUser, onOrderPlacedSuccess, onOpenRegister }: any) {
   const { add, lines, setLineQty, remove, clear, total } = useCart();
   const [category, setCategory] = useState('All items');
   const [search, setSearch] = useState('');
@@ -33,6 +33,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // Slot capacities & Fully Booked states
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
+
+  const isGuest = !currentUser || currentUser.role === 'guest' || (currentUser.name && currentUser.name.toLowerCase().includes('guest')) || (currentUser.identifier && currentUser.identifier.toLowerCase().includes('guest'));
 
   const loadSlotCapacities = async () => {
     try {
@@ -47,7 +49,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const loadUserStampsAndPenalties = () => {
-    if (!currentUser) return;
+    if (!currentUser || isGuest) return;
     try {
       const identifierKey = (currentUser.identifier || 'default').toLowerCase().trim();
       const detailedStampsKey = `veyns_detailed_stamps_${identifierKey}`;
@@ -355,7 +357,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [placedOrderDetails, setPlacedOrderDetails] = useState(null);
 
-  const isGuest = !currentUser || currentUser.role === 'guest' || (currentUser.name && currentUser.name.toLowerCase().includes('guest'));
   const userIdentifier = isGuest ? 'guest_session_user' : (currentUser.email || currentUser.name || 'admin').toLowerCase().trim();
   const userHistoryStorageKey = `veyns_user_orders_${userIdentifier}`;
 
@@ -675,15 +676,26 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         </div>
 
         <div className="flex items-center gap-3">
-          <Button
-            onClick={() => {
-              loadUserStampsAndPenalties();
-              setShowLoyaltyModal(true);
-            }}
-            className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold text-xs px-4 py-2.5 rounded-full transition-all shadow-lg flex items-center gap-2 cursor-pointer"
-          >
-            <Award className="h-4 w-4" /> Loyalty Card ({validStampsCount}/12)
-          </Button>
+          {isGuest ? (
+            <Button
+              onClick={() => {
+                if (onOpenRegister) onOpenRegister();
+              }}
+              className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold text-xs px-4 py-2.5 rounded-full transition-all shadow-lg flex items-center gap-2 cursor-pointer"
+            >
+              <UserPlus className="h-4 w-4" /> Create an Account
+            </Button>
+          ) : (
+            <Button
+              onClick={() => {
+                loadUserStampsAndPenalties();
+                setShowLoyaltyModal(true);
+              }}
+              className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold text-xs px-4 py-2.5 rounded-full transition-all shadow-lg flex items-center gap-2 cursor-pointer"
+            >
+              <Award className="h-4 w-4" /> Loyalty Card ({validStampsCount}/12)
+            </Button>
+          )}
 
           <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
             {CATEGORIES.map((cat) => (
