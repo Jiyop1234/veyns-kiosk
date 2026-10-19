@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star } from 'lucide-react';
+import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
@@ -19,7 +19,7 @@ function Photo({ src, alt, className }: { src?: string; alt: string; className: 
 }
 
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers'>('sales');
+  const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots'>('sales');
 
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -45,6 +45,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [newTempPassword, setNewTempPassword] = useState('');
   const [visiblePasswords, setVisiblePasswords] = useState<{ [key: string]: boolean }>({});
 
+  // Slot Capacities States
+  const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
+  const [selectedSlotDate, setSelectedSlotDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const timeSlotsList = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'];
+
   const [stampTargetUser, setStampTargetUser] = useState<any>(null);
   const [customerStampsDetailed, setCustomerStampsDetailed] = useState<{ status: 'valid' | 'invalid' | 'to_clear' | 'empty'; date: string; penaltyReason?: string }[]>([]);
   const [selectedInfractionPreset, setSelectedInfractionPreset] = useState('Active Account');
@@ -67,10 +73,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
     const orderChannel = supabase.channel('public:orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCloudData).subscribe();
     const menuChannel = supabase.channel('public:menu_items').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, fetchCloudData).subscribe();
+    const slotsChannel = supabase.channel('public:slot_capacities').on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, fetchCloudData).subscribe();
 
     return () => {
       supabase.removeChannel(orderChannel);
       supabase.removeChannel(menuChannel);
+      supabase.removeChannel(slotsChannel);
     };
   }, []);
 
@@ -93,20 +101,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         setMenuItems(formattedMenu);
         localStorage.setItem('veyns_manageable_menu', JSON.stringify(formattedMenu));
       } else {
-        for (const item of MENU_GRID) {
-          await supabase.from('menu_items').upsert({
-            id: item.id,
-            name: item.name,
-            category: item.category,
-            description: item.description,
-            price: item.price,
-            discount_percent: item.discountPercent || 0,
-            is_available: item.isAvailable !== false,
-            best_seller: item.bestSeller || false,
-            sort_order: item.sortOrder || 100,
-            image_url: menuImages[item.id] || ''
-          }, { onConflict: 'id' });
-        }
         setMenuItems(MENU_GRID);
       }
 
@@ -124,7 +118,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           items: o.items || [],
           total: o.total || 0,
           date: new Date(o.created_at).toLocaleString(),
-          promoCode: o.promo_code || o.promoCode || ''
+          promoCode: o.promo_code || ''
         })));
       }
 
@@ -151,11 +145,37 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           { name: 'Geoff Perez', identifier: 'geoff@gmail.com', type: 'regular' }
         ]);
       }
+
+      const { data: cloudSlots } = await supabase.from('slot_capacities').select('*');
+      if (cloudSlots) {
+        setSlotCapacities(cloudSlots);
+      }
     } catch (e) {
       console.error('Error fetching cloud data:', e);
       setMenuItems(MENU_GRID);
     }
     setPromos(getActivePromoCodes());
+  };
+
+  const handleUpdateSlotCapacity = async (dateKey: string, slotTime: string, maxSlots: number, isFullyBooked: boolean) => {
+    try {
+      const existing = slotCapacities.find(s => s.date_key === dateKey && s.slot_time === slotTime);
+      const bookedCount = existing ? existing.booked_count : 0;
+
+      const payload = {
+        date_key: dateKey,
+        slot_time: slotTime,
+        max_slots: maxSlots,
+        booked_count: bookedCount,
+        is_fully_booked: isFullyBooked
+      };
+
+      await supabase.from('slot_capacities').upsert(payload, { onConflict: 'date_key,slot_time' });
+      alert(`Slot capacity updated successfully for ${slotTime} on ${dateKey}!`);
+      fetchCloudData();
+    } catch (e) {
+      alert('Error updating slot capacity.');
+    }
   };
 
   const uploadImageToSupabase = async (file: File) => {
@@ -415,6 +435,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           <button onClick={() => setActiveTab('sales')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'sales' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
             <BarChart2 className="h-4 w-4" /> Sales Analytics ({orders.length})
           </button>
+          <button onClick={() => setActiveTab('slots')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'slots' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
+            <Clock className="h-4 w-4" /> Slot Capacity & Fully Booked
+          </button>
           <button onClick={() => setActiveTab('customers')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'customers' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
             <Users className="h-4 w-4" /> Customer Accounts ({customers.length})
           </button>
@@ -520,6 +543,52 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </table>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* SLOT CAPACITY & FULLY BOOKED MANAGER TAB */}
+        {activeTab === 'slots' && (
+          <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-emerald-900/60 pb-3 gap-3">
+              <div className="flex items-center gap-2">
+                <Clock className="h-5 w-5 text-lime-400" />
+                <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Manage Time Slot Capacities & Fully Booked Status</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-emerald-300">Select Date:</span>
+                <input
+                  type="date"
+                  value={selectedSlotDate}
+                  onChange={(e) => setSelectedSlotDate(e.target.value)}
+                  className="bg-[#041913] border border-emerald-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-lime-400"
+                />
+              </div>
+            </div>
+
+            <p className="text-xs text-emerald-300">
+              Configure maximum order slots per time window or mark a time slot as <strong>Fully Booked</strong>. This syncs live with customer checkout.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {timeSlotsList.map((slotTime) => {
+                const existing = slotCapacities.find(s => s.date_key === selectedSlotDate && s.slot_time === slotTime);
+                const maxSlots = existing ? existing.max_slots : 10;
+                const bookedCount = existing ? existing.booked_count : 0;
+                const isFullyBooked = existing ? existing.is_fully_booked : false;
+
+                return (
+                  <SlotCapacityCard
+                    key={slotTime}
+                    slotTime={slotTime}
+                    dateKey={selectedSlotDate}
+                    initialMax={maxSlots}
+                    bookedCount={bookedCount}
+                    initialFullyBooked={isFullyBooked}
+                    onSave={handleUpdateSlotCapacity}
+                  />
+                );
+              })}
             </div>
           </div>
         )}
@@ -922,6 +991,64 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             </DialogContent>
           )}
         </Dialog>
+      </div>
+    </div>
+  );
+}
+
+// Subcomponent for managing individual slot capacity
+function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialFullyBooked, onSave }: any) {
+  const [maxSlots, setMaxSlots] = useState(initialMax);
+  const [isFullyBooked, setIsFullyBooked] = useState(initialFullyBooked);
+
+  useEffect(() => {
+    setMaxSlots(initialMax);
+    setIsFullyBooked(initialFullyBooked);
+  }, [initialMax, initialFullyBooked]);
+
+  return (
+    <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-3 text-xs">
+      <div className="flex items-center justify-between border-b border-emerald-900/60 pb-2">
+        <span className="font-extrabold text-lime-400 text-sm flex items-center gap-1.5">
+          <Clock className="size-4" /> {slotTime}
+        </span>
+        <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] uppercase ${isFullyBooked ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'}`}>
+          {isFullyBooked ? 'Fully Booked' : `${Math.max(0, maxSlots - bookedCount)} Slots Left`}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[10px] text-emerald-300 block mb-1">Max Capacity Limit:</label>
+          <input
+            type="number"
+            value={maxSlots}
+            onChange={(e) => setMaxSlots(parseInt(e.target.value) || 0)}
+            className="w-full bg-[#04140f] border border-emerald-800 rounded-lg p-2 text-white font-bold text-xs focus:outline-none focus:border-lime-400"
+          />
+        </div>
+        <div className="flex flex-col justify-end">
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-[#04140f] border border-emerald-800 cursor-pointer h-9">
+            <input
+              type="checkbox"
+              checked={isFullyBooked}
+              onChange={(e) => setIsFullyBooked(e.target.checked)}
+              className="rounded border-emerald-700 text-red-500 focus:ring-red-400 bg-black/40 h-4 w-4"
+            />
+            <span className="font-bold text-red-400 text-[11px]">Mark Fully Booked</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="flex justify-between items-center pt-1 text-[11px] text-emerald-300">
+        <span>Booked Orders: <strong>{bookedCount}</strong></span>
+        <Button
+          size="sm"
+          onClick={() => onSave(dateKey, slotTime, maxSlots, isFullyBooked)}
+          className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-[10px] px-3 py-1.5 rounded-lg cursor-pointer"
+        >
+          Save Slot
+        </Button>
       </div>
     </div>
   );

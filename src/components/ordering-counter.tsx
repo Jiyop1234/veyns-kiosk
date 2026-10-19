@@ -31,6 +31,21 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [stamps, setStamps] = useState<any[]>([]);
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
 
+  // Slot capacities & Fully Booked states
+  const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
+
+  const loadSlotCapacities = async () => {
+    try {
+      const { data, error } = await supabase.from('slot_capacities').select('*');
+      if (data) {
+        setSlotCapacities(data);
+      }
+    } catch (e) {
+      const saved = localStorage.getItem('veyns_slot_capacities');
+      if (saved) setSlotCapacities(JSON.parse(saved));
+    }
+  };
+
   const loadUserStampsAndPenalties = () => {
     if (!currentUser) return;
     try {
@@ -129,6 +144,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   useEffect(() => {
     loadMenuFromCloud();
     loadUserStampsAndPenalties();
+    loadSlotCapacities();
 
     const menuChannel = supabase
       .channel('public:menu_items_counter')
@@ -137,14 +153,23 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       })
       .subscribe();
 
+    const slotsChannel = supabase
+      .channel('public:slot_capacities_counter')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, () => {
+        loadSlotCapacities();
+      })
+      .subscribe();
+
     const handleStorageChange = () => {
       loadMenuFromCloud();
       loadUserStampsAndPenalties();
+      loadSlotCapacities();
     };
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
       supabase.removeChannel(menuChannel);
+      supabase.removeChannel(slotsChannel);
       window.removeEventListener('storage', handleStorageChange);
     };
   }, [resetKey, currentUser]);
@@ -1359,7 +1384,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 {appliedPromo && <p className="text-[10px] text-lime-400 font-semibold">🎉 Promo {appliedPromo.code} applied ({appliedPromo.discountPercent}% OFF)!</p>}
               </div>
 
-              {/* ORDER TYPE SELECTION (Order Today vs Reservation) */}
+              {/* ORDER TYPE SELECTION (Order Today vs Reservation with Slot Capacity Checks) */}
               <div className="space-y-2 border-t border-emerald-900/60 pt-3">
                 <h4 className="text-[11px] font-bold text-lime-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5 text-lime-400" /> Order Schedule Type
@@ -1389,12 +1414,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   </button>
                 </div>
 
-                {/* CONDITIONAL SCHEDULE DETAILS BASED ON SELECTION */}
+                {/* CONDITIONAL SCHEDULE DETAILS BASED ON SELECTION & SLOTS */}
                 {orderType === 'today' ? (
                   <div className="bg-[#061d16] border border-emerald-800/60 rounded-xl p-3 space-y-2 text-xs">
                     <p className="text-[11px] text-emerald-200 font-medium">
                       {fulfillment === 'delivery' && deliveryOption === 'our'
-                        ? 'Select your preferred personal delivery time slot:'
+                        ? 'Select your preferred personal delivery time slot (live slots checked):'
                         : fulfillment === 'delivery' && deliveryOption === 'maxim'
                         ? 'Maxim Courier selected: You can have your order delivered anytime today.'
                         : 'Pick up today at your convenience.'}
@@ -1402,20 +1427,32 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
                     {fulfillment === 'delivery' && deliveryOption === 'our' && (
                       <div className="grid grid-cols-2 gap-2">
-                        {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => (
-                          <button
-                            key={slot}
-                            type="button"
-                            onClick={() => setTodayTimeSlot(slot)}
-                            className={`p-2 rounded-lg border text-[11px] font-bold transition-all ${
-                              todayTimeSlot === slot
-                                ? 'bg-lime-400 text-black border-lime-400'
-                                : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50'
-                            }`}
-                          >
-                            {slot}
-                          </button>
-                        ))}
+                        {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => {
+                          const slotInfo = slotCapacities.find(s => s.slot_time === slot && (s.date_key === 'today' || s.date_key === new Date().toISOString().split('T')[0]));
+                          const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_count >= slotInfo.max_slots);
+                          const slotsLeft = slotInfo ? Math.max(0, slotInfo.max_slots - slotInfo.booked_count) : null;
+
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              disabled={isFullyBooked}
+                              onClick={() => setTodayTimeSlot(slot)}
+                              className={`p-2 rounded-lg border text-[11px] font-bold transition-all flex flex-col items-center justify-between ${
+                                isFullyBooked
+                                  ? 'bg-red-950/60 border-red-800 text-red-400 opacity-60 cursor-not-allowed'
+                                  : todayTimeSlot === slot
+                                  ? 'bg-lime-400 text-black border-lime-400 shadow-md'
+                                  : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50'
+                              }`}
+                            >
+                              <span>{slot}</span>
+                              <span className="text-[9px] font-semibold mt-0.5">
+                                {isFullyBooked ? '⛔ Fully Booked' : slotsLeft !== null ? `🟢 ${slotsLeft} slots left` : 'Available'}
+                              </span>
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1439,11 +1476,18 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                           onChange={(e) => setReservationTime(e.target.value)}
                           className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white text-xs focus:outline-none focus:border-lime-400"
                         >
-                          <option value="12:00 PM - 1:00 PM">12:00 PM - 1:00 PM</option>
-                          <option value="4:00 PM - 5:00 PM">4:00 PM - 5:00 PM</option>
-                          <option value="7:00 PM - 8:00 PM">7:00 PM - 8:00 PM</option>
-                          <option value="10:00 PM - 11:00 PM">10:00 PM - 11:00 PM</option>
-                          <option value="Custom Time">Anytime / Other Schedule</option>
+                          {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => {
+                            const slotInfo = slotCapacities.find(s => s.slot_time === slot && s.date_key === reservationDate);
+                            const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_count >= slotInfo.max_slots);
+                            const slotsLeft = slotInfo ? Math.max(0, slotInfo.max_slots - slotInfo.booked_count) : null;
+                            const labelText = `${slot} ${isFullyBooked ? '(Fully Booked)' : slotsLeft !== null ? `(${slotsLeft} slots left)` : ''}`;
+
+                            return (
+                              <option key={slot} value={slot} disabled={isFullyBooked}>
+                                {labelText}
+                              </option>
+                            );
+                          })}
                         </select>
                       </div>
                     </div>
