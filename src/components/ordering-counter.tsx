@@ -961,17 +961,17 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
           <div className="space-y-2 pt-2 border-t border-emerald-900/60">
             <Button
-              onClick={() => setShowUpsell(false)}
+              onClick={handleReviewOrder}
               className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs"
             >
-              Continue browsing <ArrowRight className="h-3.5 w-3.5" />
+              Review my order <ArrowRight className="h-3.5 w-3.5" />
             </Button>
             <button
               type="button"
-              onClick={handleReviewOrder}
+              onClick={() => setShowUpsell(false)}
               className="w-full text-center text-xs font-bold text-lime-400 hover:underline transition-colors py-1 cursor-pointer"
             >
-              Review my order
+              Continue browsing
             </button>
           </div>
         </DialogContent>
