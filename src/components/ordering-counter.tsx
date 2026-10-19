@@ -185,9 +185,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const markerInstanceRef = useRef<any>(null);
   const geocodeTimeoutRef = useRef<any>(null);
 
-  // Store Point A Coordinates: Julio B. Alinsug, Basak, Mandaue City, Cebu 6014 (Store Center)
-  const STORE_LAT = 10.3475;
-  const STORE_LNG = 123.9388;
+  // TRUE STORE COORDINATES (Center Origin = 0.0 km)
+  const STORE_LAT = 10.359511;
+  const STORE_LNG = 123.952739;
 
   const calculateDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371;
@@ -236,11 +236,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
+    // Initial customer pin starts at the store (0.0 km) until they drag or click GPS
     const customerInitialLat = STORE_LAT;
     const customerInitialLng = STORE_LNG;
 
     const marker = L.marker([customerInitialLat, customerInitialLng], { draggable: true }).addTo(map);
-    marker.bindPopup('<b>Store Location / Drag to your house!</b>').openPopup();
+    marker.bindPopup('<b>Store Location / Drag to your delivery pin!</b>').openPopup();
     markerInstanceRef.current = marker;
 
     marker.on('dragend', async () => {
@@ -287,17 +288,27 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }, 600);
   };
 
-  const handleUseCurrentGPS = async () => {
-    setIsPinning(true);
-    // Snaps directly to store coordinates (0.0 km) when testing from store
-    const lat = STORE_LAT;
-    const lng = STORE_LNG;
-    
-    if (mapInstanceRef.current && markerInstanceRef.current) {
-      mapInstanceRef.current.setView([lat, lng], 16);
-      markerInstanceRef.current.setLatLng([lat, lng]);
+  // TRUE BROWSER GEOLOCATION for Customer Real-Time GPS
+  const handleUseCurrentGPS = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
     }
-    await processSelectedCoordinates(lat, lng);
+    setIsPinning(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        if (mapInstanceRef.current && markerInstanceRef.current) {
+          mapInstanceRef.current.setView([lat, lng], 16);
+          markerInstanceRef.current.setLatLng([lat, lng]);
+        }
+        await processSelectedCoordinates(lat, lng);
+      },
+      () => {
+        alert('Unable to retrieve your location. Please drop a pin on the map.');
+      }
+    );
   };
 
   const [internalOrderHistory, setInternalOrderHistory] = useState<any[]>([]);
@@ -1469,7 +1480,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       <MapPin className="h-3.5 w-3.5" /> Pick Up Location
                     </h5>
                     <p className="text-xs font-semibold text-white">
-                      9X63+22J, Julio B. Alinsug, Basak, Mandaue City, Cebu 6014
+                      Consuelo Village, Basak, Mandaue City, Cebu 6014
                     </p>
                   </div>
 
@@ -1478,7 +1489,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       title="Store Pickup Location"
                       className="w-full h-full border-0"
                       loading="lazy"
-                      src="https://maps.google.com/maps?q=9X63%2B22J%2C%20Julio%20B.%20Alinsug%2C%20Mandaue%20City%2C%20Cebu&t=&z=16&ie=UTF8&iwloc=&output=embed"
+                      src="https://maps.google.com/maps?q=10.359511%2C%20123.952739&t=&z=16&ie=UTF8&iwloc=&output=embed"
                     />
                   </div>
                 </div>
