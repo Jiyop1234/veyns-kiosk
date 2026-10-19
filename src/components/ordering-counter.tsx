@@ -1559,7 +1559,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="e.g. GEOGWAPO"
+                    placeholder="e.g. VEYNS2026"
                     value={promoInput}
                     onChange={(e) => setPromoInput(e.target.value)}
                     className="flex-1 bg-[#041913] border border-emerald-800/80 rounded-xl px-3 py-2 text-xs text-white uppercase placeholder:normal-case placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
