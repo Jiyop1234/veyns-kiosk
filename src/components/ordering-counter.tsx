@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar, UserPlus, Ticket } from 'lucide-react';
+import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar, UserPlus, Ticket, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
@@ -222,7 +222,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [addedItemName, setAddedItemName] = useState('');
 
   const [promoInput, setPromoInput] = useState('');
-  const [appliedPromo, setAppliedPromo] = useState<any>(null);
+  const [appliedPromos, setAppliedPromos] = useState<any[]>([]); // Stacking multiple vouchers
   const [promoError, setPromoError] = useState('');
   const [claimedVouchersState, setClaimedVouchersState] = useState<{ [code: string]: number }>({});
 
@@ -468,7 +468,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       setSelected(null);
       setShowUpsell(false);
       setShowCheckout(false);
-      setAppliedPromo(null);
+      setAppliedPromos([]);
       setPromoInput('');
     }
   }, [resetKey]);
@@ -500,12 +500,14 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         console.error('Supabase order insert error:', orderError.message);
       }
 
-      if (newOrder.promoCode) {
+      if (newOrder.promoCodesList && newOrder.promoCodesList.length > 0) {
         const promos = availablePromos;
-        const matched = promos.find(p => p.code.toUpperCase() === newOrder.promoCode.toUpperCase());
-        if (matched) {
-          const newCount = (matched.usageCount || 0) + 1;
-          await supabase.from('promos').update({ usage_count: newCount }).eq('code', matched.code);
+        for (const code of newOrder.promoCodesList) {
+          const matched = promos.find(p => p.code.toUpperCase() === code.toUpperCase());
+          if (matched) {
+            const newCount = (matched.usageCount || 0) + 1;
+            await supabase.from('promos').update({ usage_count: newCount }).eq('code', matched.code);
+          }
         }
       }
     } catch (err) {
@@ -657,7 +659,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
     if (!found) {
       setPromoError('Invalid promo code.');
-      setAppliedPromo(null);
+      return;
+    }
+
+    if (appliedPromos.some((p) => p.code.toUpperCase() === cleanCode)) {
+      setPromoError('This voucher is already applied.');
       return;
     }
 
@@ -665,36 +671,37 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       const expiresAt = found.createdAt + found.expiryDurationMs;
       if (Date.now() > expiresAt) {
         setPromoError('This voucher code has expired.');
-        setAppliedPromo(null);
         return;
       }
     }
 
     if (found.usageLimit && (found.usageCount || 0) >= found.usageLimit) {
-      setPromoError(`This voucher has reached its maximum global usage limit of ${found.usageLimit}.`);
-      setAppliedPromo(null);
+      setPromoError(`This voucher has reached its maximum global usage limit.`);
       return;
     }
 
     const userUsageMap = getUserVoucherUsageMap();
     const userUses = userUsageMap[cleanCode] || 0;
-    const maxPerPerson = found.perPersonLimit || 1; // Default 1 use per person
+    const maxPerPerson = found.perPersonLimit || 1;
 
     if (userUses >= maxPerPerson) {
       setPromoError(`You have already used this voucher the maximum allowed ${maxPerPerson} time(s).`);
-      setAppliedPromo(null);
       return;
     }
 
-    setAppliedPromo(found);
-    setPromoInput(cleanCode);
+    setAppliedPromos(prev => [...prev, found]);
+    setPromoInput('');
   };
 
   const handleApplyPromo = () => {
     handleApplyPromoCodeString(promoInput);
   };
 
-  // Public vouchers auto-apply immediately upon clicking "Claim"
+  const handleRemoveAppliedPromo = (codeToRemove: string) => {
+    setAppliedPromos(prev => prev.filter(p => p.code !== codeToRemove));
+  };
+
+  // Public vouchers auto-apply immediately upon clicking "Claim" (Stashing to appliedPromos)
   const handleClaimVoucher = (promo: any) => {
     if (promo.usageLimit && (promo.usageCount || 0) >= promo.usageLimit) {
       alert('This voucher has already reached its maximum usage limit.');
@@ -712,16 +719,26 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     const expiryMs = promo.expiryDurationMs || (60 * 60 * 1000);
     setClaimedVouchersState(prev => ({ ...prev, [promo.code]: Date.now() + expiryMs }));
 
-    // Automatically apply the claimed public voucher right away
+    // Apply or stack the claimed voucher right away
     handleApplyPromoCodeString(promo.code);
   };
 
   const calculatePromoDiscount = () => {
-    if (!appliedPromo) return 0;
-    if (appliedPromo.type === 'peso') {
-      return Math.min(total, appliedPromo.discountValue);
-    }
-    return (total * appliedPromo.discountValue) / 100;
+    if (appliedPromos.length === 0) return 0;
+    let totalPercent = 0;
+    let totalPeso = 0;
+
+    appliedPromos.forEach(p => {
+      if (p.type === 'peso') {
+        totalPeso += p.discountValue;
+      } else {
+        totalPercent += p.discountValue;
+      }
+    });
+
+    const percentDiscount = (total * totalPercent) / 100;
+    const combinedDiscount = percentDiscount + totalPeso;
+    return Math.min(total, combinedDiscount);
   };
 
   const promoDiscountAmount = calculatePromoDiscount();
@@ -742,9 +759,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           : `Today - Maxim Delivery (Anytime)`
         : `Reservation on ${reservationDate || 'Upcoming Date'} (${reservationTime})`;
 
-    if (appliedPromo) {
-      recordUserVoucherUse(appliedPromo.code);
+    if (appliedPromos.length > 0) {
+      appliedPromos.forEach(p => recordUserVoucherUse(p.code));
     }
+
+    const promoCodesList = appliedPromos.map(p => p.code);
+    const promoCodeString = promoCodesList.length > 0 ? promoCodesList.join(', ') : null;
 
     const orderData = {
       orderNumber: `#${Math.floor(1000 + Math.random() * 9000)}`,
@@ -763,7 +783,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       paymentOption: 'Cash on Pickup / Delivery',
       items: [...lines],
       subtotal: total,
-      promoCode: appliedPromo ? appliedPromo.code : null,
+      promoCode: promoCodeString,
+      promoCodesList,
       promoDiscount: promoDiscountAmount,
       total: finalCartTotal,
       date: new Date().toLocaleString(),
@@ -783,7 +804,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setCustomerPhone('');
     setCustomerLocation('');
     setNearestLandmark('');
-    setAppliedPromo(null);
+    setAppliedPromos([]);
     setPromoInput('');
     setDeliveryDistanceKm(null);
     setCalculatedDeliveryFee(0);
@@ -1431,7 +1452,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 <div className="border-t border-emerald-900/60 pt-2 space-y-1">
                   {placedOrderDetails.promoCode && (
                     <div className="flex justify-between text-amber-400 font-semibold">
-                      <span>Promo Applied ({placedOrderDetails.promoCode}):</span>
+                      <span>Promos Applied ({placedOrderDetails.promoCode}):</span>
                       <span>-{formatPeso(placedOrderDetails.promoDiscount)}</span>
                     </div>
                   )}
@@ -1506,7 +1527,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 )}
               </div>
 
-              <div className="space-y-1.5 pt-2 border-t border-emerald-900/60">
+              <div className="space-y-2 pt-2 border-t border-emerald-900/60">
                 <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Have a Promo Code?</label>
                 <div className="flex gap-2">
                   <input
@@ -1525,17 +1546,31 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   </Button>
                 </div>
                 {promoError && <p className="text-[10px] text-red-400 font-semibold">{promoError}</p>}
-                {appliedPromo && <p className="text-[10px] text-lime-400 font-semibold">🎉 Promo {appliedPromo.code} applied successfully!</p>}
+                
+                {appliedPromos.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <p className="text-[10px] text-lime-400 font-semibold">🎉 Applied Vouchers (Stacked):</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {appliedPromos.map((p) => (
+                        <span key={p.code} className="inline-flex items-center gap-1 bg-[#082a20] border border-lime-400/50 text-lime-300 text-[10px] font-bold px-2.5 py-1 rounded-lg">
+                          {p.code} ({p.type === 'peso' ? `₱${p.discountValue}` : `${p.discountValue}%`})
+                          <button type="button" onClick={() => handleRemoveAppliedPromo(p.code)} className="text-lime-400 hover:text-red-400 ml-0.5 cursor-pointer">
+                            <X className="size-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {publicVouchersList.length > 0 && (
-                  <div className="space-y-1.5 pt-1">
+                  <div className="space-y-1.5 pt-2">
                     <span className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider flex items-center gap-1">
-                      <Ticket className="size-3 text-lime-400" /> Available Public Vouchers:
+                      <Ticket className="size-3 text-lime-400" /> Available Public Vouchers (Click Claim to Stack):
                     </span>
                     <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
                       {publicVouchersList.map((promo, pIdx) => {
-                        const claimExpiryTime = claimedVouchersState[promo.code];
-                        const isClaimed = claimExpiryTime && claimExpiryTime > Date.now();
+                        const isAlreadyApplied = appliedPromos.some(p => p.code.toUpperCase() === promo.code.toUpperCase());
 
                         return (
                           <div key={pIdx} className="bg-[#061d16] border border-emerald-800/70 rounded-xl p-2.5 flex items-center justify-between text-xs">
@@ -1544,8 +1579,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                               <p className="text-[10px] text-emerald-200">
                                 {promo.type === 'peso' ? formatPeso(promo.discountValue) + ' OFF' : `${promo.discountValue}% OFF`}
                               </p>
-                              {isClaimed && (
-                                <p className="text-[9px] text-amber-300">⏱️ Claimed! Automatically applied.</p>
+                              {isAlreadyApplied && (
+                                <p className="text-[9px] text-amber-300">✓ Stacked and applied.</p>
                               )}
                             </div>
                             <Button
@@ -1554,7 +1589,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                               onClick={() => handleClaimVoucher(promo)}
                               className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-extrabold text-[10px] px-3 py-1 rounded-lg cursor-pointer"
                             >
-                              {isClaimed ? 'Claimed ✓' : 'Claim'}
+                              {isAlreadyApplied ? 'Applied ✓' : 'Claim & Stack'}
                             </Button>
                           </div>
                         );
@@ -1887,7 +1922,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
                 {promoDiscountAmount > 0 && (
                   <div className="flex items-center justify-between text-xs text-amber-400 font-semibold">
-                    <span>Promo Discount ({appliedPromo?.code})</span>
+                    <span>Promo Discount ({appliedPromos.map(p => p.code).join(', ')})</span>
                     <span>-{formatPeso(promoDiscountAmount)}</span>
                   </div>
                 )}
