@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star, Calendar } from 'lucide-react';
+import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star, Calendar, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
@@ -41,6 +41,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [customerSearch, setCustomerSearch] = useState('');
   const [resetTargetUser, setResetTargetUser] = useState<any>(null);
   const [newTempPassword, setNewTempPassword] = useState('');
   const [visiblePasswords, setVisiblePasswords] = useState<{ [key: string]: boolean }>({});
@@ -407,6 +408,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
+  const filteredCustomers = customers.filter(c => 
+    !customerSearch || 
+    c.name.toLowerCase().includes(customerSearch.toLowerCase()) || 
+    c.identifier.toLowerCase().includes(customerSearch.toLowerCase())
+  );
+
   const totalGrossSales = orders.reduce((acc, o) => acc + (o.total || 0), 0);
   const totalOrdersCount = orders.length;
   const averageOrderValue = totalOrdersCount > 0 ? totalGrossSales / totalOrdersCount : 0;
@@ -605,10 +612,22 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
         {activeTab === 'customers' && (
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
-            <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-emerald-900/60 pb-3 gap-3">
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5 text-lime-400" />
                 <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Registered Customer Accounts & Passwords</h3>
+              </div>
+              
+              {/* Customer Search Bar */}
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-300/70" />
+                <input
+                  type="text"
+                  placeholder="Search customer nickname..."
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] pl-9 pr-4 py-2 text-xs text-white placeholder:text-emerald-500 focus:outline-none focus:ring-2 focus:ring-lime-400"
+                />
               </div>
             </div>
 
@@ -624,40 +643,48 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-emerald-950">
-                  {customers.map((cust, idx) => {
-                    const identifierKey = cust.identifier.toLowerCase().trim();
-                    const plainPassword = localStorage.getItem(`veyns_pwd_plain_${identifierKey}`) || (identifierKey === 'admin' ? 'admin' : 'Not recorded');
-                    const isVisible = visiblePasswords[cust.identifier];
+                  {filteredCustomers.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="text-center py-8 text-emerald-400/70">
+                        No customer accounts match your search.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredCustomers.map((cust, idx) => {
+                      const identifierKey = cust.identifier.toLowerCase().trim();
+                      const plainPassword = localStorage.getItem(`veyns_pwd_plain_${identifierKey}`) || (identifierKey === 'admin' ? 'admin' : 'Not recorded');
+                      const isVisible = visiblePasswords[cust.identifier];
 
-                    return (
-                      <tr key={idx} className="hover:bg-[#071F19]/50 transition-colors">
-                        <td className="p-3 font-bold text-white">{cust.name}</td>
-                        <td className="p-3 text-lime-400 font-mono"><span>{cust.identifier}</span></td>
-                        <td className="p-3 font-mono">
-                          <div className="flex items-center gap-2">
-                            <span>{isVisible ? plainPassword : '••••••••'}</span>
-                            <button type="button" onClick={() => togglePasswordVisibility(cust.identifier)} className="text-emerald-400 hover:text-white cursor-pointer p-1">
-                              {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">{cust.type || 'Regular'}</span>
-                        </td>
-                        <td className="p-3 text-right space-x-2">
-                          <Button onClick={() => openStampManager(cust)} size="sm" className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
-                            <Award className="h-3.5 w-3.5 mr-1" /> Stamps
-                          </Button>
-                          <Button onClick={() => { setResetTargetUser(cust); setNewTempPassword('Veyns' + Math.floor(1000 + Math.random() * 9000)); }} size="sm" className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
-                            <KeyRound className="h-3.5 w-3.5 mr-1" /> Reset Password
-                          </Button>
-                          <Button onClick={() => handleDeleteCustomer(cust.identifier)} size="sm" className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                      return (
+                        <tr key={idx} className="hover:bg-[#071F19]/50 transition-colors">
+                          <td className="p-3 font-bold text-white">{cust.name}</td>
+                          <td className="p-3 text-lime-400 font-mono"><span>{cust.identifier}</span></td>
+                          <td className="p-3 font-mono">
+                            <div className="flex items-center gap-2">
+                              <span>{isVisible ? plainPassword : '••••••••'}</span>
+                              <button type="button" onClick={() => togglePasswordVisibility(cust.identifier)} className="text-emerald-400 hover:text-white cursor-pointer p-1">
+                                {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">{cust.type || 'Regular'}</span>
+                          </td>
+                          <td className="p-3 text-right space-x-2">
+                            <Button onClick={() => openStampManager(cust)} size="sm" className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
+                              <Award className="h-3.5 w-3.5 mr-1" /> Stamps
+                            </Button>
+                            <Button onClick={() => { setResetTargetUser(cust); setNewTempPassword('Veyns' + Math.floor(1000 + Math.random() * 9000)); }} size="sm" className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
+                              <KeyRound className="h-3.5 w-3.5 mr-1" /> Reset Password
+                            </Button>
+                            <Button onClick={() => handleDeleteCustomer(cust.identifier)} size="sm" className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
