@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
-import { Award, Lock, LogOut, ShoppingBag, UtensilsCrossed, Settings, UserPlus, LogIn, Edit3, KeyRound, ChevronDown } from 'lucide-react';
+import { Award, Lock, LogOut, ShoppingBag, UtensilsCrossed, Settings, UserPlus, Login, Edit3, KeyRound, ChevronDown, Facebook, Instagram } from 'lucide-react';
 import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
 
@@ -162,13 +162,13 @@ export function SiteHeader({
             )}
           </div>
 
-          {/* Guest vs Regular Loyalty Header Button */}
+          {/* Guest vs Regular Customer Greeting Button */}
           {isGuest ? (
             <Button 
               variant="outline"
               onClick={onOpenSignUp}
               className="flex items-center gap-1.5 bg-[#061d16] border-emerald-700/85 text-emerald-300 hover:border-lime-400 hover:text-lime-400 hover:bg-[#082a20] cursor-pointer rounded-full px-2.5 sm:px-3.5 py-1.5 text-[11px] sm:text-xs h-9"
-              title="Login or sign up to unlock loyalty stamps"
+              title="Login or sign up"
             >
               <Lock className="size-3 text-lime-400 shrink-0" />
               <span className="font-bold truncate max-w-[90px] sm:max-w-none">Login</span>
@@ -178,10 +178,10 @@ export function SiteHeader({
               variant="outline"
               onClick={onOpenLoyalty}
               className="flex items-center gap-1.5 bg-[#061d16] border-emerald-700/80 text-lime-400 hover:border-lime-400 hover:bg-[#082a20] cursor-pointer rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs h-9"
-              title="View Loyalty Stamp Card"
+              title="Account Settings"
             >
               <Award className="size-3.5 text-lime-400 shrink-0" />
-              <span className="font-extrabold truncate max-w-[80px] sm:max-w-none">{nickname}</span>
+              <span className="font-extrabold truncate max-w-[100px] sm:max-w-none">Hi {nickname}</span>
             </Button>
           ) : null}
 
