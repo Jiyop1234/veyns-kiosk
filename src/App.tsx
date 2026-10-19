@@ -119,13 +119,11 @@ export function App() {
         setAuthMode(savedMode as any);
 
         if (userObj.type === 'guest') {
-          // Guest order history is session-bound (stored in sessionStorage)
           const sessionOrders = sessionStorage.getItem('veyns_guest_order_history');
           if (sessionOrders) setOrderHistory(JSON.parse(sessionOrders));
           setStamps([]);
           setFairPlayPenalty(null);
         } else {
-          // Regular user order history stored in localStorage
           const savedOrders = localStorage.getItem('veyns_order_history');
           if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
           loadUserStampsAndPenalties(userObj);
@@ -283,7 +281,6 @@ export function App() {
     localStorage.setItem('veyns_current_user', JSON.stringify(userData));
     localStorage.setItem('veyns_auth_mode', 'regular');
     
-    // Load regular user order history
     const savedOrders = localStorage.getItem('veyns_order_history');
     if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
 
@@ -410,7 +407,6 @@ export function App() {
     localStorage.setItem('veyns_current_user', JSON.stringify(guestData));
     localStorage.setItem('veyns_auth_mode', 'guest');
     
-    // Clear stamps and order history for guest session
     setStamps([]);
     setFairPlayPenalty(null);
     setOrderHistory([]);
@@ -827,6 +823,14 @@ export function App() {
             resetKey={resetTrigger}
             currentUser={currentUser}
             onOrderPlacedSuccess={recordOrderForLoyalty}
+            onOpenRegister={() => {
+              setCurrentUser(null);
+              setAuthMode('regular');
+              setIsSignUp(true);
+              setAuthInput('');
+              setAuthPassword('');
+              setAuthName('');
+            }}
           />
         </main>
 
@@ -941,7 +945,6 @@ export function App() {
                           />
                         </div>
 
-                        {/* Forgot Password Note with Social Media Links */}
                         <div className="bg-[#03120d] border border-emerald-800/80 rounded-xl p-2.5 text-[11px] text-emerald-300 space-y-1.5">
                           <p className="font-semibold">Forgot your current password?</p>
                           <p className="text-[10px] text-emerald-400/80">Please contact us through our social media pages below:</p>
