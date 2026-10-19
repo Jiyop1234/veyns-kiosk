@@ -6,7 +6,7 @@ import { EmployeeDashboard } from '@/components/employee-dashboard';
 import { CartProvider } from '@/lib/cart';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings, Edit3, Facebook, Instagram, Eye, EyeOff } from 'lucide-react';
+import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings, Edit3, Facebook, Instagram, Eye, EyeOff, Mail, Phone } from 'lucide-react';
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
 
@@ -16,21 +16,26 @@ export function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   
   const [isSignUp, setIsSignUp] = useState(false);
-  const [authInput, setAuthInput] = useState('');
+  const [authInputType, setAuthInputType] = useState<'email' | 'phone'>('email');
+  const [authEmailInput, setAuthEmailInput] = useState('');
+  const [authPhoneInput, setAuthPhoneInput] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
   const [signUpSuccessMsg, setSignUpSuccessMsg] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Forgot password identifier state
+  const [forgotInputType, setForgotInputType] = useState<'email' | 'phone'>('email');
+  const [forgotEmailInput, setForgotEmailInput] = useState('');
+  const [forgotPhoneInput, setForgotPhoneInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState(false);
 
   // Validation & Error States
   const [nicknameError, setNicknameError] = useState('');
   const [identifierError, setIdentifierError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [loginError, setLoginError] = useState('');
-
-  const [forgotInput, setForgotInput] = useState('');
-  const [newPasswordInput, setNewPasswordInput] = useState('');
-  const [forgotSuccess, setForgotSuccess] = useState(false);
 
   const [showMyOrders, setShowMyOrders] = useState(false);
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
@@ -39,7 +44,9 @@ export function App() {
   const [isUpdatingIdentifier, setIsUpdatingIdentifier] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
 
-  const [newIdentifierInput, setNewIdentifierInput] = useState('');
+  const [updateInputType, setUpdateInputType] = useState<'email' | 'phone'>('email');
+  const [newEmailInput, setNewEmailInput] = useState('');
+  const [newPhoneInput, setNewPhoneInput] = useState('');
   const [currentPasswordInput, setCurrentPasswordInput] = useState('');
   const [newPasswordSettingInput, setNewPasswordSettingInput] = useState('');
   const [accountUpdateSuccess, setAccountUpdateSuccess] = useState(false);
@@ -161,18 +168,30 @@ export function App() {
   };
 
   // Validation helpers
-  const validateIdentifier = (val: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const phPhoneRegex = /^\+639\d{9}$/;
-    return emailRegex.test(val) || phPhoneRegex.test(val);
+  const validateIdentifier = (val: string, type: 'email' | 'phone') => {
+    if (type === 'email') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return emailRegex.test(val);
+    } else {
+      const phPhoneRegex = /^9\d{9}$/;
+      return phPhoneRegex.test(val);
+    }
   };
 
   const validatePasswordStrength = (pass: string) => {
-    // Min 8 characters, at least 1 number, at least 1 symbol
     const minLength = pass.length >= 8;
     const hasNumber = /\d/.test(pass);
     const hasSymbol = /[\W_]/.test(pass);
     return minLength && hasNumber && hasSymbol;
+  };
+
+  const getResolvedIdentifier = (type: 'email' | 'phone', emailVal: string, phoneVal: string) => {
+    if (type === 'email') {
+      return emailVal.trim().toLowerCase();
+    } else {
+      const cleanPhone = phoneVal.replace(/\D/g, '');
+      return `+63${cleanPhone}`;
+    }
   };
 
   const handleRegularAuth = async (e: React.FormEvent) => {
@@ -182,9 +201,10 @@ export function App() {
     setPasswordError('');
     setLoginError('');
 
-    if (!authInput.trim()) {
+    const rawIdentifier = authInputType === 'email' ? authEmailInput : authPhoneInput;
+    if (!rawIdentifier.trim()) {
       if (isSignUp) {
-        setIdentifierError('Please enter a valid email address or phone number.');
+        setIdentifierError(authInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter your 9-digit mobile number.');
       } else {
         setLoginError('Please enter your email or phone number.');
       }
@@ -202,7 +222,7 @@ export function App() {
 
     const ADMIN_HASH = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
     const enteredPasswordHash = await hashPassword(authPassword);
-    const identifierKey = authInput.toLowerCase().trim();
+    const identifierKey = getResolvedIdentifier(authInputType, authEmailInput, authPhoneInput);
 
     if (!isSignUp && identifierKey === 'admin') {
       if (enteredPasswordHash === ADMIN_HASH) {
@@ -226,8 +246,8 @@ export function App() {
         return;
       }
 
-      if (!validateIdentifier(authInput)) {
-        setIdentifierError('Please enter a valid email address or phone number.');
+      if (!validateIdentifier(rawIdentifier, authInputType)) {
+        setIdentifierError(authInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid 9-digit mobile number (e.g., 9494685430).');
         return;
       }
 
@@ -291,7 +311,7 @@ export function App() {
       return;
     }
 
-    let resolvedName = authInput.split('@')[0] || 'Valued Regular';
+    let resolvedName = rawIdentifier.split('@')[0] || 'Valued Regular';
     try {
       const { data: cloudUser, error } = await supabase
         .from('profiles')
@@ -322,7 +342,7 @@ export function App() {
 
     const userData = {
       name: resolvedName,
-      identifier: authInput,
+      identifier: identifierKey,
       type: 'regular',
     };
 
@@ -339,15 +359,18 @@ export function App() {
 
   const handleUpdateIdentifierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || currentUser.type === 'guest' || !newIdentifierInput) return;
+    if (!currentUser || currentUser.type === 'guest') return;
 
-    if (!validateIdentifier(newIdentifierInput)) {
-      alert('Please enter a valid email address or Philippine mobile number (+639...).');
+    const rawNewId = updateInputType === 'email' ? newEmailInput : newPhoneInput;
+    if (!rawNewId) return;
+
+    if (!validateIdentifier(rawNewId, updateInputType)) {
+      alert(updateInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid 9-digit mobile number (e.g., 9494685430).');
       return;
     }
 
     const oldIdentifierKey = currentUser.identifier.toLowerCase().trim();
-    const newIdKey = newIdentifierInput.toLowerCase().trim();
+    const newIdKey = getResolvedIdentifier(updateInputType, newEmailInput, newPhoneInput);
 
     try {
       await supabase
@@ -373,7 +396,7 @@ export function App() {
       localStorage.removeItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
       localStorage.removeItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
 
-      const updatedUser = { ...currentUser, identifier: newIdentifierInput.trim() };
+      const updatedUser = { ...currentUser, identifier: newIdKey };
       setCurrentUser(updatedUser);
       localStorage.setItem('veyns_current_user', JSON.stringify(updatedUser));
       loadUserStampsAndPenalties(updatedUser);
@@ -382,7 +405,8 @@ export function App() {
       setTimeout(() => {
         setAccountUpdateSuccess(false);
         setIsUpdatingIdentifier(false);
-        setNewIdentifierInput('');
+        setNewEmailInput('');
+        setNewPhoneInput('');
       }, 2000);
     } catch (err) {
       console.error(err);
@@ -429,14 +453,15 @@ export function App() {
 
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!forgotInput || !newPasswordInput) return;
+    const rawForgot = forgotInputType === 'email' ? forgotEmailInput : forgotPhoneInput;
+    if (!rawForgot || !newPasswordInput) return;
 
     if (!validatePasswordStrength(newPasswordInput)) {
       alert('Password must be at least 8 characters long and include at least one number and one symbol.');
       return;
     }
 
-    const identifierKey = forgotInput.toLowerCase().trim();
+    const identifierKey = getResolvedIdentifier(forgotInputType, forgotEmailInput, forgotPhoneInput);
     const newHash = await hashPassword(newPasswordInput);
     
     try {
@@ -446,7 +471,8 @@ export function App() {
       setForgotSuccess(true);
       setTimeout(() => {
         setForgotSuccess(false);
-        setForgotInput('');
+        setForgotEmailInput('');
+        setForgotPhoneInput('');
         setNewPasswordInput('');
         setAuthMode('regular');
       }, 2000);
@@ -483,7 +509,8 @@ export function App() {
     setCurrentUser(null);
     setAuthMode('select');
     setIsAdminDashboardOpen(false);
-    setAuthInput('');
+    setAuthEmailInput('');
+    setAuthPhoneInput('');
     setAuthPassword('');
     setAuthName('');
     setNicknameError('');
@@ -572,7 +599,7 @@ export function App() {
 
           <div className="space-y-3 pt-2">
             <Button
-              onClick={() => { setAuthInput(''); setAuthPassword(''); setAuthName(''); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError(''); setAuthMode('regular'); setIsSignUp(false); }}
+              onClick={() => { setAuthEmailInput(''); setAuthPhoneInput(''); setAuthPassword(''); setAuthName(''); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError(''); setAuthMode('regular'); setIsSignUp(false); }}
               className="w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-white border border-emerald-700/80 py-4 px-3 h-auto rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 transition-all shadow-lg cursor-pointer text-center"
             >
               <User className="size-4 text-lime-400 shrink-0" />
@@ -645,22 +672,69 @@ export function App() {
               </div>
             )}
 
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">Email or Phone Number</label>
-              <input
-                type="text"
-                required
-                placeholder="Enter your email or phone number"
-                value={authInput}
-                onChange={(e) => {
-                  setAuthInput(e.target.value);
-                  if (identifierError) setIdentifierError('');
-                  if (loginError) setLoginError('');
-                }}
-                className={`w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none ${
-                  identifierError || (loginError && !isSignUp) ? 'border-red-500 focus:border-red-500' : 'border-emerald-800/80 focus:border-lime-400'
-                }`}
-              />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">Login / Signup With</label>
+                <div className="flex bg-[#041913] border border-emerald-800/80 rounded-xl p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => { setAuthInputType('email'); setIdentifierError(''); }}
+                    className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                      authInputType === 'email' ? 'bg-lime-400 text-black shadow' : 'text-emerald-400 hover:text-white'
+                    }`}
+                  >
+                    <Mail className="size-3" /> Email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAuthInputType('phone'); setIdentifierError(''); }}
+                    className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                      authInputType === 'phone' ? 'bg-lime-400 text-black shadow' : 'text-emerald-400 hover:text-white'
+                    }`}
+                  >
+                    <Phone className="size-3" /> Phone
+                  </button>
+                </div>
+              </div>
+
+              {authInputType === 'email' ? (
+                <div>
+                  <input
+                    type="email"
+                    required
+                    placeholder="Enter your email address"
+                    value={authEmailInput}
+                    onChange={(e) => {
+                      setAuthEmailInput(e.target.value);
+                      if (identifierError) setIdentifierError('');
+                      if (loginError) setLoginError('');
+                    }}
+                    className={`w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none ${
+                      identifierError || (loginError && !isSignUp) ? 'border-red-500 focus:border-red-500' : 'border-emerald-800/80 focus:border-lime-400'
+                    }`}
+                  />
+                </div>
+              ) : (
+                <div className={`flex items-center w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 ${
+                  identifierError || (loginError && !isSignUp) ? 'border-red-500' : 'border-emerald-800/80 focus-within:border-lime-400'
+                }`}>
+                  <span className="text-xs font-mono font-bold text-lime-400 mr-1 select-none">+63</span>
+                  <input
+                    type="tel"
+                    required
+                    maxLength={10}
+                    placeholder="9494685430"
+                    value={authPhoneInput}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setAuthPhoneInput(val);
+                      if (identifierError) setIdentifierError('');
+                      if (loginError) setLoginError('');
+                    }}
+                    className="w-full bg-transparent text-xs text-white placeholder:text-emerald-700 font-mono focus:outline-none"
+                  />
+                </div>
+              )}
               {identifierError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{identifierError}</p>}
             </div>
 
@@ -670,7 +744,7 @@ export function App() {
                 {!isSignUp && (
                   <button
                     type="button"
-                    onClick={() => { setForgotInput(authInput); setAuthMode('forgot'); }}
+                    onClick={() => { setAuthMode('forgot'); }}
                     className="text-[10px] font-semibold text-emerald-400 hover:text-lime-400 underline cursor-pointer"
                   >
                     Forgot Password?
@@ -718,7 +792,8 @@ export function App() {
             <button
               onClick={() => { 
                 setIsSignUp(!isSignUp); 
-                setAuthInput(''); 
+                setAuthEmailInput('');
+                setAuthPhoneInput('');
                 setAuthPassword(''); 
                 setAuthName(''); 
                 setSignUpSuccessMsg(false);
@@ -733,7 +808,7 @@ export function App() {
             </button>
             <div>
               <button
-                onClick={() => { setAuthInput(''); setAuthPassword(''); setAuthName(''); setAuthMode('select'); setSignUpSuccessMsg(false); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError(''); }}
+                onClick={() => { setAuthEmailInput(''); setAuthPhoneInput(''); setAuthPassword(''); setAuthName(''); setAuthMode('select'); setSignUpSuccessMsg(false); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError(''); }}
                 className="text-[11px] text-emerald-400/60 hover:text-white cursor-pointer"
               >
                 ← Back to role selection
@@ -754,7 +829,7 @@ export function App() {
               <KeyRound className="h-6 w-6 text-lime-400" /> Password Recovery
             </h2>
             <p className="text-xs text-emerald-300/80">
-              Enter your registered email/phone and set a new password.
+              Enter your registered email or phone and set a new password.
             </p>
           </div>
 
@@ -766,16 +841,54 @@ export function App() {
             </div>
           ) : (
             <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">Email or Phone Number</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Enter your email or phone number"
-                  value={forgotInput}
-                  onChange={(e) => setForgotInput(e.target.value)}
-                  className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
-                />
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">Account Type</label>
+                  <div className="flex bg-[#041913] border border-emerald-800/80 rounded-xl p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setForgotInputType('email')}
+                      className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                        forgotInputType === 'email' ? 'bg-lime-400 text-black shadow' : 'text-emerald-400 hover:text-white'
+                      }`}
+                    >
+                      <Mail className="size-3" /> Email
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForgotInputType('phone')}
+                      className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                        forgotInputType === 'phone' ? 'bg-lime-400 text-black shadow' : 'text-emerald-400 hover:text-white'
+                      }`}
+                    >
+                      <Phone className="size-3" /> Phone
+                    </button>
+                  </div>
+                </div>
+
+                {forgotInputType === 'email' ? (
+                  <input
+                    type="email"
+                    required
+                    placeholder="Enter your registered email"
+                    value={forgotEmailInput}
+                    onChange={(e) => setForgotEmailInput(e.target.value)}
+                    className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
+                  />
+                ) : (
+                  <div className="flex items-center w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 focus-within:border-lime-400">
+                    <span className="text-xs font-mono font-bold text-lime-400 mr-1 select-none">+63</span>
+                    <input
+                      type="tel"
+                      required
+                      maxLength={10}
+                      placeholder="9494685430"
+                      value={forgotPhoneInput}
+                      onChange={(e) => setForgotPhoneInput(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-transparent text-xs text-white placeholder:text-emerald-700 font-mono focus:outline-none"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -910,7 +1023,8 @@ export function App() {
             if (tab === 'update') {
               setIsUpdatingIdentifier(true);
               setIsResettingPassword(false);
-              setNewIdentifierInput(currentUser?.identifier || '');
+              setNewEmailInput(currentUser?.identifier?.includes('@') ? currentUser.identifier : '');
+              setNewPhoneInput(currentUser?.identifier?.startsWith('+63') ? currentUser.identifier.replace('+63', '') : '');
             } else if (tab === 'password') {
               setIsResettingPassword(true);
               setIsUpdatingIdentifier(false);
@@ -920,7 +1034,8 @@ export function App() {
             setCurrentUser(null);
             setAuthMode('regular');
             setIsSignUp(true);
-            setAuthInput('');
+            setAuthEmailInput('');
+            setAuthPhoneInput('');
             setAuthPassword('');
             setAuthName('');
             setNicknameError('');
@@ -950,7 +1065,8 @@ export function App() {
               setCurrentUser(null);
               setAuthMode('regular');
               setIsSignUp(true);
-              setAuthInput('');
+              setAuthEmailInput('');
+              setAuthPhoneInput('');
               setAuthPassword('');
               setAuthName('');
               setNicknameError('');
@@ -997,7 +1113,8 @@ export function App() {
                           onClick={() => {
                             setIsUpdatingIdentifier(true);
                             setIsResettingPassword(false);
-                            setNewIdentifierInput(currentUser.identifier || '');
+                            setNewEmailInput(currentUser.identifier?.includes('@') ? currentUser.identifier : '');
+                            setNewPhoneInput(currentUser.identifier?.startsWith('+63') ? currentUser.identifier.replace('+63', '') : '');
                           }}
                           className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-[11px] cursor-pointer flex items-center justify-center gap-1"
                         >
@@ -1018,17 +1135,56 @@ export function App() {
 
                     {isUpdatingIdentifier && (
                       <form onSubmit={handleUpdateIdentifierSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
-                        <div className="space-y-1">
-                          <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">New Phone Number or Email</label>
-                          <input
-                            type="text"
-                            required
-                            value={newIdentifierInput}
-                            onChange={(e) => setNewIdentifierInput(e.target.value)}
-                            className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
-                            placeholder="Enter new email or phone number"
-                          />
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">Update Type</label>
+                            <div className="flex bg-[#041913] border border-emerald-800 rounded-xl p-0.5">
+                              <button
+                                type="button"
+                                onClick={() => setUpdateInputType('email')}
+                                className={`px-2.5 py-0.5 rounded-lg text-[9px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                  updateInputType === 'email' ? 'bg-lime-400 text-black shadow' : 'text-emerald-400 hover:text-white'
+                                }`}
+                              >
+                                <Mail className="size-2.5" /> Email
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setUpdateInputType('phone')}
+                                className={`px-2.5 py-0.5 rounded-lg text-[9px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                  updateInputType === 'phone' ? 'bg-lime-400 text-black shadow' : 'text-emerald-400 hover:text-white'
+                                }`}
+                              >
+                                <Phone className="size-2.5" /> Phone
+                              </button>
+                            </div>
+                          </div>
+
+                          {updateInputType === 'email' ? (
+                            <input
+                              type="email"
+                              required
+                              value={newEmailInput}
+                              onChange={(e) => setNewEmailInput(e.target.value)}
+                              className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
+                              placeholder="Enter new email address"
+                            />
+                          ) : (
+                            <div className="flex items-center w-full rounded-xl border border-emerald-800 bg-[#041913] px-3 py-2.5 focus-within:border-lime-400">
+                              <span className="text-xs font-mono font-bold text-lime-400 mr-1 select-none">+63</span>
+                              <input
+                                type="tel"
+                                required
+                                maxLength={10}
+                                placeholder="9494685430"
+                                value={newPhoneInput}
+                                onChange={(e) => setNewPhoneInput(e.target.value.replace(/\D/g, ''))}
+                                className="w-full bg-transparent text-xs text-white placeholder:text-emerald-700 font-mono focus:outline-none"
+                              />
+                            </div>
+                          )}
                         </div>
+
                         <div className="flex gap-2">
                           <Button
                             type="button"
