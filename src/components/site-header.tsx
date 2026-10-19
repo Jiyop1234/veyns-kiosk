@@ -57,7 +57,7 @@ export function SiteHeader({
 
         <nav className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm font-medium flex-wrap justify-end relative">
           
-          {/* Plain Text Greeting or Guest Login prompt */}
+          {/* Non-clickable Greeting or Guest Login prompt */}
           {isGuest ? (
             <button 
               onClick={onOpenSignUp}
@@ -69,19 +69,17 @@ export function SiteHeader({
             </button>
           ) : currentUser ? (
             <span 
-              onClick={onOpenLoyalty}
-              className="text-lime-400 font-extrabold text-xs sm:text-sm tracking-wide cursor-pointer hover:underline"
-              title="Account Settings"
+              className="text-lime-400 font-extrabold text-xs sm:text-sm tracking-wide select-none"
             >
               Hi, {nickname}
             </span>
           ) : null}
 
-          {/* My Order / Shopping Bag Button */}
+          {/* Oval My Order / Shopping Bag Button */}
           <Button 
             variant="outline"
             onClick={onOpenOrders}
-            className="relative flex items-center gap-1.5 bg-[#061d16] border-emerald-700/80 text-white hover:border-lime-400 hover:bg-[#082a20] cursor-pointer px-2.5 sm:px-3.5 py-1.5 h-9 text-xs"
+            className="relative flex items-center gap-1.5 bg-[#061d16] border-emerald-700/80 text-white hover:border-lime-400 hover:bg-[#082a20] cursor-pointer px-3 sm:px-4 py-1.5 h-9 text-xs rounded-full"
             title="My order"
           >
             <ShoppingBag className="size-4 text-lime-400 shrink-0" />
