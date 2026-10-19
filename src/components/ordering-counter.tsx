@@ -180,7 +180,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null);
   const [calculatedDeliveryFee, setCalculatedDeliveryFee] = useState<number>(0);
   const [isPinning, setIsPinning] = useState(false);
+  
+  // Photon Live Autocomplete search states
   const [addressSearchQuery, setAddressSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
 
   const mapRef = useRef<HTMLDivElement>(null);
@@ -312,43 +315,62 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     );
   };
 
-  const handleSearchAddress = async () => {
-    if (!addressSearchQuery.trim()) return;
-    setIsSearchingAddress(true);
-    try {
-      let rawQuery = addressSearchQuery.trim();
-      const queryLower = rawQuery.toLowerCase();
-      if (!queryLower.includes('cebu') && !queryLower.includes('philippines')) {
-        rawQuery += ', Cebu, Philippines';
-      }
-
-      const query = encodeURIComponent(rawQuery);
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`, {
-        headers: {
-          'User-Agent': 'VeynsKioskDeliveryApp/1.0'
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.length > 0) {
-          const lat = parseFloat(data[0].lat);
-          const lng = parseFloat(data[0].lon);
-          
-          if (mapInstanceRef.current && markerInstanceRef.current) {
-            mapInstanceRef.current.setView([lat, lng], 16);
-            markerInstanceRef.current.setLatLng([lat, lng]);
-          }
-          await processSelectedCoordinates(lat, lng);
-          setCustomerLocation(data[0].display_name);
-        } else {
-          alert('Location or shop not found. Try adding the barangay or city (e.g. "The Preloved Shop Casuntingan Mandaue").');
-        }
-      }
-    } catch (e) {
-      alert('Error searching address. Please drop a pin on the map instead.');
-    } finally {
-      setIsSearchingAddress(false);
+  // PHOTON KOMOOT FREE AUTOCOMPLETE SEARCH
+  useEffect(() => {
+    if (!addressSearchQuery || addressSearchQuery.length < 2) {
+      setSearchResults([]);
+      return;
     }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingAddress(true);
+      try {
+        // Photon API query with Cebu focus & limit 5
+        const query = encodeURIComponent(addressSearchQuery);
+        const res = await fetch(`https://photon.komoot.io/api/?q=${query}&limit=5&lat=10.3157&lon=123.8854`, {
+          headers: {
+            'User-Agent': 'VeynsKioskDeliveryApp/1.0'
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.features) {
+            setSearchResults(data.features);
+          } else {
+            setSearchResults([]);
+          }
+        }
+      } catch (e) {
+        setSearchResults([]);
+      } finally {
+        setIsSearchingAddress(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [addressSearchQuery]);
+
+  const handleSelectSearchResult = async (feature: any) => {
+    const [lng, lat] = feature.geometry.coordinates;
+    const props = feature.properties;
+    
+    // Construct readable label from Photon properties
+    const nameParts = [
+      props.name,
+      props.street,
+      props.district || props.city || props.county,
+      props.state
+    ].filter(Boolean);
+    const fullAddress = nameParts.join(', ');
+
+    if (mapInstanceRef.current && markerInstanceRef.current) {
+      mapInstanceRef.current.setView([lat, lng], 16);
+      markerInstanceRef.current.setLatLng([lat, lng]);
+    }
+    await processSelectedCoordinates(lat, lng);
+    setCustomerLocation(fullAddress);
+    setAddressSearchQuery(fullAddress);
+    setSearchResults([]);
   };
 
   const [internalOrderHistory, setInternalOrderHistory] = useState<any[]>([]);
@@ -1411,8 +1433,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
                   />
 
-                  {/* Interactive Map Pin Section with Smart Search */}
-                  <div className="space-y-2 pt-1">
+                  {/* Photon Komoot Autocomplete Section */}
+                  <div className="space-y-2 pt-1 relative">
                     <div className="flex items-center justify-between">
                       <label className="font-bold text-lime-400 uppercase tracking-wider text-[10px]">
                         Pin Delivery Location (Map) *
@@ -1432,38 +1454,47 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         onClick={() => setIsPinning(true)}
                         className="w-full bg-[#04261d] hover:bg-[#063829] text-lime-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow"
                       >
-                        <MapPin className="size-4 text-lime-400" /> Open Map to Drop Pin / Search Address
+                        <MapPin className="size-4 text-lime-400" /> Open Map to Search Shop / Address
                       </Button>
                     ) : (
-                      <div className="space-y-2">
-                        {/* Address Search Bar */}
-                        <div className="flex gap-1.5">
+                      <div className="space-y-2 relative">
+                        {/* Photon Autocomplete Input */}
+                        <div className="relative">
                           <input
                             type="text"
-                            placeholder="Search shop name, address, or landmark..."
+                            placeholder="Type any shop name, street, or landmark..."
                             value={addressSearchQuery}
                             onChange={(e) => setAddressSearchQuery(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleSearchAddress();
-                              }
-                            }}
-                            className="flex-1 bg-[#041913] border border-emerald-800/80 rounded-xl px-3 py-2 text-xs text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
+                            className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl px-3 py-2 text-xs text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
                           />
-                          <Button
-                            type="button"
-                            disabled={isSearchingAddress}
-                            onClick={handleSearchAddress}
-                            className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                          >
-                            {isSearchingAddress ? 'Searching...' : 'Search'}
-                          </Button>
+                          {isSearchingAddress && (
+                            <span className="absolute right-3 top-2.5 text-[10px] text-emerald-400 animate-pulse">Searching...</span>
+                          )}
+
+                          {/* Autocomplete Dropdown */}
+                          {searchResults.length > 0 && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-[#041913] border border-emerald-700 rounded-xl shadow-2xl z-50 max-h-40 overflow-y-auto">
+                              {searchResults.map((feature, idx) => {
+                                const p = feature.properties;
+                                const label = [p.name, p.street, p.city || p.county, p.state].filter(Boolean).join(', ');
+                                return (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => handleSelectSearchResult(feature)}
+                                    className="w-full text-left px-3 py-2 hover:bg-[#082d22] text-[11px] text-emerald-100 border-b border-emerald-900/60 last:border-b-0 transition-colors cursor-pointer block"
+                                  >
+                                    📍 <strong className="text-white">{p.name || 'Location'}</strong> <span className="opacity-75">({label})</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
 
                         <div ref={mapRef} className="w-full h-48 rounded-xl border border-emerald-800 overflow-hidden bg-black/50" />
                         <p className="text-[10px] text-emerald-300 italic text-center">
-                          💡 Type any shop name or address (auto-searches Cebu) or drag the marker to pin.
+                          💡 Type any shop name (e.g. "The Preloved Shop") to select suggestions instantly!
                         </p>
                       </div>
                     )}
