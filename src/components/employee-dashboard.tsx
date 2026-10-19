@@ -301,9 +301,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
     const newVoucherPayload = {
       code: cleanCode,
-      type: newPromoType, // 'percentage' or 'peso'
+      type: newPromoType,
       discount_value: parseFloat(newPromoDiscount),
-      visibility: newVoucherVisibility, // 'public' or 'hidden'
+      visibility: newVoucherVisibility,
       expiry_duration_ms: expiryMs,
       usage_limit: usageLimitNum,
       usage_count: 0,
