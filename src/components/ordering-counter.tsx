@@ -50,7 +50,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       const hourInPhilippines = parseInt(formatter.format(new Date()), 10);
       return !(hourInPhilippines >= 0 && hourInPhilippines < 12);
     } catch (e) {
-      // Fallback if environment doesn't support Intl timeZone
       const currentHour = new Date().getHours();
       return !(currentHour >= 0 && currentHour < 12);
     }
@@ -774,7 +773,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const handleConfirmOrder = () => {
     if (orderType === 'today' && !isOrderTodayAllowed()) {
-      alert('⚠️ "Order Today" is currently closed (Unavailable between 12:00 AM and 12:00 PM in the Philippines). Please select "Reservation" for a future schedule instead!');
+      alert('⚠️ Store is closed! Will be back later at 12 NOON. Please select "Reservation" for a future schedule instead.');
       return;
     }
 
@@ -839,6 +838,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const validStampsCount = stamps.filter(s => s.status === 'valid').length;
   const publicVouchersList = availablePromos.filter(p => p.visibility !== 'hidden');
+
+  const isStoreClosedForToday = orderType === 'today' && !orderTodayOpen;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -1625,7 +1626,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 )}
               </div>
 
-              {/* ORDER TYPE SELECTION (Order Today vs Reservation with Philippine 12AM-12PM Lock) */}
+              {/* ORDER TYPE SELECTION (Order Today vs Reservation) */}
               <div className="space-y-2 border-t border-emerald-900/60 pt-3">
                 <h4 className="text-[11px] font-bold text-lime-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5 text-lime-400" /> Order Schedule Type
@@ -1636,7 +1637,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     disabled={!orderTodayOpen}
                     onClick={() => {
                       if (!orderTodayOpen) {
-                        alert('⚠️ "Order Today" is currently closed (Unavailable between 12:00 AM and 12:00 PM in the Philippines). Please select "Reservation" instead!');
+                        alert('⚠️ Store is closed! Will be back later at 12 NOON. Please select "Reservation" instead.');
                         return;
                       }
                       setOrderType('today');
@@ -1980,13 +1981,23 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     (fulfillment === 'delivery' && (!customerName || !customerEmail || !customerPhone || !customerLocation || !nearestLandmark)) ||
                     (fulfillment === 'pickup' && !customerName) ||
                     (orderType === 'reservation' && !reservationDate) ||
-                    (orderType === 'today' && !orderTodayOpen)
+                    isStoreClosedForToday
                   }
                   onClick={handleConfirmOrder}
-                  className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-sm transition-all shadow-lg disabled:opacity-50 cursor-pointer"
+                  className={`w-full font-extrabold py-3 rounded-xl text-sm transition-all shadow-lg cursor-pointer ${
+                    isStoreClosedForToday
+                      ? 'bg-red-950 text-red-300 border border-red-800 opacity-90 cursor-not-allowed hover:bg-red-950'
+                      : 'bg-lime-400 hover:bg-lime-500 text-black'
+                  }`}
                 >
-                  Confirm & Place Order
+                  {isStoreClosedForToday ? 'Store is Closed — Will Be Back Later at 12 NOON' : 'Confirm & Place Order'}
                 </Button>
+
+                {isStoreClosedForToday && (
+                  <p className="text-center text-[11px] text-amber-300 font-medium pt-1">
+                    💡 <em>Though the store is closed, you can still apply a reservation for tomorrow!</em> Just switch your Order Schedule Type to <strong>Reservation</strong> above.
+                  </p>
+                )}
               </div>
             </>
           )}
