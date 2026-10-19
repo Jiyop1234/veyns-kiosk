@@ -236,7 +236,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // Customer pin starts directly at the store coordinates (0.0 km)
     const customerInitialLat = STORE_LAT;
     const customerInitialLng = STORE_LNG;
 
@@ -396,7 +395,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const saveOrderToHistory = async (newOrder: any) => {
     try {
-      const { error: orderError } = await supabase.from('orders'].insert([
+      const { error: orderError } = await supabase.from('orders').insert([
         {
           order_number: newOrder.orderNumber,
           customer_name: newOrder.name,
