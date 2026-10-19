@@ -6,7 +6,7 @@ import { EmployeeDashboard } from '@/components/employee-dashboard';
 import { CartProvider } from '@/lib/cart';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings, Edit3 } from 'lucide-react';
+import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings, Edit3, Facebook, Instagram } from 'lucide-react';
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
 
@@ -901,7 +901,32 @@ export function App() {
                             placeholder="Enter new password"
                           />
                         </div>
-                        <div className="flex gap-2">
+
+                        {/* Forgot Password Note with Social Media Links */}
+                        <div className="bg-[#03120d] border border-emerald-800/80 rounded-xl p-2.5 text-[11px] text-emerald-300 space-y-1.5">
+                          <p className="font-semibold">Forgot your current password?</p>
+                          <p className="text-[10px] text-emerald-400/80">Please contact us through our social media pages below:</p>
+                          <div className="flex gap-2 pt-0.5">
+                            <a
+                              href="https://www.facebook.com/veyns.ubec"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1 bg-[#061d16] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 px-2 py-1 rounded-lg font-bold text-[10px] transition-all"
+                            >
+                              <Facebook className="size-3" /> Facebook
+                            </a>
+                            <a
+                              href="https://www.instagram.com/veyns.ubec?utm_source=ig_web_button_share_sheet&mdxt=ZDNlZDc0MzIxNw=="
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1 bg-[#061d16] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 px-2 py-1 rounded-lg font-bold text-[10px] transition-all"
+                            >
+                              <Instagram className="size-3" /> Instagram
+                            </a>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 pt-1">
                           <Button
                             type="button"
                             onClick={() => setIsResettingPassword(false)}
