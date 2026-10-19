@@ -54,7 +54,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   // Customer Edit State
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [editCustName, setEditCustName] = useState('');
-  const [editCustIdentifier, setEditCustIdentifier] = useState('');
+  const [editCustType, setEditCustType] = useState<'email' | 'phone'>('email');
+  const [editCustValue, setEditCustValue] = useState('');
 
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
   const [selectedSlotDate, setSelectedSlotDate] = useState(new Date().toISOString().split('T')[0]);
@@ -382,8 +383,16 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     if (!editingCustomer) return;
 
     const oldIdentifierKey = editingCustomer.identifier.toLowerCase().trim();
-    const newIdentifierKey = editCustIdentifier.trim().toLowerCase();
     const newName = editCustName.trim();
+    let finalValue = editCustValue.trim();
+
+    if (editCustType === 'phone') {
+      if (!finalValue.startsWith('+')) {
+        finalValue = '+63' + finalValue.replace(/^0+/, '');
+      }
+    }
+
+    const newIdentifierKey = finalValue.toLowerCase();
 
     if (!newIdentifierKey || !newName) {
       alert('Nickname and identifier cannot be blank.');
@@ -391,7 +400,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
 
     try {
-      // Update in Supabase profiles table
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -405,7 +413,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         return;
       }
 
-      // Migrate localStorage keys if identifier changed
       if (oldIdentifierKey !== newIdentifierKey) {
         const plainPass = localStorage.getItem(`veyns_pwd_plain_${oldIdentifierKey}`);
         const hashPass = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
@@ -796,7 +803,17 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">{cust.type || 'Regular'}</span>
                           </td>
                           <td className="p-3 text-right space-x-2">
-                            <Button onClick={() => { setEditingCustomer(cust); setEditCustName(cust.name || ''); setEditCustIdentifier(cust.identifier || ''); }} size="sm" className="bg-[#062c21] hover:bg-emerald-800 text-lime-300 border border-emerald-700 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
+                            <Button 
+                              onClick={() => {
+                                setEditingCustomer(cust);
+                                setEditCustName(cust.name || '');
+                                const isPhone = cust.identifier.startsWith('+') || /^\d+$/.test(cust.identifier.replace(/\s+/g, ''));
+                                setEditCustType(isPhone ? 'phone' : 'email');
+                                setEditCustValue(cust.identifier || '');
+                              }} 
+                              size="sm" 
+                              className="bg-[#062c21] hover:bg-emerald-800 text-lime-300 border border-emerald-700 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer"
+                            >
                               <Edit2 className="h-3.5 w-3.5 mr-1" /> Edit
                             </Button>
                             <Button onClick={() => openStampManager(cust)} size="sm" className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
@@ -1078,7 +1095,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   Edit Account: {editingCustomer.name}
                 </DialogTitle>
                 <DialogDescription className="text-xs text-emerald-300">
-                  Update customer nickname or Gmail/Phone identifier.
+                  Update customer nickname or switch between email and phone identifier.
                 </DialogDescription>
               </div>
 
@@ -1095,12 +1112,30 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Gmail / Phone Identifier</label>
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Identifier Type</label>
+                  <select
+                    value={editCustType}
+                    onChange={(e) => {
+                      setEditCustType(e.target.value as any);
+                      setEditCustValue('');
+                    }}
+                    className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-xs text-lime-300 font-bold focus:outline-none focus:border-lime-400"
+                  >
+                    <option value="email">Gmail / Email</option>
+                    <option value="phone">Phone Number</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block">
+                    {editCustType === 'email' ? 'Email Address' : 'Phone Number (+63...)'}
+                  </label>
                   <input
-                    type="text"
+                    type={editCustType === 'email' ? 'email' : 'text'}
                     required
-                    value={editCustIdentifier}
-                    onChange={(e) => setEditCustIdentifier(e.target.value)}
+                    placeholder={editCustType === 'email' ? 'e.g. user@gmail.com' : 'e.g. 94949685430'}
+                    value={editCustValue}
+                    onChange={(e) => setEditCustValue(e.target.value)}
                     className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-white font-mono font-bold focus:outline-none focus:border-lime-400"
                   />
                 </div>
