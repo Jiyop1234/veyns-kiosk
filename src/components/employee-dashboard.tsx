@@ -118,7 +118,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           items: o.items || [],
           total: o.total || 0,
           date: new Date(o.created_at).toLocaleString(),
-          promoCode: o.promo_code || ''
+          promoCode: o.promo_code || '',
+          orderType: o.order_type || 'today',
+          scheduleInfo: o.schedule_info || 'Immediate / Today'
         })));
       }
 
@@ -412,7 +414,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   return (
     <div className="min-h-screen bg-[#020b08] text-white p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-emerald-900/60 pb-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-emerald-900/65 pb-5">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-lime-400 font-extrabold text-xs uppercase tracking-widest">
               <span className="h-2 w-2 rounded-full bg-lime-400 animate-pulse"></span> Employee & Admin Portal
@@ -491,7 +493,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                       <tr>
                         <th className="p-3">Order #</th>
                         <th className="p-3">Customer & Contact</th>
-                        <th className="p-3">Fulfillment</th>
+                        <th className="p-3">Fulfillment & Schedule</th>
                         <th className="p-3">Delivery Address & Landmark</th>
                         <th className="p-3">Items Summary</th>
                         <th className="p-3">Promo</th>
@@ -517,7 +519,15 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             </div>
                           </td>
                           <td className="p-3">
-                            <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">{order.fulfillment}</span>
+                            <div className="space-y-1">
+                              <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">
+                                {order.fulfillment}
+                              </span>
+                              <p className="text-[10px] font-bold text-amber-300">
+                                {order.orderType === 'reservation' ? '📅 Reservation' : '⚡ Order Today'}
+                              </p>
+                              <p className="text-[10px] text-emerald-300 font-medium">{order.scheduleInfo}</p>
+                            </div>
                           </td>
                           <td className="p-3 text-emerald-200">
                             <p className="font-semibold text-white max-w-[200px] truncate">{order.location || 'No address specified'}</p>
