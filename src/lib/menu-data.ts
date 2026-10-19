@@ -24,7 +24,8 @@ export const menuCategories = [
   'All items',
   'Rice Bowls',
   'Noodle Bowls',
-  'Sides'
+  'Sides',
+  'Apparel'
 ];
 
 export const CATEGORIES = menuCategories;
@@ -128,6 +129,13 @@ export const menuItems: MenuItem[] = [
     category: 'Sides',
     price: 59,
     description: "Crispy salted french fries served in our classic kiosk cup with Raising Cane's dipping sauce."
+  },
+  {
+    id: 'hoodie',
+    name: 'VEYNS Streetwear Hoodie',
+    category: 'Apparel',
+    price: 850,
+    description: 'Oversized boxy-fit heavy cotton premium streetwear hoodie with custom minimalist print.'
   }
 ];
 
