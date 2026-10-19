@@ -496,13 +496,31 @@ export function App() {
   };
 
   const handleEmployeeAuth = async (pinValue: string) => {
-    const ADMIN_HASH = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
-    const hashedInput = await hashPassword(pinValue);
+    if (!pinValue) {
+      alert('Please enter an authorization code.');
+      return;
+    }
 
-    if (pinValue === ADMIN_HASH || hashedInput === ADMIN_HASH || pinValue === '1234') {
-      setIsAdminDashboardOpen(true);
-    } else {
-      alert('Access Denied. Invalid authorization code.');
+    try {
+      const { data, error } = await supabase
+        .from('admin_config')
+        .select('value')
+        .eq('key', 'employee_auth_code')
+        .single();
+
+      if (error || !data) {
+        alert('Error verifying security clearance with database.');
+        return;
+      }
+
+      if (pinValue.trim() === data.value.trim()) {
+        setIsAdminDashboardOpen(true);
+      } else {
+        alert('Access Denied. Invalid authorization code.');
+      }
+    } catch (err) {
+      console.error('Auth error:', err);
+      alert('Database connection error during authorization.');
     }
   };
 
