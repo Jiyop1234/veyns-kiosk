@@ -166,14 +166,38 @@ export function App() {
     }
 
     if (isSignUp) {
-      const nicknameToSave = authName.trim() || authInput.split('@')[0] || 'Valued Regular';
-      const userData = {
-        name: nicknameToSave,
-        identifier: authInput,
-        type: 'regular',
-      };
+      const nicknameToSave = authName.trim();
+      if (!nicknameToSave) {
+        alert('Nickname is required.');
+        return;
+      }
+
+      // Password Validation: Minimum 8 chars, 1 capital letter, 1 number, 1 symbol
+      const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+      if (!passwordRegex.test(authPassword)) {
+        alert('Password must be at least 8 characters long, include at least 1 capital letter, 1 number, and 1 symbol.');
+        return;
+      }
 
       try {
+        // Check if Nickname or Identifier already exists in Supabase database
+        const { data: existingProfiles, error: checkError } = await supabase
+          .from('profiles')
+          .select('*')
+          .or(`identifier.eq.${identifierKey},name.eq.${nicknameToSave}`);
+
+        if (existingProfiles && existingProfiles.length > 0) {
+          const match = existingProfiles[0];
+          if (match.identifier.toLowerCase() === identifierKey) {
+            alert('This email or phone number is already registered. Please login or delete the account first.');
+            return;
+          }
+          if (match.name.toLowerCase() === nicknameToSave.toLowerCase()) {
+            alert('This nickname is unavailable. Please choose another nickname.');
+            return;
+          }
+        }
+
         localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, authPassword);
         localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, enteredPasswordHash);
 
@@ -189,9 +213,13 @@ export function App() {
 
         if (dbError) {
           console.error("Supabase Profile Insert Error:", dbError.message);
+          alert('Error registering account. Please try again.');
+          return;
         }
       } catch (err) {
         console.error('Supabase signup exception:', err);
+        alert('Database connection error during signup.');
+        return;
       }
 
       setSignUpSuccessMsg(true);
@@ -545,7 +573,7 @@ export function App() {
               <input
                 type="password"
                 required
-                placeholder="e.g. admin or ••••••••"
+                placeholder="Min 8 chars, 1 capital, 1 number, 1 symbol"
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
                 className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
@@ -977,7 +1005,7 @@ export function App() {
                               onClick={() => setIsResettingPassword(false)}
                               className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
                             >
-                              Cancel
+                              Cancel`
                             </Button>
                             <Button
                               type="submit"
