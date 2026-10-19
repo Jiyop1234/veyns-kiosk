@@ -43,7 +43,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
   const [stampTargetUser, setStampTargetUser] = useState<any>(null);
   const [customerStampsDetailed, setCustomerStampsDetailed] = useState<{ status: 'valid' | 'invalid' | 'to_clear' | 'empty'; date: string; penaltyReason?: string }[]>([]);
-  const [selectedInfractionPreset, setSelectedInfractionPreset] = useState('');
+  const [selectedInfractionPreset, setSelectedInfractionPreset] = useState('Active Account');
 
   const infractionPresets = [
     {
@@ -186,6 +186,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           }
           if (p.penalty_data) {
             localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(p.penalty_data));
+          } else {
+            localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
           }
 
           return {
@@ -413,11 +415,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     try {
       const identifierKey = stampTargetUser.identifier.toLowerCase().trim();
       
-      const isCleared = 
+      const isNullOrCleanPreset = 
         !selectedInfractionPreset || 
-        selectedInfractionPreset.trim() === '' || 
         selectedInfractionPreset === 'Active Account' || 
-        selectedInfractionPreset === 'Penalties Waived';
+        selectedInfractionPreset === 'Penalties Waived' || 
+        selectedInfractionPreset === 'No Violation till card clears';
 
       let slotsToSave = customerStampsDetailed;
 
@@ -425,21 +427,21 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         slotsToSave = Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' }));
       }
 
-      const matchedPreset = !isCleared && selectedInfractionPreset !== 'No Violation till card clears' 
+      const matchedPreset = !isNullOrCleanPreset 
         ? infractionPresets.find(p => p.label === selectedInfractionPreset || p.desc === selectedInfractionPreset) 
         : null;
       
       let penaltyStatus = null;
-      if (matchedPreset && selectedInfractionPreset !== 'No Violation till card clears' && selectedInfractionPreset !== 'Penalties Waived' && selectedInfractionPreset !== 'Active Account') {
+      if (matchedPreset && !isNullOrCleanPreset) {
         penaltyStatus = {
           sixthReward: matchedPreset.sixthReward,
           ninthReward: matchedPreset.ninthReward,
           twelfthReward: matchedPreset.twelfthReward,
-          appliedPenalties: [matchedPreset.desc]
+          appliedPenalties: [matchedPreset.label]
         };
       }
 
-      if (isCleared || selectedInfractionPreset === 'No Violation till card clears') {
+      if (isNullOrCleanPreset) {
         slotsToSave = slotsToSave.map(s => {
           if (s.status === 'invalid' || s.status === 'to_clear') {
             return { status: 'empty' as const, date: '' };
@@ -450,7 +452,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
       // Save locally first so UI responds instantly
       localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(slotsToSave));
-      if (penaltyStatus && !isCleared) {
+      if (penaltyStatus) {
         localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(penaltyStatus));
       } else {
         localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
@@ -468,7 +470,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           .from('profiles')
           .update({
             stamps_data: slotsToSave,
-            penalty_data: penaltyStatus && !isCleared ? penaltyStatus : null
+            penalty_data: penaltyStatus // null if Active Account / Penalties Waived / No Violation
           })
           .eq('identifier', identifierKey);
       } catch (cloudErr) {
