@@ -84,7 +84,30 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   };
 
-  const loadMenu = () => {
+  const loadMenuFromCloud = async () => {
+    try {
+      const { data: cloudMenu, error } = await supabase.from('menu_items').select('*');
+      if (cloudMenu && cloudMenu.length > 0) {
+        const formatted = cloudMenu.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          category: m.category,
+          description: m.description,
+          price: Number(m.price),
+          discountPercent: Number(m.discount_percent || 0),
+          isAvailable: m.is_available,
+          bestSeller: m.best_seller,
+          isCustomizable: m.is_customizable,
+          hasBrothEggOption: m.has_broth_egg_option
+        }));
+        setCurrentMenuGrid(formatted);
+        return;
+      }
+    } catch (e) {
+      console.error('Error fetching cloud menu:', e);
+    }
+
+    // Fallback to local storage or MENU_GRID
     try {
       const savedMenu = localStorage.getItem('veyns_manageable_menu');
       if (savedMenu) {
@@ -99,15 +122,26 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   useEffect(() => {
-    loadMenu();
+    loadMenuFromCloud();
     loadUserStampsAndPenalties();
 
+    const menuChannel = supabase
+      .channel('public:menu_items_counter')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => {
+        loadMenuFromCloud();
+      })
+      .subscribe();
+
     const handleStorageChange = () => {
-      loadMenu();
+      loadMenuFromCloud();
       loadUserStampsAndPenalties();
     };
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+
+    return () => {
+      supabase.removeChannel(menuChannel);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, [resetKey, currentUser]);
 
   const [selected, setSelected] = useState(null);
@@ -235,8 +269,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
       if (orderError) {
         console.error('Supabase order insert error:', orderError.message);
-      } else {
-        console.log('Order successfully saved to Supabase!');
       }
     } catch (err) {
       console.error('Supabase order exception:', err);
