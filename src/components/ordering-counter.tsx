@@ -1,6 +1,6 @@
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
-import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
@@ -175,6 +175,129 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerLocation, setCustomerLocation] = useState('');
   const [nearestLandmark, setNearestLandmark] = useState('');
+
+  // Distance & Delivery Fee states
+  const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null);
+  const [calculatedDeliveryFee, setCalculatedDeliveryFee] = useState<number>(0);
+  const [isPinning, setIsPinning] = useState(false);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markerInstanceRef = useRef<any>(null);
+
+  // Store Point A Coordinates: Julio B. Alinsug, Basak, Mandaue City, Cebu
+  const STORE_LAT = 10.3475;
+  const STORE_LNG = 123.9388;
+
+  const calculateDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Radius of the earth in km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in km
+  };
+
+  const computeFeeFromKm = (km: number) => {
+    if (km <= 2.0) return 0; // Free delivery for <= 2km
+    const succeedingKm = km - 2.0;
+    return 30 + Math.ceil(succeedingKm) * 5; // 30 pesos base for first 2km + 5 pesos per succeeding km
+  };
+
+  // Initialize Leaflet map inside checkout when delivery is selected & pinning is active
+  useEffect(() => {
+    if (showCheckout && fulfillment === 'delivery' && isPinning) {
+      if (!window.L) {
+        // Load Leaflet dynamically if not already present
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(link);
+
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        script.onload = initMap;
+        document.body.appendChild(script);
+      } else {
+        setTimeout(initMap, 100);
+      }
+    }
+  }, [showCheckout, fulfillment, isPinning]);
+
+  const initMap = () => {
+    if (!mapRef.current || mapInstanceRef.current) return;
+    const L = window.L;
+    if (!L) return;
+
+    const initialLat = STORE_LAT + 0.01;
+    const initialLng = STORE_LNG + 0.01;
+
+    const map = L.map(mapRef.current).setView([initialLat, initialLng], 14);
+    mapInstanceRef.current = map;
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const marker = L.marker([initialLat, initialLng], { draggable: true }).addTo(map);
+    markerInstanceRef.current = marker;
+
+    marker.on('dragend', async () => {
+      const pos = marker.getLatLng();
+      await processSelectedCoordinates(pos.lat, pos.lng);
+    });
+
+    map.on('click', async (e: any) => {
+      marker.setLatLng(e.latlng);
+      await processSelectedCoordinates(e.latlng.lat, e.latlng.lng);
+    });
+  };
+
+  const processSelectedCoordinates = async (lat: number, lng: number) => {
+    // 1. Calculate distance from Store (Point A)
+    const dist = calculateDistanceKm(STORE_LAT, STORE_LNG, lat, lng);
+    const roundedDist = Number(dist.toFixed(2));
+    setDeliveryDistanceKm(roundedDist);
+
+    const fee = computeFeeFromKm(roundedDist);
+    setCalculatedDeliveryFee(fee);
+
+    // 2. Reverse geocode using Nominatim API
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+      const data = await res.json();
+      if (data && data.display_name) {
+        setCustomerLocation(data.display_name);
+      } else {
+        setCustomerLocation(`Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
+      }
+    } catch (e) {
+      setCustomerLocation(`Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
+    }
+  };
+
+  const handleUseCurrentGPS = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
+    }
+    setIsPinning(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        if (mapInstanceRef.current && markerInstanceRef.current) {
+          mapInstanceRef.current.setView([lat, lng], 16);
+          markerInstanceRef.current.setLatLng([lat, lng]);
+        }
+        await processSelectedCoordinates(lat, lng);
+      },
+      () => {
+        alert('Unable to retrieve your location. Please drop a pin on the map.');
+      }
+    );
+  };
 
   const [internalOrderHistory, setInternalOrderHistory] = useState<any[]>([]);
   const historyList = orderHistory !== undefined ? orderHistory : internalOrderHistory;
@@ -409,7 +532,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const promoDiscountAmount = appliedPromo ? (total * appliedPromo.discountPercent) / 100 : 0;
-  const finalCartTotal = Math.max(0, total - promoDiscountAmount);
+  const deliveryFeeTotal = fulfillment === 'delivery' ? calculatedDeliveryFee : 0;
+  const finalCartTotal = Math.max(0, total - promoDiscountAmount + deliveryFeeTotal);
 
   const handleReviewOrder = () => {
     setShowUpsell(false);
@@ -426,6 +550,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       landmark: nearestLandmark,
       fulfillment,
       deliveryOption,
+      deliveryDistanceKm,
+      deliveryFee: deliveryFeeTotal,
       paymentOption: 'Cash on Pickup / Delivery',
       items: [...lines],
       subtotal: total,
@@ -452,6 +578,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setNearestLandmark('');
     setAppliedPromo(null);
     setPromoInput('');
+    setDeliveryDistanceKm(null);
+    setCalculatedDeliveryFee(0);
+    setIsPinning(false);
   };
 
   const validStampsCount = stamps.filter(s => s.status === 'valid').length;
@@ -1003,7 +1132,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   <Camera className="h-4 w-4" /> Please Screenshot This Invoice!
                 </div>
                 <p className="text-xs text-emerald-100 leading-relaxed max-w-sm mx-auto">
-                  Take a screenshot and send it to our social pages to finalize your delivery fee and updates:
+                  Take a screenshot and send it to our social pages to finalize your updates:
                 </p>
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <a
@@ -1050,6 +1179,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         <span className="font-bold text-white uppercase">{placedOrderDetails.deliveryOption === 'our' ? 'Our Delivery' : 'Maxim Courier'}</span>
                       </div>
                       <div className="flex justify-between">
+                        <span>Delivery Distance:</span>
+                        <span className="font-bold text-lime-400">{placedOrderDetails.deliveryDistanceKm} km</span>
+                      </div>
+                      <div className="flex justify-between">
                         <span>Delivery Address:</span>
                         <span className="font-bold text-white text-right max-w-[180px] truncate">{placedOrderDetails.location}</span>
                       </div>
@@ -1072,8 +1205,14 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       <span>-{formatPeso(placedOrderDetails.promoDiscount)}</span>
                     </div>
                   )}
+                  {placedOrderDetails.fulfillment === 'delivery' && (
+                    <div className="flex justify-between text-emerald-200">
+                      <span>Delivery Fee ({placedOrderDetails.deliveryDistanceKm} km):</span>
+                      <span className="font-bold text-white">{formatPeso(placedOrderDetails.deliveryFee)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm font-extrabold text-white pt-1">
-                    <span>Total Amount:</span>
+                    <span>Total Amount Due:</span>
                     <span className="text-lime-400 text-base">{formatPeso(placedOrderDetails.total)}</span>
                   </div>
                 </div>
@@ -1192,7 +1331,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
               {fulfillment === 'delivery' ? (
                 <div className="space-y-3 bg-[#061d16] border border-emerald-800/60 rounded-2xl p-3.5 my-2 text-xs w-full max-w-full">
                   <h5 className="font-bold text-lime-400 flex items-center gap-1.5 border-b border-emerald-900/60 pb-2">
-                    <User className="h-3.5 w-3.5" /> Customer Details
+                    <User className="h-3.5 w-3.5" /> Customer Details & Exact Location Pin
                   </h5>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1220,12 +1359,45 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
                   />
 
+                  {/* Interactive Map Pin Section */}
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center justify-between">
+                      <label className="font-bold text-lime-400 uppercase tracking-wider text-[10px]">
+                        Pin Delivery Location (Map) *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleUseCurrentGPS}
+                        className="text-[10px] font-extrabold bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <Navigation className="size-3" /> Use My GPS
+                      </button>
+                    </div>
+
+                    {!isPinning ? (
+                      <Button
+                        type="button"
+                        onClick={() => setIsPinning(true)}
+                        className="w-full bg-[#04261d] hover:bg-[#063829] text-lime-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow"
+                      >
+                        <MapPin className="size-4 text-lime-400" /> Open Map to Drop Pin / Auto-Calculate KM
+                      </Button>
+                    ) : (
+                      <div className="space-y-2">
+                        <div ref={mapRef} className="w-full h-48 rounded-xl border border-emerald-800 overflow-hidden bg-black/50" />
+                        <p className="text-[10px] text-emerald-300 italic text-center">
+                          💡 Drag the marker or click anywhere on the map to pin your exact delivery location.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   <textarea
                     rows={2}
-                    placeholder="Delivery Location / Street Address *"
+                    placeholder="Delivery Address (Auto-filled from Pin) *"
                     value={customerLocation}
                     onChange={(e) => setCustomerLocation(e.target.value)}
-                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400 resize-none"
+                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400 resize-none font-mono text-[11px]"
                   />
 
                   <input
@@ -1235,6 +1407,26 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     onChange={(e) => setNearestLandmark(e.target.value)}
                     className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
                   />
+
+                  {/* Delivery Distance & Fee Summary Box */}
+                  {deliveryDistanceKm !== null && (
+                    <div className="bg-[#03120d] border border-lime-400/60 rounded-xl p-3 text-xs space-y-1">
+                      <div className="flex justify-between font-bold text-white">
+                        <span>Calculated Distance:</span>
+                        <span className="text-lime-400">{deliveryDistanceKm} km from Store</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-white">
+                        <span>Delivery Fee Rule:</span>
+                        <span className="text-lime-400">
+                          {deliveryDistanceKm <= 2 ? 'Free Delivery (<=2km)' : `₱30 (first 2km) + ₱5/km`}
+                        </span>
+                      </div>
+                      <div className="flex justify-between font-extrabold text-sm pt-1 border-t border-emerald-900/60 text-white">
+                        <span>Delivery Fee Total:</span>
+                        <span className="text-lime-400">{formatPeso(calculatedDeliveryFee)}</span>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-2 pt-2 border-t border-emerald-900/60">
                     <label className="font-bold text-lime-400 uppercase tracking-wider text-[10px] block">
@@ -1251,7 +1443,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         }`}
                       >
                         <span>Our Delivery</span>
-                        <span className="text-[10px] opacity-80 font-normal">Calculated in chat</span>
+                        <span className="text-[10px] opacity-80 font-normal">Calculated by distance</span>
                       </button>
 
                       <button
@@ -1267,22 +1459,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         <span className="text-[10px] opacity-80 font-normal">Standard Maxim rates apply</span>
                       </button>
                     </div>
-
-                    {deliveryOption === 'our' ? (
-                      <div className="bg-[#03120d] border border-lime-400/50 rounded-xl p-3 text-[11px] text-emerald-200 space-y-1">
-                        <p className="font-bold text-lime-400 flex items-center gap-1">
-                          <ShoppingBag className="h-3.5 w-3.5" /> Our Delivery Rate Info:
-                        </p>
-                        <p className="text-[10px] text-lime-300 font-semibold pt-0.5">
-                          ℹ️ The final delivery fee will be calculated and finalized when you message our social pages!
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="bg-[#03120d] border border-emerald-800/80 rounded-xl p-3 text-[11px] text-emerald-200">
-                        <p className="font-bold text-lime-400">🛵 Maxim Delivery</p>
-                        <p className="opacity-90">Standard Maxim rider distance rates apply upon pickup.</p>
-                      </div>
-                    )}
                   </div>
                 </div>
               ) : (
@@ -1312,7 +1488,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   <CreditCard className="h-3.5 w-3.5" /> Payment Term:
                 </p>
                 <p className="text-white font-semibold">
-                  Payment will be collected <span className="text-lime-400 underline">upon delivery or upon pick up</span> for your security and peace of mind.
+                  All payments will be collected <span className="text-lime-400 underline">upon delivery or upon pick up</span> for security and safety to both parties.
                 </p>
               </div>
 
@@ -1326,6 +1502,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   <div className="flex items-center justify-between text-xs text-amber-400 font-semibold">
                     <span>Promo Discount ({appliedPromo?.code})</span>
                     <span>-{formatPeso(promoDiscountAmount)}</span>
+                  </div>
+                )}
+
+                {fulfillment === 'delivery' && (
+                  <div className="flex items-center justify-between text-xs text-emerald-200">
+                    <span>Delivery Fee {deliveryDistanceKm !== null ? `(${deliveryDistanceKm} km)` : ''}</span>
+                    <span className="font-bold text-white">{formatPeso(deliveryFeeTotal)}</span>
                   </div>
                 )}
 
