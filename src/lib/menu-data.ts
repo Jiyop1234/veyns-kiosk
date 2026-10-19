@@ -5,6 +5,7 @@ export interface MenuItem {
   price: number;
   description: string;
   bestSeller?: boolean;
+  sortOrder?: number;
   isCustomizable?: boolean;
   hasBrothEggOption?: boolean;
   discountPercent?: number;
@@ -89,21 +90,24 @@ export const menuItems: MenuItem[] = [
     category: 'Rice Bowls',
     price: 109,
     description: 'Grilled pork with rice, a 1 oz cup of toyomansi and 4 cucumber slices, served in a kraft paper bowl.',
-    bestSeller: true
+    bestSeller: true,
+    sortOrder: 1
   },
   {
     id: 'pork-sisig',
     name: 'Pork Sisig Rice Bowl',
     category: 'Rice Bowls',
     price: 119,
-    description: 'Sizzling savory chopped pork seasoned with calamansi, onions, and creamy dressing over rice.'
+    description: 'Sizzling savory chopped pork seasoned with calamansi, onions, and creamy dressing over rice.',
+    sortOrder: 10
   },
   {
     id: 'pork-katsu',
     name: 'Pork Katsu Meal',
     category: 'Rice Bowls',
     price: 89,
-    description: 'Single piece crispy breaded pork katsu served over hot steamed rice with savory drizzle.'
+    description: 'Single piece crispy breaded pork katsu served over hot steamed rice with savory drizzle.',
+    sortOrder: 11
   },
   {
     id: 'ramen-katsu',
@@ -112,7 +116,8 @@ export const menuItems: MenuItem[] = [
     price: 119,
     description: 'Rich savory soup broth with noodles, fresh scallions, and your choice of egg or katsu toppings.',
     isCustomizable: true,
-    hasBrothEggOption: true
+    hasBrothEggOption: true,
+    sortOrder: 2
   },
   {
     id: 'buldak',
@@ -121,21 +126,24 @@ export const menuItems: MenuItem[] = [
     price: 134,
     description: 'Spicy Korean fire noodles tossed in signature hot sauce with melted cheese.',
     isCustomizable: true,
-    hasBrothEggOption: false
+    hasBrothEggOption: false,
+    sortOrder: 12
   },
   {
     id: 'fries',
     name: "Crispy French Fries (Salted w/ Cane's Dip)",
     category: 'Sides',
     price: 59,
-    description: "Crispy salted french fries served in our classic kiosk cup with Raising Cane's dipping sauce."
+    description: "Crispy salted french fries served in our classic kiosk cup with Raising Cane's dipping sauce.",
+    sortOrder: 13
   },
   {
     id: 'hoodie',
     name: 'VEYNS Streetwear Hoodie',
     category: 'Apparel',
     price: 850,
-    description: 'Oversized boxy-fit heavy cotton premium streetwear hoodie with custom minimalist print.'
+    description: 'Oversized boxy-fit heavy cotton premium streetwear hoodie with custom minimalist print.',
+    sortOrder: 99
   }
 ];
 

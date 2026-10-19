@@ -25,7 +25,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isAddingNewItem, setIsAddingNewItem] = useState(false);
 
-  // Form states for adding/editing menu items
   const [itemName, setItemName] = useState('');
   const [itemCategory, setItemCategory] = useState('Rice Bowls');
   const [itemDescription, setItemDescription] = useState('');
@@ -45,102 +44,28 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [newTempPassword, setNewTempPassword] = useState('');
   const [visiblePasswords, setVisiblePasswords] = useState<{ [key: string]: boolean }>({});
 
-  const [editIdentifierUser, setEditIdentifierUser] = useState<any>(null);
-  const [newIdentifierInput, setNewIdentifierInput] = useState('');
-
   const [stampTargetUser, setStampTargetUser] = useState<any>(null);
   const [customerStampsDetailed, setCustomerStampsDetailed] = useState<{ status: 'valid' | 'invalid' | 'to_clear' | 'empty'; date: string; penaltyReason?: string }[]>([]);
   const [selectedInfractionPreset, setSelectedInfractionPreset] = useState('Active Account');
 
   const infractionPresets = [
-    {
-      label: "Active Account",
-      sixthReward: "25% OFF",
-      ninthReward: "50% OFF",
-      twelfthReward: "FREE",
-      desc: "Active Account: Normal standing."
-    },
-    {
-      label: "Penalties Waived",
-      sixthReward: "25% OFF",
-      ninthReward: "50% OFF",
-      twelfthReward: "FREE",
-      desc: "Penalties Waived: All penalties cleared and notices removed."
-    },
-    {
-      label: "No Violation till card clears",
-      sixthReward: "25% OFF",
-      ninthReward: "50% OFF",
-      twelfthReward: "FREE",
-      desc: "No Violation till card clears: Card successfully cleared without violations; reset back to start."
-    },
-    {
-      label: "1st offense False Stamping (At/Near Milestones)",
-      sixthReward: "Invalidated",
-      ninthReward: "25% OFF",
-      twelfthReward: "50% OFF",
-      desc: "1st offense False Stamping (At/Near Milestones): 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%."
-    },
-    {
-      label: "1st offense Early False Stamping (Early Stage Padding)",
-      sixthReward: "Invalidated",
-      ninthReward: "25% OFF",
-      twelfthReward: "50% OFF",
-      desc: "1st offense Early False Stamping (Early Stage Padding): 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%."
-    },
-    {
-      label: "1st offense False Claims:",
-      sixthReward: "Invalidated",
-      ninthReward: "25% OFF",
-      twelfthReward: "50% OFF",
-      desc: "1st offense False Claims: 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%."
-    },
-    {
-      label: "2nd offense False Stamping (At/Near Milestones)",
-      sixthReward: "Invalidated",
-      ninthReward: "Invalidated",
-      twelfthReward: "25% OFF",
-      desc: "2nd offense False Stamping (At/Near Milestones): 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF."
-    },
-    {
-      label: "2nd offense Early False Stamping (Early Stage Padding)",
-      sixthReward: "Invalidated",
-      ninthReward: "Invalidated",
-      twelfthReward: "25% OFF",
-      desc: "2nd offense Early False Stamping (Early Stage Padding): 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF."
-    },
-    {
-      label: "2nd offense False Claims:",
-      sixthReward: "Invalidated",
-      ninthReward: "Invalidated",
-      twelfthReward: "25% OFF",
-      desc: "2nd offense False Claims: 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF."
-    },
-    {
-      label: "Multiple Offense : Severe or repeated false stamps",
-      sixthReward: "Invalidated",
-      ninthReward: "Invalidated",
-      twelfthReward: "Cancelled (No Promos Left)",
-      desc: "Multiple Offense : Severe or repeated false stamps. All remaining loyalty rewards cancelled."
-    }
+    { label: "Active Account", sixthReward: "25% OFF", ninthReward: "50% OFF", twelfthReward: "FREE", desc: "Active Account: Normal standing." },
+    { label: "Penalties Waived", sixthReward: "25% OFF", ninthReward: "50% OFF", twelfthReward: "FREE", desc: "Penalties Waived: All penalties cleared and notices removed." },
+    { label: "No Violation till card clears", sixthReward: "25% OFF", ninthReward: "50% OFF", twelfthReward: "FREE", desc: "No Violation till card clears: Card successfully cleared without violations; reset back to start." },
+    { label: "1st offense False Stamping (At/Near Milestones)", sixthReward: "Invalidated", ninthReward: "25% OFF", twelfthReward: "50% OFF", desc: "1st offense False Stamping (At/Near Milestones): 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%." },
+    { label: "1st offense Early False Stamping (Early Stage Padding)", sixthReward: "Invalidated", ninthReward: "25% OFF", twelfthReward: "50% OFF", desc: "1st offense Early False Stamping (Early Stage Padding): 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%." },
+    { label: "1st offense False Claims:", sixthReward: "Invalidated", ninthReward: "25% OFF", twelfthReward: "50% OFF", desc: "1st offense False Claims: 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%." },
+    { label: "2nd offense False Stamping (At/Near Milestones)", sixthReward: "Invalidated", ninthReward: "Invalidated", twelfthReward: "25% OFF", desc: "2nd offense False Stamping (At/Near Milestones): 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF." },
+    { label: "2nd offense Early False Stamping (Early Stage Padding)", sixthReward: "Invalidated", ninthReward: "Invalidated", twelfthReward: "25% OFF", desc: "2nd offense Early False Stamping (Early Stage Padding): 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF." },
+    { label: "2nd offense False Claims:", sixthReward: "Invalidated", ninthReward: "Invalidated", twelfthReward: "25% OFF", desc: "2nd offense False Claims: 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF." },
+    { label: "Multiple Offense : Severe or repeated false stamps", sixthReward: "Invalidated", ninthReward: "Invalidated", twelfthReward: "Cancelled (No Promos Left)", desc: "Multiple Offense : Severe or repeated false stamps. All remaining loyalty rewards cancelled." }
   ];
 
   useEffect(() => {
     fetchCloudData();
 
-    const orderChannel = supabase
-      .channel('public:orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        fetchCloudData();
-      })
-      .subscribe();
-
-    const menuChannel = supabase
-      .channel('public:menu_items')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => {
-        fetchCloudData();
-      })
-      .subscribe();
+    const orderChannel = supabase.channel('public:orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCloudData).subscribe();
+    const menuChannel = supabase.channel('public:menu_items').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, fetchCloudData).subscribe();
 
     return () => {
       supabase.removeChannel(orderChannel);
@@ -211,14 +136,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           } else {
             localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
           }
-
-          return {
-            name: p.name || 'Valued Regular',
-            identifier: p.identifier,
-            type: p.role || 'regular',
-            stamps_data: p.stamps_data,
-            penalty_data: p.penalty_data
-          };
+          return { name: p.name || 'Valued Regular', identifier: p.identifier, type: p.role || 'regular', stamps_data: p.stamps_data, penalty_data: p.penalty_data };
         });
         setCustomers(formattedProfiles);
       } else {
@@ -238,18 +156,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-      const filePath = `${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('menu-images')
-        .upload(filePath, file);
-
+      const { error: uploadError } = await supabase.storage.from('menu-images').upload(fileName, file);
       if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage.from('menu-images').getPublicUrl(filePath);
+      const { data } = supabase.storage.from('menu-images').getPublicUrl(fileName);
       return data.publicUrl;
     } catch (error) {
-      console.error('Error uploading image:', error);
       return null;
     }
   };
@@ -278,11 +189,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     };
 
     try {
-      const { error } = await supabase.from('menu_items').upsert(newItemData, { onConflict: 'id' });
-      if (error) throw error;
-      alert(`Menu item successfully saved to database!`);
+      await supabase.from('menu_items').upsert(newItemData, { onConflict: 'id' });
+      alert('Menu item successfully saved to database!');
     } catch (err) {
-      console.error(err);
       alert('Error saving menu item to database.');
     }
 
@@ -299,13 +208,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   };
 
   const handleToggleAvailability = async (id: string, currentStatus: boolean) => {
-    const newStatus = !currentStatus;
     try {
-      await supabase.from('menu_items').update({ is_available: newStatus }).eq('id', id);
+      await supabase.from('menu_items').update({ is_available: !currentStatus }).eq('id', id);
       fetchCloudData();
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) {}
   };
 
   const handleDeleteMenuItem = async (id: string) => {
@@ -313,9 +219,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     try {
       await supabase.from('menu_items').delete().eq('id', id);
       fetchCloudData();
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) {}
   };
 
   const saveActivePromoCodes = (codes: any[]) => {
@@ -327,11 +231,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const handleAddPromo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPromoCode || !newPromoDiscount) return;
-    const newEntry = {
-      code: newPromoCode.trim().toUpperCase(),
-      discountPercent: parseFloat(newPromoDiscount),
-    };
-    const updated = [...promos, newEntry];
+    const updated = [...promos, { code: newPromoCode.trim().toUpperCase(), discountPercent: parseFloat(newPromoDiscount) }];
     setPromos(updated);
     saveActivePromoCodes(updated);
     setNewPromoCode('');
@@ -357,8 +257,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const hashPassword = async (password: string) => {
     const msgUint8 = new TextEncoder().encode(password);
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
   };
 
   const handleResetPasswordSubmit = async () => {
@@ -383,9 +282,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     try {
       const identifierKey = identifier.toLowerCase().trim();
       await supabase.from('profiles').delete().eq('identifier', identifierKey);
-
-      const updated = customers.filter((c) => c.identifier.toLowerCase().trim() !== identifierKey);
-      setCustomers(updated);
+      setCustomers(customers.filter((c) => c.identifier.toLowerCase().trim() !== identifierKey));
       localStorage.removeItem(`veyns_pwd_plain_${identifierKey}`);
       localStorage.removeItem(`veyns_pwd_hash_${identifierKey}`);
       localStorage.removeItem(`veyns_stamps_${identifierKey}`);
@@ -404,7 +301,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       if (penaltySaved) {
         try {
           const parsedPenalty = JSON.parse(penaltySaved);
-          if (parsedPenalty && parsedPenalty.appliedPenalties && parsedPenalty.appliedPenalties.length > 0) {
+          if (parsedPenalty?.appliedPenalties?.length > 0) {
             setSelectedInfractionPreset(parsedPenalty.appliedPenalties[0]);
           } else {
             setSelectedInfractionPreset('Active Account');
@@ -417,26 +314,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       }
 
       if (detailedSaved) {
-        const parsed = JSON.parse(detailedSaved);
-        const normalized = Array.from({ length: 12 }).map((_, idx) => {
-          return parsed[idx] || { status: 'empty', date: '' };
-        });
-        setCustomerStampsDetailed(normalized);
+        setCustomerStampsDetailed(JSON.parse(detailedSaved));
       } else if (cust.stamps_data && Array.isArray(cust.stamps_data)) {
-        const normalized = Array.from({ length: 12 }).map((_, idx) => {
-          return cust.stamps_data[idx] || { status: 'empty', date: '' };
-        });
-        setCustomerStampsDetailed(normalized);
+        setCustomerStampsDetailed(cust.stamps_data);
       } else {
         const userStamps = localStorage.getItem(`veyns_stamps_${identifierKey}`);
         const parsedStamps: string[] = userStamps ? JSON.parse(userStamps) : [];
-        const fullSlots = Array.from({ length: 12 }).map((_, idx) => {
-          if (parsedStamps[idx]) {
-            return { status: 'valid' as const, date: parsedStamps[idx] };
-          }
-          return { status: 'empty' as const, date: '' };
-        });
-        setCustomerStampsDetailed(fullSlots);
+        setCustomerStampsDetailed(Array.from({ length: 12 }).map((_, idx) => (parsedStamps[idx] ? { status: 'valid', date: parsedStamps[idx] } : { status: 'empty', date: '' })));
       }
     } catch (e) {
       setCustomerStampsDetailed(Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })));
@@ -448,43 +332,20 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     if (!stampTargetUser) return;
     try {
       const identifierKey = stampTargetUser.identifier.toLowerCase().trim();
-      
-      const isCleanPreset = 
-        selectedInfractionPreset === 'Active Account' || 
-        selectedInfractionPreset === 'Penalties Waived' || 
-        selectedInfractionPreset === 'No Violation till card clears';
+      const isCleanPreset = ['Active Account', 'Penalties Waived', 'No Violation till card clears'].includes(selectedInfractionPreset);
 
-      let slotsToSave = customerStampsDetailed;
+      let slotsToSave = selectedInfractionPreset === 'No Violation till card clears' 
+        ? Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })) 
+        : customerStampsDetailed;
 
-      if (selectedInfractionPreset === 'No Violation till card clears') {
-        slotsToSave = Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' }));
-      }
-
-      const matchedPreset = !isCleanPreset 
-        ? infractionPresets.find(p => p.label === selectedInfractionPreset || p.desc === selectedInfractionPreset) 
-        : null;
-      
-      let penaltyStatus = null;
-      if (matchedPreset && !isCleanPreset) {
-        penaltyStatus = {
-          sixthReward: matchedPreset.sixthReward,
-          ninthReward: matchedPreset.ninthReward,
-          twelfthReward: matchedPreset.twelfthReward,
-          appliedPenalties: [matchedPreset.label]
-        };
-      }
+      const matchedPreset = !isCleanPreset ? infractionPresets.find(p => p.label === selectedInfractionPreset) : null;
+      const penaltyStatus = matchedPreset ? { sixthReward: matchedPreset.sixthReward, ninthReward: matchedPreset.ninthReward, twelfthReward: matchedPreset.twelfthReward, appliedPenalties: [matchedPreset.label] } : null;
 
       if (isCleanPreset) {
-        slotsToSave = slotsToSave.map(s => {
-          if (s.status === 'invalid' || s.status === 'to_clear') {
-            return { status: 'empty' as const, date: '' };
-          }
-          return s;
-        });
+        slotsToSave = slotsToSave.map(s => (s.status === 'invalid' || s.status === 'to_clear' ? { status: 'empty', date: '' } : s));
       }
 
       localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(slotsToSave));
-      
       if (penaltyStatus) {
         localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(penaltyStatus));
       } else {
@@ -494,24 +355,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       const validStamps = slotsToSave.filter(s => s.status === 'valid').map(s => s.date);
       localStorage.setItem(`veyns_stamps_${identifierKey}`, JSON.stringify(validStamps));
 
-      try {
-        await supabase
-          .from('profiles')
-          .update({
-            stamps_data: slotsToSave,
-            penalty_data: penaltyStatus
-          })
-          .eq('identifier', identifierKey);
-      } catch (cloudErr) {
-        console.warn('Cloud sync warning:', cloudErr);
-      }
+      await supabase.from('profiles').update({ stamps_data: slotsToSave, penalty_data: penaltyStatus }).eq('identifier', identifierKey);
 
       window.dispatchEvent(new Event('storage'));
       alert(`Stamp card & penalties successfully synced for ${stampTargetUser.name}!`);
       fetchCloudData();
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) {}
     setStampTargetUser(null);
   };
 
@@ -523,9 +372,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     if (onBackToStore) {
       onBackToStore();
     } else {
-      try {
-        localStorage.setItem('veyns_active_view', 'store');
-      } catch (e) {}
+      try { localStorage.setItem('veyns_active_view', 'store'); } catch (e) {}
       window.location.reload();
     }
   };
@@ -540,9 +387,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       const detailedSaved = localStorage.getItem(`veyns_detailed_stamps_${identifierKey}`);
       if (detailedSaved) {
         const parsed = JSON.parse(detailedSaved);
-        if (Array.isArray(parsed)) {
-          return parsed.filter((s: any) => s && s.status === 'valid').length;
-        }
+        if (Array.isArray(parsed)) return parsed.filter((s: any) => s?.status === 'valid').length;
       }
     } catch (e) {}
     return 0;
@@ -571,44 +416,16 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         </div>
 
         <div className="flex flex-wrap gap-2 border-b border-emerald-900/60 pb-3">
-          <button
-            onClick={() => setActiveTab('sales')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'sales'
-                ? 'bg-lime-400 text-black shadow-lg'
-                : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'
-            }`}
-          >
+          <button onClick={() => setActiveTab('sales')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'sales' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
             <BarChart2 className="h-4 w-4" /> Sales Analytics ({orders.length})
           </button>
-          <button
-            onClick={() => setActiveTab('customers')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'customers'
-                ? 'bg-lime-400 text-black shadow-lg'
-                : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'
-            }`}
-          >
+          <button onClick={() => setActiveTab('customers')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'customers' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
             <Users className="h-4 w-4" /> Customer Accounts ({customers.length})
           </button>
-          <button
-            onClick={() => setActiveTab('menu')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'menu'
-                ? 'bg-lime-400 text-black shadow-lg'
-                : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'
-            }`}
-          >
+          <button onClick={() => setActiveTab('menu')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'menu' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
             <Tag className="h-4 w-4" /> Menu Manager ({menuItems.length})
           </button>
-          <button
-            onClick={() => setActiveTab('promos')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'promos'
-                ? 'bg-lime-400 text-black shadow-lg'
-                : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'
-            }`}
-          >
+          <button onClick={() => setActiveTab('promos')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'promos' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
             <DollarSign className="h-4 w-4" /> Promo Codes ({promos.length})
           </button>
         </div>
@@ -620,12 +437,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Total Gross Sales</span>
                 <p className="text-3xl font-extrabold text-lime-400 font-display">{formatPeso(totalGrossSales)}</p>
               </div>
-
               <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-2 shadow-xl">
                 <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Total Orders Placed</span>
                 <p className="text-3xl font-extrabold text-white font-display">{totalOrdersCount} Orders</p>
               </div>
-
               <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-2 shadow-xl">
                 <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Average Order Value</span>
                 <p className="text-3xl font-extrabold text-amber-400 font-display">{formatPeso(averageOrderValue)}</p>
@@ -636,16 +451,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="h-5 w-5 text-lime-400" />
-                  <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">
-                    Completed Order Transactions Log
-                  </h3>
+                  <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Completed Order Transactions Log</h3>
                 </div>
                 {orders.length > 0 && (
-                  <Button
-                    onClick={handleClearSalesLog}
-                    size="sm"
-                    className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer"
-                  >
+                  <Button onClick={handleClearSalesLog} size="sm" className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer">
                     Clear Sales Log
                   </Button>
                 )}
@@ -681,16 +490,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                               <p className="text-[10px] text-emerald-300">{order.phone || order.email || 'No contact provided'}</p>
                             </td>
                             <td className="p-3">
-                              <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">
-                                {order.fulfillment}
-                              </span>
+                              <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">{order.fulfillment}</span>
                             </td>
                             <td className="p-3 space-y-0.5 max-w-xs">
-                              {order.items.map((it: any, i: number) => (
-                                <div key={i} className="text-emerald-200">
-                                  {it.qty}x {it.item.name}
-                                </div>
-                              ))}
+                              {order.items.map((it: any, i: number) => <div key={i} className="text-emerald-200">{it.qty}x {it.item.name}</div>)}
                             </td>
                             <td className="p-3 font-extrabold text-lime-400">{stampCount} / 12</td>
                             <td className="p-3 font-semibold text-amber-400">{order.promoCode || '—'}</td>
@@ -711,9 +514,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5 text-lime-400" />
-                <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">
-                  Registered Customer Accounts & Passwords
-                </h3>
+                <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Registered Customer Accounts & Passwords</h3>
               </div>
             </div>
 
@@ -737,49 +538,26 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     return (
                       <tr key={idx} className="hover:bg-[#071F19]/50 transition-colors">
                         <td className="p-3 font-bold text-white">{cust.name}</td>
-                        <td className="p-3 text-lime-400 font-mono">
-                          <span>{cust.identifier}</span>
-                        </td>
+                        <td className="p-3 text-lime-400 font-mono"><span>{cust.identifier}</span></td>
                         <td className="p-3 font-mono">
                           <div className="flex items-center gap-2">
                             <span>{isVisible ? plainPassword : '••••••••'}</span>
-                            <button
-                              type="button"
-                              onClick={() => togglePasswordVisibility(cust.identifier)}
-                              className="text-emerald-400 hover:text-white cursor-pointer p-1"
-                            >
+                            <button type="button" onClick={() => togglePasswordVisibility(cust.identifier)} className="text-emerald-400 hover:text-white cursor-pointer p-1">
                               {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                             </button>
                           </div>
                         </td>
                         <td className="p-3">
-                          <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">
-                            {cust.type || 'Regular'}
-                          </span>
+                          <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">{cust.type || 'Regular'}</span>
                         </td>
                         <td className="p-3 text-right space-x-2">
-                          <Button
-                            onClick={() => openStampManager(cust)}
-                            size="sm"
-                            className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer"
-                          >
+                          <Button onClick={() => openStampManager(cust)} size="sm" className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
                             <Award className="h-3.5 w-3.5 mr-1" /> Stamps
                           </Button>
-                          <Button
-                            onClick={() => {
-                              setResetTargetUser(cust);
-                              setNewTempPassword('Veyns' + Math.floor(1000 + Math.random() * 9000));
-                            }}
-                            size="sm"
-                            className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer"
-                          >
+                          <Button onClick={() => { setResetTargetUser(cust); setNewTempPassword('Veyns' + Math.floor(1000 + Math.random() * 9000)); }} size="sm" className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
                             <KeyRound className="h-3.5 w-3.5 mr-1" /> Reset Password
                           </Button>
-                          <Button
-                            onClick={() => handleDeleteCustomer(cust.identifier)}
-                            size="sm"
-                            className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer"
-                          >
+                          <Button onClick={() => handleDeleteCustomer(cust.identifier)} size="sm" className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </td>
@@ -795,24 +573,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         {activeTab === 'menu' && (
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
             <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
-              <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">
-                Database Menu Manager (Live Sync)
-              </h3>
-              <Button
-                onClick={() => {
-                  setItemName('');
-                  setItemCategory('Rice Bowls');
-                  setItemDescription('');
-                  setItemPrice('');
-                  setItemDiscount('');
-                  setItemBestSeller(false);
-                  setItemImageFile(null);
-                  setImagePreviewUrl('');
-                  setEditingItem(null);
-                  setIsAddingNewItem(true);
-                }}
-                className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg"
-              >
+              <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Database Menu Manager (Live Sync)</h3>
+              <Button onClick={() => { setItemName(''); setItemCategory('Rice Bowls'); setItemDescription(''); setItemPrice(''); setItemDiscount(''); setItemBestSeller(false); setItemImageFile(null); setImagePreviewUrl(''); setEditingItem(null); setIsAddingNewItem(true); }} className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg">
                 <Plus className="h-4 w-4" /> Add New Menu Item
               </Button>
             </div>
@@ -835,9 +597,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                           <div>
                             <div className="flex items-center gap-1.5">
                               <h4 className="font-display font-bold text-white text-sm">{item.name}</h4>
-                              {item.bestSeller && (
-                                <span className="bg-lime-400 text-black px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase">BEST SELLER</span>
-                              )}
+                              {item.bestSeller && <span className="bg-lime-400 text-black px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase">BEST SELLER</span>}
                             </div>
                             <span className="text-[10px] text-emerald-400/80 uppercase font-semibold">{item.category}</span>
                           </div>
@@ -867,37 +627,15 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
                     <div className="flex items-center justify-between border-t border-emerald-900/60 pt-3 mt-4">
                       <div className="flex gap-1.5">
-                        <Button
-                          onClick={() => handleToggleAvailability(item.id, isAvailable)}
-                          size="sm"
-                          className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl cursor-pointer ${isAvailable ? 'bg-red-950/60 text-red-300 border border-red-800/60' : 'bg-emerald-950 text-lime-400 border border-emerald-800'}`}
-                        >
+                        <Button onClick={() => handleToggleAvailability(item.id, isAvailable)} size="sm" className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl cursor-pointer ${isAvailable ? 'bg-red-950/60 text-red-300 border border-red-800/60' : 'bg-emerald-950 text-lime-400 border border-emerald-800'}`}>
                           {isAvailable ? 'Hide' : 'Show'}
                         </Button>
-                        <Button
-                          onClick={() => handleDeleteMenuItem(item.id)}
-                          size="sm"
-                          className="bg-red-950/40 hover:bg-red-900 text-red-400 border border-red-900/60 px-2.5 py-1.5 rounded-xl text-[11px] cursor-pointer"
-                        >
+                        <Button onClick={() => handleDeleteMenuItem(item.id)} size="sm" className="bg-red-950/40 hover:bg-red-900 text-red-400 border border-red-900/60 px-2.5 py-1.5 rounded-xl text-[11px] cursor-pointer">
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
 
-                      <Button
-                        onClick={() => {
-                          setEditingItem(item);
-                          setItemName(item.name);
-                          setItemCategory(item.category || 'Rice Bowls');
-                          setItemDescription(item.description || '');
-                          setItemPrice(item.price.toString());
-                          setItemDiscount((item.discountPercent || 0).toString());
-                          setItemBestSeller(item.bestSeller || false);
-                          setImagePreviewUrl(displayImage || '');
-                          setIsAddingNewItem(true);
-                        }}
-                        size="sm"
-                        className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1"
-                      >
+                      <Button onClick={() => { setEditingItem(item); setItemName(item.name); setItemCategory(item.category || 'Rice Bowls'); setItemDescription(item.description || ''); setItemPrice(item.price.toString()); setItemDiscount((item.discountPercent || 0).toString()); setItemBestSeller(item.bestSeller || false); setImagePreviewUrl(displayImage || ''); setIsAddingNewItem(true); }} size="sm" className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1">
                         <Edit2 className="h-3.5 w-3.5" /> Edit Item
                       </Button>
                     </div>
@@ -910,38 +648,19 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
         {activeTab === 'promos' && (
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
-            <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide border-b border-emerald-900/60 pb-3">
-              Promo Codes Manager
-            </h3>
+            <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide border-b border-emerald-900/60 pb-3">Promo Codes Manager</h3>
 
             <form onSubmit={handleAddPromo} className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Promo Code Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. VEYNS15"
-                  value={newPromoCode}
-                  onChange={(e) => setNewPromoCode(e.target.value)}
-                  className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white uppercase placeholder:normal-case focus:outline-none focus:border-lime-400"
-                />
+                <input type="text" placeholder="e.g. VEYNS15" value={newPromoCode} onChange={(e) => setNewPromoCode(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white uppercase placeholder:normal-case focus:outline-none focus:border-lime-400" />
               </div>
-
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Discount Percentage (%)</label>
-                <input
-                  type="number"
-                  placeholder="e.g. 15"
-                  value={newPromoDiscount}
-                  onChange={(e) => setNewPromoDiscount(e.target.value)}
-                  className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-lime-400"
-                />
+                <input type="number" placeholder="e.g. 15" value={newPromoDiscount} onChange={(e) => setNewPromoDiscount(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-lime-400" />
               </div>
-
               <div className="flex items-end">
-                <Button
-                  type="submit"
-                  className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs transition-all shadow-lg cursor-pointer"
-                >
+                <Button type="submit" className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs transition-all shadow-lg cursor-pointer">
                   <Plus className="h-4 w-4 mr-1" /> Add Promo Code
                 </Button>
               </div>
@@ -959,10 +678,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         <span className="font-extrabold text-lime-400 text-sm">{p.code}</span>
                         <p className="text-[11px] text-emerald-300">{p.discountPercent}% Discount</p>
                       </div>
-                      <button
-                        onClick={() => handleDeletePromo(p.code)}
-                        className="text-red-400 hover:text-red-300 p-1.5 rounded-lg bg-red-950/40 border border-red-900/60 cursor-pointer"
-                      >
+                      <button onClick={() => handleDeletePromo(p.code)} className="text-red-400 hover:text-red-300 p-1.5 rounded-lg bg-red-950/40 border border-red-900/60 cursor-pointer">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
@@ -973,38 +689,24 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </div>
         )}
 
-        {/* Modal for Adding or Editing Menu Item */}
         <Dialog open={isAddingNewItem} onOpenChange={(open) => !open && setIsAddingNewItem(false)}>
           <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/85 shadow-2xl p-6 rounded-3xl max-h-[95vh] overflow-y-auto">
             <div className="space-y-1 border-b border-emerald-900/60 pb-3">
               <DialogTitle className="font-display text-xl font-extrabold text-white">
                 {editingItem ? `Edit Menu Item: ${editingItem.name}` : 'Add New Menu Item'}
               </DialogTitle>
-              <DialogDescription className="text-xs text-emerald-300">
-                Upload photo, update price, description, and sync directly to the database.
-              </DialogDescription>
+              <DialogDescription className="text-xs text-emerald-300">Upload photo, update price, description, and sync directly to the database.</DialogDescription>
             </div>
 
             <form onSubmit={handleSaveNewOrEditedItem} className="space-y-4 my-4 text-xs">
               <div className="space-y-1.5">
                 <label className="font-bold text-lime-400 uppercase tracking-wider block">Item Name</label>
-                <input
-                  type="text"
-                  required
-                  value={itemName}
-                  onChange={(e) => setItemName(e.target.value)}
-                  placeholder="e.g. Pork Sisig Rice Bowl"
-                  className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
-                />
+                <input type="text" required value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="e.g. Pork Sisig Rice Bowl" className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400" />
               </div>
 
               <div className="space-y-1.5">
                 <label className="font-bold text-lime-400 uppercase tracking-wider block">Category</label>
-                <select
-                  value={itemCategory}
-                  onChange={(e) => setItemCategory(e.target.value)}
-                  className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
-                >
+                <select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400">
                   <option value="Rice Bowls">Rice Bowls</option>
                   <option value="Noodle Bowls">Noodle Bowls</option>
                   <option value="Sides">Sides</option>
@@ -1015,36 +717,17 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="font-bold text-lime-400 uppercase tracking-wider block">Price (₱)</label>
-                  <input
-                    type="number"
-                    required
-                    value={itemPrice}
-                    onChange={(e) => setItemPrice(e.target.value)}
-                    placeholder="109"
-                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
-                  />
+                  <input type="number" required value={itemPrice} onChange={(e) => setItemPrice(e.target.value)} placeholder="109" className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400" />
                 </div>
-
                 <div className="space-y-1.5">
                   <label className="font-bold text-amber-400 uppercase tracking-wider block">Discount (% OFF)</label>
-                  <input
-                    type="number"
-                    value={itemDiscount}
-                    onChange={(e) => setItemDiscount(e.target.value)}
-                    placeholder="0"
-                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
-                  />
+                  <input type="number" value={itemDiscount} onChange={(e) => setItemDiscount(e.target.value)} placeholder="0" className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400" />
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="flex items-center gap-2.5 p-3 rounded-xl border border-emerald-800/80 bg-[#041913] cursor-pointer hover:border-lime-400/60 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={itemBestSeller}
-                    onChange={(e) => setItemBestSeller(e.target.checked)}
-                    className="rounded border-emerald-700 text-lime-400 focus:ring-lime-400 bg-black/40 h-4 w-4"
-                  />
+                  <input type="checkbox" checked={itemBestSeller} onChange={(e) => setItemBestSeller(e.target.checked)} className="rounded border-emerald-700 text-lime-400 focus:ring-lime-400 bg-black/40 h-4 w-4" />
                   <div>
                     <span className="font-bold text-lime-400 uppercase tracking-wider text-xs block">Mark as Best Seller</span>
                     <span className="text-[10px] text-emerald-300">Pins item with a badge and prioritizes it at the top of the menu</span>
@@ -1054,13 +737,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
               <div className="space-y-1.5">
                 <label className="font-bold text-lime-400 uppercase tracking-wider block">Description</label>
-                <textarea
-                  rows={2}
-                  value={itemDescription}
-                  onChange={(e) => setItemDescription(e.target.value)}
-                  placeholder="Crispy pork sisig served over warm garlic rice..."
-                  className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white focus:outline-none focus:border-lime-400"
-                />
+                <textarea rows={2} value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} placeholder="Crispy pork sisig served over warm garlic rice..." className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white focus:outline-none focus:border-lime-400" />
               </div>
 
               <div className="space-y-2">
@@ -1070,42 +747,35 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     <Photo src={imagePreviewUrl} alt="Preview" className="h-full w-full object-cover" />
                   </div>
                   <div className="flex-1 overflow-hidden">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          const file = e.target.files[0];
-                          setItemImageFile(file);
-                          setImagePreviewUrl(URL.createObjectURL(file));
-                        }
-                      }}
-                      className="text-[10px] text-emerald-300 w-full file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-extrabold file:bg-[#082d22] file:text-lime-400 hover:file:bg-lime-400 hover:file:text-black cursor-pointer"
-                    />
+                    <input type="file" accept="image/*" onChange={(e) => { if (e.target.files && e.target.files[0]) { setItemImageFile(e.target.files[0]); setImagePreviewUrl(URL.createObjectURL(e.target.files[0])); } }} className="text-[10px] text-emerald-300 w-full file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-extrabold file:bg-[#082d22] file:text-lime-400 hover:file:bg-lime-400 hover:file:text-black cursor-pointer" />
                   </div>
                 </div>
               </div>
 
               <div className="flex gap-2 pt-3 border-t border-emerald-900/60">
-                <Button
-                  type="button"
-                  onClick={() => setIsAddingNewItem(false)}
-                  className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-3 rounded-xl text-xs cursor-pointer"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs cursor-pointer shadow-lg"
-                >
-                  Save to Database
-                </Button>
+                <Button type="button" onClick={() => setIsAddingNewItem(false)} className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-3 rounded-xl text-xs cursor-pointer">Cancel</Button>
+                <Button type="submit" className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs cursor-pointer shadow-lg">Save to Database</Button>
               </div>
             </form>
           </DialogContent>
         </Dialog>
 
-        {/* Dialog for Stamp Manager */}
+        <Dialog open={!!resetTargetUser} onOpenChange={(open) => !open && setResetTargetUser(null)}>
+          {resetTargetUser && (
+            <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
+              <DialogTitle className="font-display text-lg font-extrabold text-white">Reset Password for {resetTargetUser.name}</DialogTitle>
+              <div className="space-y-3 my-3 text-xs">
+                <label className="font-bold text-lime-400 uppercase tracking-wider block">New Temporary Password</label>
+                <input type="text" value={newTempPassword} onChange={(e) => setNewTempPassword(e.target.value)} className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button onClick={() => setResetTargetUser(null)} className="flex-1 bg-emerald-950 text-emerald-200 font-bold py-2.5 rounded-xl text-xs">Cancel</Button>
+                <Button onClick={handleResetPasswordSubmit} className="flex-1 bg-lime-400 text-black font-extrabold py-2.5 rounded-xl text-xs">Confirm Reset</Button>
+              </div>
+            </DialogContent>
+          )}
+        </Dialog>
+
         <Dialog open={!!stampTargetUser} onOpenChange={(open) => !open && setStampTargetUser(null)}>
           {stampTargetUser && (
             <DialogContent className="max-w-xl w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
@@ -1117,19 +787,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
               <div className="my-4 space-y-4 text-xs">
                 <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
-                  <label className="font-bold text-lime-400 uppercase tracking-wider block text-[11px]">
-                    📋 Select Status / Infraction Rule:
-                  </label>
-                  <select
-                    value={selectedInfractionPreset}
-                    onChange={(e) => setSelectedInfractionPreset(e.target.value)}
-                    className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-3 text-xs text-white font-medium focus:outline-none focus:border-lime-400"
-                  >
-                    {infractionPresets.map((preset, pIdx) => (
-                      <option key={pIdx} value={preset.label}>
-                        {preset.label}
-                      </option>
-                    ))}
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block text-[11px]">📋 Select Status / Infraction Rule:</label>
+                  <select value={selectedInfractionPreset} onChange={(e) => setSelectedInfractionPreset(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-3 text-xs text-white font-medium focus:outline-none focus:border-lime-400">
+                    {infractionPresets.map((preset, pIdx) => <option key={pIdx} value={preset.label}>{preset.label}</option>)}
                   </select>
                 </div>
 
@@ -1138,50 +798,17 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     const stampEntry = customerStampsDetailed[idx];
                     const status = stampEntry ? stampEntry.status : 'empty';
 
-                    let selectValue = 'empty';
-                    if (status === 'valid') selectValue = 'valid';
-                    else if (status === 'to_clear') selectValue = 'to_clear';
-                    else if (status === 'invalid') selectValue = 'invalid';
-
                     return (
-                      <div
-                        key={idx}
-                        className={`relative aspect-square rounded-xl border flex flex-col items-center justify-between p-1.5 text-center transition-all ${
-                          status === 'valid'
-                            ? 'bg-[#082d22] border-lime-400 text-lime-400 shadow-md'
-                            : status === 'to_clear'
-                            ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-md'
-                            : status === 'invalid'
-                            ? 'bg-red-950/90 border-red-500 text-red-300 shadow-md'
-                            : 'bg-[#041913] border-emerald-800/60 text-emerald-600'
-                        }`}
-                      >
+                      <div key={idx} className={`relative aspect-square rounded-xl border flex flex-col items-center justify-between p-1.5 text-center transition-all ${status === 'valid' ? 'bg-[#082d22] border-lime-400 text-lime-400 shadow-md' : status === 'to_clear' ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-md' : status === 'invalid' ? 'bg-red-950/90 border-red-500 text-red-300 shadow-md' : 'bg-[#041913] border-emerald-800/60 text-emerald-600'}`}>
                         <span className="text-[9px] font-mono opacity-80">#{idx + 1}</span>
-                        <select
-                          value={selectValue}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const updated = [...customerStampsDetailed];
-                            const todayStr = new Date().toISOString().split('T')[0];
-
-                            while (updated.length <= idx) {
-                              updated.push({ status: 'empty', date: '' });
-                            }
-
-                            if (val === 'valid') {
-                              updated[idx] = { status: 'valid', date: todayStr };
-                            } else if (val === 'to_clear') {
-                              updated[idx] = { status: 'to_clear', date: todayStr, penaltyReason: 'To Be Cleared' };
-                            } else if (val === 'invalid') {
-                              updated[idx] = { status: 'invalid', date: todayStr, penaltyReason: 'Invalidated' };
-                            } else {
-                              updated[idx] = { status: 'empty', date: '' };
-                            }
-
-                            setCustomerStampsDetailed(updated);
-                          }}
-                          className="w-full bg-black/80 border border-emerald-800 text-[10px] text-lime-300 rounded px-1 py-0.5 focus:outline-none cursor-pointer text-center font-bold"
-                        >
+                        <select value={status} onChange={(e) => {
+                          const val = e.target.value;
+                          const updated = [...customerStampsDetailed];
+                          const todayStr = new Date().toISOString().split('T')[0];
+                          while (updated.length <= idx) updated.push({ status: 'empty', date: '' });
+                          updated[idx] = val === 'valid' ? { status: 'valid', date: todayStr } : val === 'to_clear' ? { status: 'to_clear', date: todayStr, penaltyReason: 'To Be Cleared' } : val === 'invalid' ? { status: 'invalid', date: todayStr, penaltyReason: 'Invalidated' } : { status: 'empty', date: '' };
+                          setCustomerStampsDetailed(updated);
+                        }} className="w-full bg-black/80 border border-emerald-800 text-[10px] text-lime-300 rounded px-1 py-0.5 focus:outline-none cursor-pointer text-center font-bold">
                           <option value="empty">EMPTY</option>
                           <option value="valid">ADD</option>
                           <option value="to_clear">TO CLEAR</option>
@@ -1194,18 +821,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               </div>
 
               <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
-                <Button
-                  onClick={() => setStampTargetUser(null)}
-                  className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2.5 rounded-xl text-xs cursor-pointer"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSaveStamps}
-                  className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg"
-                >
-                  Save & Sync Account Views
-                </Button>
+                <Button onClick={() => setStampTargetUser(null)} className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2.5 rounded-xl text-xs cursor-pointer">Cancel</Button>
+                <Button onClick={handleSaveStamps} className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg">Save & Sync Account Views</Button>
               </div>
             </DialogContent>
           )}
