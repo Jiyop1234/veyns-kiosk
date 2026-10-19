@@ -6,9 +6,9 @@ export interface MenuItem {
   description: string;
   bestSeller?: boolean;
   isCustomizable?: boolean;
-  hasBrothEggOption?: boolean; // Controls whether Step 1 (Egg in Broth) is displayed
-  discountPercent?: number;    // Linked with Employee Dashboard item-level discounts
-  isAvailable?: boolean;       // Stock / visibility status control
+  hasBrothEggOption?: boolean;
+  discountPercent?: number;
+  isAvailable?: boolean;
 }
 
 export interface PromoCode {
@@ -141,7 +141,6 @@ export const menuItems: MenuItem[] = [
 
 export const MENU_GRID = menuItems;
 
-// Helper to retrieve active promo codes created in Employee Dashboard (starts empty)
 export const getActivePromoCodes = (): PromoCode[] => {
   try {
     const saved = localStorage.getItem('veyns_promo_codes');
