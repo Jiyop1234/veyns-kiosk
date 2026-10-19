@@ -415,8 +415,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     try {
       const identifierKey = stampTargetUser.identifier.toLowerCase().trim();
       
-      const isNullOrCleanPreset = 
-        !selectedInfractionPreset || 
+      const isCleanPreset = 
         selectedInfractionPreset === 'Active Account' || 
         selectedInfractionPreset === 'Penalties Waived' || 
         selectedInfractionPreset === 'No Violation till card clears';
@@ -427,12 +426,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         slotsToSave = Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' }));
       }
 
-      const matchedPreset = !isNullOrCleanPreset 
+      const matchedPreset = !isCleanPreset 
         ? infractionPresets.find(p => p.label === selectedInfractionPreset || p.desc === selectedInfractionPreset) 
         : null;
       
       let penaltyStatus = null;
-      if (matchedPreset && !isNullOrCleanPreset) {
+      if (matchedPreset && !isCleanPreset) {
         penaltyStatus = {
           sixthReward: matchedPreset.sixthReward,
           ninthReward: matchedPreset.ninthReward,
@@ -441,7 +440,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         };
       }
 
-      if (isNullOrCleanPreset) {
+      if (isCleanPreset) {
         slotsToSave = slotsToSave.map(s => {
           if (s.status === 'invalid' || s.status === 'to_clear') {
             return { status: 'empty' as const, date: '' };
@@ -452,6 +451,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
       // Save locally first so UI responds instantly
       localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(slotsToSave));
+      
       if (penaltyStatus) {
         localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(penaltyStatus));
       } else {
@@ -464,13 +464,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         localStorage.setItem(`veyns_loyalty_stamps`, JSON.stringify(validStamps));
       }
 
-      // Try updating Supabase (wrapped in try/catch to avoid hard errors if columns haven't been added yet)
+      // Try updating Supabase - explicitly sending null when clean preset so notice is removed
       try {
         await supabase
           .from('profiles')
           .update({
             stamps_data: slotsToSave,
-            penalty_data: penaltyStatus // null if Active Account / Penalties Waived / No Violation
+            penalty_data: penaltyStatus // Explicitly null if Active Account / Penalties Waived / No Violation
           })
           .eq('identifier', identifierKey);
       } catch (cloudErr) {
