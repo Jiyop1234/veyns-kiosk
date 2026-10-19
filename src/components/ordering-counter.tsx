@@ -113,10 +113,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       console.error('Error fetching cloud menu:', e);
     }
 
-    // Strict Sorting Sequence: Apparel at the bottom, everything else ordered by sortOrder
     mergedMenu.sort((a, b) => {
       if (a.category === 'Apparel' && b.category !== 'Apparel') return 1;
       if (a.category !== 'Apparel' && b.category === 'Apparel') return -1;
+      
+      if (a.bestSeller && !b.bestSeller) return -1;
+      if (!a.bestSeller && b.bestSeller) return 1;
+
       return (a.sortOrder || 100) - (b.sortOrder || 100);
     });
 
