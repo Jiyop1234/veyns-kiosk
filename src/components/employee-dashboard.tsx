@@ -1,14 +1,13 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
 import { menuImages } from '@/lib/menu-images';
 import { supabase } from '@/lib/supabase';
 
-function Photo({ id, alt, className }: { id: string; alt: string; className: string }) {
-  const src = menuImages[id];
+function Photo({ src, alt, className }: { src?: string; alt: string; className: string }) {
   if (!src) {
     return (
       <div className={`${className} flex items-center justify-center bg-[#0d2e26] font-display text-sm font-bold text-[#d4af37]`}>
@@ -20,19 +19,26 @@ function Photo({ id, alt, className }: { id: string; alt: string; className: str
 }
 
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers'>('sales');
+  const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers'>('menu');
 
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
-  const [editPrice, setEditPrice] = useState('');
-  const [editDiscount, setEditDiscount] = useState('');
+  const [isAddingNewItem, setIsAddingNewItem] = useState(false);
+
+  // Form states for adding/editing menu items
+  const [itemName, setItemName] = useState('');
+  const [itemCategory, setItemCategory] = useState('Rice Bowls');
+  const [itemDescription, setItemDescription] = useState('');
+  const [itemPrice, setItemPrice] = useState('');
+  const [itemDiscount, setItemDiscount] = useState('');
+  const [itemImageFile, setItemImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState('');
 
   const [promos, setPromos] = useState<any[]>([]);
   const [newPromoCode, setNewPromoCode] = useState('');
   const [newPromoDiscount, setNewPromoDiscount] = useState('');
 
   const [orders, setOrders] = useState<any[]>([]);
-
   const [customers, setCustomers] = useState<any[]>([]);
   const [resetTargetUser, setResetTargetUser] = useState<any>(null);
   const [newTempPassword, setNewTempPassword] = useState('');
@@ -119,23 +125,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   ];
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('veyns_manageable_menu');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setMenuItems(parsed);
-        } else {
-          setMenuItems(MENU_GRID);
-        }
-      } else {
-        setMenuItems(MENU_GRID);
-      }
-    } catch (e) {
-      setMenuItems(MENU_GRID);
-    }
-
-    setPromos(getActivePromoCodes());
     fetchCloudData();
 
     const orderChannel = supabase
@@ -145,20 +134,57 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       })
       .subscribe();
 
+    const menuChannel = supabase
+      .channel('public:menu_items')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => {
+        fetchCloudData();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(orderChannel);
+      supabase.removeChannel(menuChannel);
     };
   }, []);
 
   const fetchCloudData = async () => {
     try {
-      const { data: cloudOrders } = await supabase
-        .from('orders')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // 1. Fetch Menu Items from Supabase Database
+      const { data: cloudMenu } = await supabase.from('menu_items').select('*');
+      if (cloudMenu && cloudMenu.length > 0) {
+        const formattedMenu = cloudMenu.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          category: m.category,
+          description: m.description,
+          price: Number(m.price),
+          discountPercent: Number(m.discount_percent || 0),
+          isAvailable: m.is_available,
+          image: m.image_url
+        }));
+        setMenuItems(formattedMenu);
+        localStorage.setItem('veyns_manageable_menu', JSON.stringify(formattedMenu));
+      } else {
+        // Seed database automatically if table is empty
+        for (const item of MENU_GRID) {
+          await supabase.from('menu_items').upsert({
+            id: item.id,
+            name: item.name,
+            category: item.category,
+            description: item.description,
+            price: item.price,
+            discount_percent: item.discountPercent || 0,
+            is_available: item.isAvailable !== false,
+            image_url: menuImages[item.id] || ''
+          }, { onConflict: 'id' });
+        }
+        setMenuItems(MENU_GRID);
+      }
 
+      // 2. Fetch Orders
+      const { data: cloudOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
       if (cloudOrders) {
-        const formattedOrders = cloudOrders.map((o: any) => ({
+        setOrders(cloudOrders.map((o: any) => ({
           name: o.customer_name,
           email: o.email || '',
           phone: o.phone || '',
@@ -168,14 +194,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           orderNumber: o.order_number,
           date: new Date(o.created_at).toLocaleString(),
           promoCode: o.promo_code
-        }));
-        setOrders(formattedOrders);
+        })));
       }
 
-      const { data: cloudProfiles } = await supabase
-        .from('profiles')
-        .select('*');
-
+      // 3. Fetch Profiles
+      const { data: cloudProfiles } = await supabase.from('profiles').select('*');
       if (cloudProfiles && cloudProfiles.length > 0) {
         const formattedProfiles = cloudProfiles.map((p: any) => {
           const identifierKey = (p.identifier || '').toLowerCase().trim();
@@ -207,46 +230,96 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       }
     } catch (e) {
       console.error('Error fetching cloud data:', e);
+      setMenuItems(MENU_GRID);
+    }
+    setPromos(getActivePromoCodes());
+  };
+
+  const uploadImageToSupabase = async (file: File) => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('menu-images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('menu-images').getPublicUrl(filePath);
+      return data.publicUrl;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      return null;
+    }
+  };
+
+  const handleSaveNewOrEditedItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!itemName || !itemPrice) return;
+
+    let imageUrl = editingItem ? editingItem.image : '';
+    if (itemImageFile) {
+      const uploadedUrl = await uploadImageToSupabase(itemImageFile);
+      if (uploadedUrl) imageUrl = uploadedUrl;
+    }
+
+    const itemId = editingItem ? editingItem.id : itemName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const newItemData = {
+      id: itemId,
+      name: itemName.trim(),
+      category: itemCategory,
+      description: itemDescription.trim(),
+      price: parseFloat(itemPrice),
+      discount_percent: itemDiscount !== '' ? parseFloat(itemDiscount) : 0,
+      is_available: editingItem ? editingItem.isAvailable : true,
+      image_url: imageUrl
+    };
+
+    try {
+      const { error } = await supabase.from('menu_items').upsert(newItemData, { onConflict: 'id' });
+      if (error) throw error;
+      alert(`Menu item successfully saved to database!`);
+    } catch (err) {
+      console.error(err);
+      alert('Error saving menu item to database.');
+    }
+
+    setEditingItem(null);
+    setIsAddingNewItem(false);
+    setItemName('');
+    setItemDescription('');
+    setItemPrice('');
+    setItemDiscount('');
+    setItemImageFile(null);
+    setImagePreviewUrl('');
+    fetchCloudData();
+  };
+
+  const handleToggleAvailability = async (id: string, currentStatus: boolean) => {
+    const newStatus = !currentStatus;
+    try {
+      await supabase.from('menu_items').update({ is_available: newStatus }).eq('id', id);
+      fetchCloudData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteMenuItem = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this menu item from the database?')) return;
+    try {
+      await supabase.from('menu_items').delete().eq('id', id);
+      fetchCloudData();
+    } catch (e) {
+      console.error(e);
     }
   };
 
   const saveActivePromoCodes = (codes: any[]) => {
     try {
       localStorage.setItem('veyns_promo_codes', JSON.stringify(codes));
-    } catch (e) {}
-  };
-
-  const handleSaveItemEdit = () => {
-    if (!editingItem) return;
-    const updated = menuItems.map((it) => {
-      if (it.id === editingItem.id) {
-        return {
-          ...it,
-          price: editPrice !== '' ? parseFloat(editPrice) : it.price,
-          discountPercent: editDiscount !== '' ? parseFloat(editDiscount) : (it.discountPercent || 0),
-        };
-      }
-      return it;
-    });
-    setMenuItems(updated);
-    try {
-      localStorage.setItem('veyns_manageable_menu', JSON.stringify(updated));
-      window.dispatchEvent(new Event('storage'));
-    } catch (e) {}
-    setEditingItem(null);
-  };
-
-  const handleToggleAvailability = (id: string) => {
-    const updated = menuItems.map((it) => {
-      if (it.id === id) {
-        return { ...it, isAvailable: it.isAvailable === false ? true : false };
-      }
-      return it;
-    });
-    setMenuItems(updated);
-    try {
-      localStorage.setItem('veyns_manageable_menu', JSON.stringify(updated));
-      window.dispatchEvent(new Event('storage'));
     } catch (e) {}
   };
 
@@ -275,7 +348,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     try {
       await supabase.from('orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       setOrders([]);
-      localStorage.removeItem('veyns_order_history');
     } catch (e) {
       setOrders([]);
     }
@@ -449,7 +521,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         });
       }
 
-      // Save locally first so UI responds instantly
       localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(slotsToSave));
       
       if (penaltyStatus) {
@@ -460,21 +531,17 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
       const validStamps = slotsToSave.filter(s => s.status === 'valid').map(s => s.date);
       localStorage.setItem(`veyns_stamps_${identifierKey}`, JSON.stringify(validStamps));
-      if (identifierKey === 'admin') {
-        localStorage.setItem(`veyns_loyalty_stamps`, JSON.stringify(validStamps));
-      }
 
-      // Try updating Supabase - explicitly sending null when clean preset so notice is removed
       try {
         await supabase
           .from('profiles')
           .update({
             stamps_data: slotsToSave,
-            penalty_data: penaltyStatus // Explicitly null if Active Account / Penalties Waived / No Violation
+            penalty_data: penaltyStatus
           })
           .eq('identifier', identifierKey);
       } catch (cloudErr) {
-        console.warn('Cloud sync warning (Make sure stamps_data and penalty_data columns exist in Supabase):', cloudErr);
+        console.warn('Cloud sync warning:', cloudErr);
       }
 
       window.dispatchEvent(new Event('storage'));
@@ -530,9 +597,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-white tracking-wide uppercase">
               Employee Control & Sales Dashboard
             </h1>
-            <p className="text-xs text-emerald-300/80">
-              Live menu pricing, discounts, customer accounts, password recovery, and sales analytics.
-            </p>
           </div>
 
           <Button
@@ -563,7 +627,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'
             }`}
           >
-            <Users className="h-4 w-4" /> Customer Accounts & Passwords ({customers.length})
+            <Users className="h-4 w-4" /> Customer Accounts ({customers.length})
           </button>
           <button
             onClick={() => setActiveTab('menu')}
@@ -573,7 +637,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'
             }`}
           >
-            <Tag className="h-4 w-4" /> Menu Pricing ({menuItems.length})
+            <Tag className="h-4 w-4" /> Menu Manager ({menuItems.length})
           </button>
           <button
             onClick={() => setActiveTab('promos')}
@@ -593,19 +657,16 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-2 shadow-xl">
                 <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Total Gross Sales</span>
                 <p className="text-3xl font-extrabold text-lime-400 font-display">{formatPeso(totalGrossSales)}</p>
-                <p className="text-[11px] text-emerald-300/70">Calculated from completed orders</p>
               </div>
 
               <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-2 shadow-xl">
                 <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Total Orders Placed</span>
                 <p className="text-3xl font-extrabold text-white font-display">{totalOrdersCount} Orders</p>
-                <p className="text-[11px] text-emerald-300/70">Successful customer checkouts</p>
               </div>
 
               <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-2 shadow-xl">
                 <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Average Order Value</span>
                 <p className="text-3xl font-extrabold text-amber-400 font-display">{formatPeso(averageOrderValue)}</p>
-                <p className="text-[11px] text-emerald-300/70">Revenue per transaction</p>
               </div>
             </div>
 
@@ -642,7 +703,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         <th className="p-3">Customer & Contact</th>
                         <th className="p-3">Fulfillment</th>
                         <th className="p-3">Items Summary</th>
-                        <th className="p-3">Loyalty Stamps (12 Total)</th>
+                        <th className="p-3">Loyalty Stamps</th>
                         <th className="p-3">Promo</th>
                         <th className="p-3 text-right">Total (₱)</th>
                       </tr>
@@ -669,27 +730,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                                 </div>
                               ))}
                             </td>
-                            <td className="p-3">
-                              <div className="flex flex-col gap-1">
-                                <div className="flex items-center gap-1">
-                                  {Array.from({ length: 12 }).map((_, sIdx) => {
-                                    const isEarned = sIdx < stampCount;
-                                    return (
-                                      <span
-                                        key={sIdx}
-                                        title={`Stamp #${sIdx + 1} ${isEarned ? '(Earned)' : '(Pending)'}`}
-                                        className={`text-sm ${isEarned ? 'text-lime-400 font-extrabold' : 'text-emerald-700 opacity-60'}`}
-                                      >
-                                        {isEarned ? '●' : '○'}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-                                <span className="text-[10px] font-extrabold text-lime-400">
-                                  {stampCount} out of 12 stamps
-                                </span>
-                              </div>
-                            </td>
+                            <td className="p-3 font-extrabold text-lime-400">{stampCount} / 12</td>
                             <td className="p-3 font-semibold text-amber-400">{order.promoCode || '—'}</td>
                             <td className="p-3 text-right font-extrabold text-lime-400 text-sm">{formatPeso(order.total)}</td>
                           </tr>
@@ -709,14 +750,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5 text-lime-400" />
                 <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">
-                  Registered Customer Accounts, Passwords & Management
+                  Registered Customer Accounts & Passwords
                 </h3>
               </div>
             </div>
-
-            <p className="text-xs text-emerald-300/80">
-              View customer nicknames, Gmail/phone identifiers, passwords, reset passwords, manage stamps, or delete accounts.
-            </p>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-emerald-100">
@@ -726,7 +763,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     <th className="p-3">Gmail / Phone Identifier</th>
                     <th className="p-3">Password</th>
                     <th className="p-3">Account Type</th>
-                    <th className="p-3 text-right">Actions (Stamps, Reset & Delete)</th>
+                    <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-emerald-950">
@@ -739,20 +776,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                       <tr key={idx} className="hover:bg-[#071F19]/50 transition-colors">
                         <td className="p-3 font-bold text-white">{cust.name}</td>
                         <td className="p-3 text-lime-400 font-mono">
-                          <div className="flex items-center gap-2">
-                            <span>{cust.identifier}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditIdentifierUser(cust);
-                                setNewIdentifierInput(cust.identifier);
-                              }}
-                              className="text-emerald-400 hover:text-lime-400 p-1 cursor-pointer"
-                              title="Edit Email/Phone"
-                            >
-                              <Edit2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
+                          <span>{cust.identifier}</span>
                         </td>
                         <td className="p-3 font-mono">
                           <div className="flex items-center gap-2">
@@ -761,7 +785,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                               type="button"
                               onClick={() => togglePasswordVisibility(cust.identifier)}
                               className="text-emerald-400 hover:text-white cursor-pointer p-1"
-                              title={isVisible ? 'Hide Password' : 'Show Password'}
                             >
                               {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                             </button>
@@ -776,28 +799,26 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                           <Button
                             onClick={() => openStampManager(cust)}
                             size="sm"
-                            className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5"
+                            className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer"
                           >
-                            <Award className="h-3.5 w-3.5" /> Manage Stamps
+                            <Award className="h-3.5 w-3.5 mr-1" /> Stamps
                           </Button>
-
                           <Button
                             onClick={() => {
                               setResetTargetUser(cust);
                               setNewTempPassword('Veyns' + Math.floor(1000 + Math.random() * 9000));
                             }}
                             size="sm"
-                            className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5"
+                            className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer"
                           >
-                            <KeyRound className="h-3.5 w-3.5" /> Reset Password
+                            <KeyRound className="h-3.5 w-3.5 mr-1" /> Reset Password
                           </Button>
-
                           <Button
                             onClick={() => handleDeleteCustomer(cust.identifier)}
                             size="sm"
-                            className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 font-bold text-xs px-3 py-1.5 rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5"
+                            className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer"
                           >
-                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </td>
                       </tr>
@@ -810,41 +831,50 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         )}
 
         {activeTab === 'menu' && (
-          <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-4 shadow-xl">
-            <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide border-b border-emerald-900/60 pb-3">
-              Manage Menu Prices & Discounts
-            </h3>
+          <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
+            <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
+              <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">
+                Database Menu Manager (Live Sync)
+              </h3>
+              <Button
+                onClick={() => {
+                  setItemName('');
+                  setItemCategory('Rice Bowls');
+                  setItemDescription('');
+                  setItemPrice('');
+                  setItemDiscount('');
+                  setItemImageFile(null);
+                  setImagePreviewUrl('');
+                  setEditingItem(null);
+                  setIsAddingNewItem(true);
+                }}
+                className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg"
+              >
+                <Plus className="h-4 w-4" /> Add New Menu Item
+              </Button>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {menuItems.map((item) => {
                 const discountPct = item.discountPercent || 0;
                 const effectivePrice = discountPct > 0 ? item.price * (1 - discountPct / 100) : item.price;
                 const isAvailable = item.isAvailable !== false;
+                const displayImage = item.image || menuImages[item.id];
 
                 return (
-                  <div
-                    key={item.id}
-                    className={`bg-[#061d16] border rounded-2xl p-4 flex flex-col justify-between transition-all ${
-                      isAvailable ? 'border-emerald-800/80' : 'border-red-900/60 opacity-60'
-                    }`}
-                  >
+                  <div key={item.id} className={`bg-[#061d16] border rounded-2xl p-4 flex flex-col justify-between transition-all ${isAvailable ? 'border-emerald-800/80' : 'border-red-900/60 opacity-60'}`}>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-3">
                           <div className="h-14 w-14 rounded-xl bg-[#08291f] overflow-hidden shrink-0 border border-emerald-800/50 flex items-center justify-center">
-                            <Photo id={item.id} alt={item.name} className="h-full w-full object-cover" />
+                            <Photo src={displayImage} alt={item.name} className="h-full w-full object-cover" />
                           </div>
                           <div>
                             <h4 className="font-display font-bold text-white text-sm">{item.name}</h4>
                             <span className="text-[10px] text-emerald-400/80 uppercase font-semibold">{item.category}</span>
                           </div>
                         </div>
-
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
-                            isAvailable ? 'bg-lime-400/20 text-lime-400 border border-lime-400/40' : 'bg-red-950 text-red-400 border border-red-800'
-                          }`}
-                        >
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${isAvailable ? 'bg-lime-400/20 text-lime-400 border border-lime-400/40' : 'bg-red-950 text-red-400 border border-red-800'}`}>
                           {isAvailable ? 'Available' : 'Hidden'}
                         </span>
                       </div>
@@ -868,28 +898,38 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     </div>
 
                     <div className="flex items-center justify-between border-t border-emerald-900/60 pt-3 mt-4">
-                      <Button
-                        onClick={() => handleToggleAvailability(item.id)}
-                        size="sm"
-                        className={`text-xs font-bold px-3 py-1.5 rounded-xl cursor-pointer ${
-                          isAvailable
-                            ? 'bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-800/60'
-                            : 'bg-emerald-950 hover:bg-emerald-900 text-lime-400 border border-emerald-800'
-                        }`}
-                      >
-                        {isAvailable ? 'Hide Item' : 'Show Item'}
-                      </Button>
+                      <div className="flex gap-1.5">
+                        <Button
+                          onClick={() => handleToggleAvailability(item.id, isAvailable)}
+                          size="sm"
+                          className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl cursor-pointer ${isAvailable ? 'bg-red-950/60 text-red-300 border border-red-800/60' : 'bg-emerald-950 text-lime-400 border border-emerald-800'}`}
+                        >
+                          {isAvailable ? 'Hide' : 'Show'}
+                        </Button>
+                        <Button
+                          onClick={() => handleDeleteMenuItem(item.id)}
+                          size="sm"
+                          className="bg-red-950/40 hover:bg-red-900 text-red-400 border border-red-900/60 px-2.5 py-1.5 rounded-xl text-[11px] cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
 
                       <Button
                         onClick={() => {
                           setEditingItem(item);
-                          setEditPrice(item.price.toString());
-                          setEditDiscount((item.discountPercent || 0).toString());
+                          setItemName(item.name);
+                          setItemCategory(item.category || 'Rice Bowls');
+                          setItemDescription(item.description || '');
+                          setItemPrice(item.price.toString());
+                          setItemDiscount((item.discountPercent || 0).toString());
+                          setImagePreviewUrl(displayImage || '');
+                          setIsAddingNewItem(true);
                         }}
                         size="sm"
-                        className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-4 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                        className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1"
                       >
-                        <Edit2 className="h-3.5 w-3.5" /> Edit Price & Discount
+                        <Edit2 className="h-3.5 w-3.5" /> Edit Item
                       </Button>
                     </div>
                   </div>
@@ -913,7 +953,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   placeholder="e.g. VEYNS15"
                   value={newPromoCode}
                   onChange={(e) => setNewPromoCode(e.target.value)}
-                  className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white uppercase placeholder:normal-case placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
+                  className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white uppercase placeholder:normal-case focus:outline-none focus:border-lime-400"
                 />
               </div>
 
@@ -924,7 +964,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   placeholder="e.g. 15"
                   value={newPromoDiscount}
                   onChange={(e) => setNewPromoDiscount(e.target.value)}
-                  className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
+                  className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-lime-400"
                 />
               </div>
 
@@ -964,142 +1004,124 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </div>
         )}
 
-        <Dialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
-          {editingItem && (
-            <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
-              <div className="space-y-1 border-b border-emerald-900/60 pb-3">
-                <DialogTitle className="font-display text-xl font-extrabold text-white">
-                  Edit Price & Discount: {editingItem.name}
-                </DialogTitle>
-                <DialogDescription className="text-xs text-emerald-300">
-                  Update the base price or apply a percentage discount.
-                </DialogDescription>
+        {/* Modal for Adding or Editing Menu Item */}
+        <Dialog open={isAddingNewItem} onOpenChange={(open) => !open && setIsAddingNewItem(false)}>
+          <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/85 shadow-2xl p-6 rounded-3xl max-h-[95vh] overflow-y-auto">
+            <div className="space-y-1 border-b border-emerald-900/60 pb-3">
+              <DialogTitle className="font-display text-xl font-extrabold text-white">
+                {editingItem ? `Edit Menu Item: ${editingItem.name}` : 'Add New Menu Item'}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-emerald-300">
+                Upload photo, update price, description, and sync directly to the database.
+              </DialogDescription>
+            </div>
+
+            <form onSubmit={handleSaveNewOrEditedItem} className="space-y-4 my-4 text-xs">
+              <div className="space-y-1.5">
+                <label className="font-bold text-lime-400 uppercase tracking-wider block">Item Name</label>
+                <input
+                  type="text"
+                  required
+                  value={itemName}
+                  onChange={(e) => setItemName(e.target.value)}
+                  placeholder="e.g. Pork Sisig Rice Bowl"
+                  className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
+                />
               </div>
 
-              <div className="space-y-4 my-4 text-xs">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-lime-400 uppercase tracking-wider block">Base Price (₱)</label>
-                    <input
-                      type="number"
-                      value={editPrice}
-                      onChange={(e) => setEditPrice(e.target.value)}
-                      className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-2.5 text-white font-bold focus:outline-none focus:border-lime-400"
-                    />
-                  </div>
+              <div className="space-y-1.5">
+                <label className="font-bold text-lime-400 uppercase tracking-wider block">Category</label>
+                <select
+                  value={itemCategory}
+                  onChange={(e) => setItemCategory(e.target.value)}
+                  className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
+                >
+                  <option value="Rice Bowls">Rice Bowls</option>
+                  <option value="Meals & Specialties">Meals & Specialties</option>
+                  <option value="Desserts & Sweets">Desserts & Sweets</option>
+                  <option value="Apparel & Merch">Apparel & Merch</option>
+                </select>
+              </div>
 
-                  <div className="space-y-1.5">
-                    <label className="font-bold text-lime-400 uppercase tracking-wider block">Discount (% OFF)</label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Price (₱)</label>
+                  <input
+                    type="number"
+                    required
+                    value={itemPrice}
+                    onChange={(e) => setItemPrice(e.target.value)}
+                    placeholder="109"
+                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold text-amber-400 uppercase tracking-wider block">Discount (% OFF)</label>
+                  <input
+                    type="number"
+                    value={itemDiscount}
+                    onChange={(e) => setItemDiscount(e.target.value)}
+                    placeholder="0"
+                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-lime-400 uppercase tracking-wider block">Description</label>
+                <textarea
+                  rows={2}
+                  value={itemDescription}
+                  onChange={(e) => setItemDescription(e.target.value)}
+                  placeholder="Crispy pork sisig served over warm garlic rice..."
+                  className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white focus:outline-none focus:border-lime-400"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="font-bold text-lime-400 uppercase tracking-wider block">Menu Item Photo Upload</label>
+                <div className="flex items-center gap-3 bg-[#041913] border border-emerald-800/80 rounded-xl p-3">
+                  <div className="h-12 w-12 rounded-lg bg-[#08291f] overflow-hidden shrink-0 border border-emerald-800/50 flex items-center justify-center">
+                    <Photo src={imagePreviewUrl} alt="Preview" className="h-full w-full object-cover" />
+                  </div>
+                  <div className="flex-1 overflow-hidden">
                     <input
-                      type="number"
-                      value={editDiscount}
-                      onChange={(e) => setEditDiscount(e.target.value)}
-                      className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-2.5 text-white font-bold focus:outline-none focus:border-lime-400"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          const file = e.target.files[0];
+                          setItemImageFile(file);
+                          setImagePreviewUrl(URL.createObjectURL(file));
+                        }
+                      }}
+                      className="text-[10px] text-emerald-300 w-full file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-extrabold file:bg-[#082d22] file:text-lime-400 hover:file:bg-lime-400 hover:file:text-black cursor-pointer"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
+              <div className="flex gap-2 pt-3 border-t border-emerald-900/60">
                 <Button
-                  onClick={() => setEditingItem(null)}
-                  className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2.5 rounded-xl text-xs cursor-pointer"
+                  type="button"
+                  onClick={() => setIsAddingNewItem(false)}
+                  className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-3 rounded-xl text-xs cursor-pointer"
                 >
                   Cancel
                 </Button>
                 <Button
-                  onClick={handleSaveItemEdit}
-                  className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg"
+                  type="submit"
+                  className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs cursor-pointer shadow-lg"
                 >
-                  Save Changes
+                  Save to Database
                 </Button>
               </div>
-            </DialogContent>
-          )}
+            </form>
+          </DialogContent>
         </Dialog>
 
-        <Dialog open={!!editIdentifierUser} onOpenChange={(open) => !open && setEditIdentifierUser(null)}>
-          {editIdentifierUser && (
-            <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
-              <div className="space-y-1 border-b border-emerald-900/60 pb-3">
-                <DialogTitle className="font-display text-xl font-extrabold text-white">
-                  Edit Identifier for {editIdentifierUser.name}
-                </DialogTitle>
-                <DialogDescription className="text-xs text-emerald-300">
-                  Update customer's login email or phone number.
-                </DialogDescription>
-              </div>
-
-              <div className="space-y-3 my-4 text-xs">
-                <label className="font-bold text-lime-400 uppercase tracking-wider block">New Email or Phone Number</label>
-                <input
-                  type="text"
-                  value={newIdentifierInput}
-                  onChange={(e) => setNewIdentifierInput(e.target.value)}
-                  className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white text-sm focus:outline-none focus:border-lime-400"
-                  placeholder="Enter new email or phone"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
-                <Button
-                  onClick={() => setEditIdentifierUser(null)}
-                  className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2.5 rounded-xl text-xs cursor-pointer"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleUpdateIdentifierSubmit}
-                  className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg"
-                >
-                  Save New Identifier
-                </Button>
-              </div>
-            </DialogContent>
-          )}
-        </Dialog>
-
-        <Dialog open={!!resetTargetUser} onOpenChange={(open) => !open && setResetTargetUser(null)}>
-          {resetTargetUser && (
-            <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
-              <div className="space-y-1 border-b border-emerald-900/60 pb-3">
-                <DialogTitle className="font-display text-xl font-extrabold text-white">
-                  Reset Password for {resetTargetUser.name}
-                </DialogTitle>
-                <DialogDescription className="text-xs text-emerald-300">
-                  Identifier: <span className="font-mono text-lime-400">{resetTargetUser.identifier}</span>
-                </DialogDescription>
-              </div>
-
-              <div className="space-y-3 my-4 text-xs">
-                <label className="font-bold text-lime-400 uppercase tracking-wider block">Set New Temporary Password</label>
-                <input
-                  type="text"
-                  value={newTempPassword}
-                  onChange={(e) => setNewTempPassword(e.target.value)}
-                  className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-mono text-sm focus:outline-none focus:border-lime-400"
-                  placeholder="Enter new password"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
-                <Button
-                  onClick={() => setResetTargetUser(null)}
-                  className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2.5 rounded-xl text-xs cursor-pointer"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleResetPasswordSubmit}
-                  className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg"
-                >
-                  Confirm Reset Password
-                </Button>
-              </div>
-            </DialogContent>
-          )}
-        </Dialog>
-
+        {/* Dialog for Stamp Manager */}
         <Dialog open={!!stampTargetUser} onOpenChange={(open) => !open && setStampTargetUser(null)}>
           {stampTargetUser && (
             <DialogContent className="max-w-xl w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
@@ -1107,9 +1129,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <DialogTitle className="font-display text-xl font-extrabold text-white flex items-center gap-2">
                   <Award className="h-5 w-5 text-lime-400" /> Fair Play Stamp Manager: {stampTargetUser.name}
                 </DialogTitle>
-                <DialogDescription className="text-xs text-emerald-300">
-                  Use the dropdown on each slot to set status: <span className="text-lime-400 font-bold">Add (Valid)</span>, <span className="text-amber-400 font-bold">To Be Cleared</span>, <span className="text-red-400 font-bold">Invalid</span>, or <span className="text-emerald-500 font-bold">Empty</span>.
-                </DialogDescription>
               </div>
 
               <div className="my-4 space-y-4 text-xs">
@@ -1130,20 +1149,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </select>
                 </div>
 
-                <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 text-center space-y-1">
-                  <p className="text-xs text-emerald-300">Active Valid Stamps:</p>
-                  <p className="text-3xl font-black text-lime-400 font-display">
-                    {customerStampsDetailed.filter(s => s.status === 'valid').length} / 12 Stamps
-                  </p>
-                </div>
-
                 <div className="grid grid-cols-4 gap-2.5">
                   {Array.from({ length: 12 }).map((_, idx) => {
                     const stampEntry = customerStampsDetailed[idx];
                     const status = stampEntry ? stampEntry.status : 'empty';
-                    const isSixth = idx === 5;
-                    const isNinth = idx === 8;
-                    const isTwelfth = idx === 11;
 
                     let selectValue = 'empty';
                     if (status === 'valid') selectValue = 'valid';
@@ -1157,23 +1166,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                           status === 'valid'
                             ? 'bg-[#082d22] border-lime-400 text-lime-400 shadow-md'
                             : status === 'to_clear'
-                            ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-md animate-pulse'
+                            ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-md'
                             : status === 'invalid'
                             ? 'bg-red-950/90 border-red-500 text-red-300 shadow-md'
                             : 'bg-[#041913] border-emerald-800/60 text-emerald-600'
                         }`}
                       >
-                        <div className="flex items-center justify-between w-full px-1">
-                          <span className="text-[9px] font-mono opacity-80">#{idx + 1}</span>
-                        </div>
-
-                        <div className="flex flex-col items-center justify-center my-auto">
-                          {status === 'valid' && <CheckCircle2 className="size-4 text-lime-400 mb-0.5" />}
-                          {status === 'to_clear' && <Clock className="size-4 text-amber-400 mb-0.5" />}
-                          {status === 'invalid' && <XCircle className="size-4 text-red-400 mb-0.5" />}
-                          {status === 'empty' && <span className="text-[9px] text-emerald-600 font-mono">Empty</span>}
-                        </div>
-
+                        <span className="text-[9px] font-mono opacity-80">#{idx + 1}</span>
                         <select
                           value={selectValue}
                           onChange={(e) => {
@@ -1201,25 +1200,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         >
                           <option value="empty">EMPTY</option>
                           <option value="valid">ADD</option>
-                          <option value="to_clear">TO BE CLEARED</option>
+                          <option value="to_clear">TO CLEAR</option>
                           <option value="invalid">INVALID</option>
                         </select>
-
-                        {isSixth && (
-                          <span className="absolute -top-2 -right-1 bg-amber-500 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full z-10">
-                            25% OFF
-                          </span>
-                        )}
-                        {isNinth && (
-                          <span className="absolute -top-2 -right-1 bg-amber-400 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full z-10">
-                            50% OFF
-                          </span>
-                        )}
-                        {isTwelfth && (
-                          <span className="absolute -top-2 -right-1 bg-lime-400 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full z-10">
-                            FREE
-                          </span>
-                        )}
                       </div>
                     );
                   })}
