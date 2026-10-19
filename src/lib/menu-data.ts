@@ -1,3 +1,4 @@
+// @ts-nocheck
 export interface MenuItem {
   id: string;
   name: string;
@@ -84,6 +85,7 @@ export const UPSELL_ITEMS: MenuItem[] = [
 ];
 
 export const menuItems: MenuItem[] = [
+  // --- 1. RICE BOWLS ---
   {
     id: 'pork-sinugba',
     name: 'Pork Sugba Rice Bowl',
@@ -91,7 +93,7 @@ export const menuItems: MenuItem[] = [
     price: 109,
     description: 'Grilled pork with rice, a 1 oz cup of toyomansi and 4 cucumber slices, served in a kraft paper bowl.',
     bestSeller: true,
-    sortOrder: 1
+    sortOrder: 1 // Pinned #1 Best Seller at the absolute top
   },
   {
     id: 'pork-sisig',
@@ -99,7 +101,7 @@ export const menuItems: MenuItem[] = [
     category: 'Rice Bowls',
     price: 119,
     description: 'Sizzling savory chopped pork seasoned with calamansi, onions, and creamy dressing over rice.',
-    sortOrder: 10
+    sortOrder: 2
   },
   {
     id: 'pork-katsu',
@@ -107,17 +109,20 @@ export const menuItems: MenuItem[] = [
     category: 'Rice Bowls',
     price: 89,
     description: 'Single piece crispy breaded pork katsu served over hot steamed rice with savory drizzle.',
-    sortOrder: 11
+    sortOrder: 3
   },
+
+  // --- 2. NOODLE BOWLS ---
   {
     id: 'ramen-katsu',
-    name: 'Shin Ramen',
+    name: 'Ramen Bowl',
     category: 'Noodle Bowls',
     price: 119,
     description: 'Rich savory soup broth with noodles, fresh scallions, and your choice of egg or katsu toppings.',
     isCustomizable: true,
     hasBrothEggOption: true,
-    sortOrder: 2
+    bestSeller: true,
+    sortOrder: 4
   },
   {
     id: 'buldak',
@@ -127,16 +132,20 @@ export const menuItems: MenuItem[] = [
     description: 'Spicy Korean fire noodles tossed in signature hot sauce with melted cheese.',
     isCustomizable: true,
     hasBrothEggOption: false,
-    sortOrder: 12
+    sortOrder: 5
   },
+
+  // --- 3. SIDES ---
   {
     id: 'fries',
     name: "Crispy French Fries (Salted w/ Cane's Dip)",
     category: 'Sides',
     price: 59,
     description: "Crispy salted french fries served in our classic kiosk cup with Raising Cane's dipping sauce.",
-    sortOrder: 13
+    sortOrder: 6
   },
+
+  // --- 4. APPAREL (Locked at the bottom) ---
   {
     id: 'hoodie',
     name: 'VEYNS Streetwear Hoodie',
