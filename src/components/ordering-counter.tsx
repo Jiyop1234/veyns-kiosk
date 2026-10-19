@@ -230,6 +230,14 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     const L = window.L;
     if (!L) return;
 
+    // Fix marker shadow tracking prevention warning by using inline SVG divIcon
+    const customIcon = L.divIcon({
+      className: 'custom-map-marker',
+      html: '<div style="background-color: #a3e635; width: 20px; height: 20px; border-radius: 50%; border: 3px solid #000; box-shadow: 0 0 10px rgba(0,0,0,0.5);"></div>',
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
+    });
+
     const map = L.map(mapRef.current).setView([STORE_LAT, STORE_LNG], 15);
     mapInstanceRef.current = map;
 
@@ -240,7 +248,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     const customerInitialLat = STORE_LAT;
     const customerInitialLng = STORE_LNG;
 
-    const marker = L.marker([customerInitialLat, customerInitialLng], { draggable: true }).addTo(map);
+    const marker = L.marker([customerInitialLat, customerInitialLng], { draggable: true, icon: customIcon }).addTo(map);
     marker.bindPopup('<b>Store Location / Drag to your delivery pin!</b>').openPopup();
     markerInstanceRef.current = marker;
 
@@ -1370,7 +1378,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
                   />
 
-                  {/* Clean Map Pin Section (No Search Bar) */}
+                  {/* Clean Map Pin Section */}
                   <div className="space-y-2 pt-1">
                     <div className="flex items-center justify-between">
                       <label className="font-bold text-lime-400 uppercase tracking-wider text-[10px]">
