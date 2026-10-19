@@ -26,6 +26,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [search, setSearch] = useState('');
 
   const [currentMenuGrid, setCurrentMenuGrid] = useState<any[]>([]);
+  const [availablePromos, setAvailablePromos] = useState<any[]>([]);
 
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [stamps, setStamps] = useState<any[]>([]);
@@ -45,6 +46,29 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     } catch (e) {
       const saved = localStorage.getItem('veyns_slot_capacities');
       if (saved) setSlotCapacities(JSON.parse(saved));
+    }
+  };
+
+  const loadPromosFromCloud = async () => {
+    try {
+      const { data: cloudPromos, error } = await supabase.from('promos').select('*');
+      if (cloudPromos && cloudPromos.length > 0) {
+        const formatted = cloudPromos.map((p: any) => ({
+          code: p.code,
+          type: p.type,
+          discountValue: Number(p.discount_value),
+          visibility: p.visibility,
+          expiryDurationMs: Number(p.expiry_duration_ms),
+          usageLimit: p.usage_limit ? Number(p.usage_limit) : null,
+          usageCount: Number(p.usage_count || 0),
+          createdAt: Number(p.created_at || Date.now())
+        }));
+        setAvailablePromos(formatted);
+      } else {
+        setAvailablePromos(getActivePromoCodes());
+      }
+    } catch (e) {
+      setAvailablePromos(getActivePromoCodes());
     }
   };
 
@@ -147,6 +171,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     loadMenuFromCloud();
     loadUserStampsAndPenalties();
     loadSlotCapacities();
+    loadPromosFromCloud();
 
     const menuChannel = supabase
       .channel('public:menu_items_counter')
@@ -162,16 +187,25 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       })
       .subscribe();
 
+    const promosChannel = supabase
+      .channel('public:promos_counter')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'promos' }, () => {
+        loadPromosFromCloud();
+      })
+      .subscribe();
+
     const handleStorageChange = () => {
       loadMenuFromCloud();
       loadUserStampsAndPenalties();
       loadSlotCapacities();
+      loadPromosFromCloud();
     };
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
       supabase.removeChannel(menuChannel);
       supabase.removeChannel(slotsChannel);
+      supabase.removeChannel(promosChannel);
       window.removeEventListener('storage', handleStorageChange);
     };
   }, [resetKey, currentUser]);
@@ -467,14 +501,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       }
 
       if (newOrder.promoCode) {
-        const promos = getActivePromoCodes();
-        const updatedPromos = promos.map(p => {
-          if (p.code.toUpperCase() === newOrder.promoCode.toUpperCase()) {
-            return { ...p, usageCount: (p.usageCount || 0) + 1 };
-          }
-          return p;
-        });
-        localStorage.setItem('veyns_promo_codes', JSON.stringify(updatedPromos));
+        const promos = availablePromos;
+        const matched = promos.find(p => p.code.toUpperCase() === newOrder.promoCode.toUpperCase());
+        if (matched) {
+          const newCount = (matched.usageCount || 0) + 1;
+          await supabase.from('promos').update({ usage_count: newCount }).eq('code', matched.code);
+        }
       }
     } catch (err) {
       console.error('Supabase order exception:', err);
@@ -599,7 +631,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const handleApplyPromo = () => {
     setPromoError('');
-    const promos = getActivePromoCodes();
+    const promos = availablePromos;
     const cleanCode = promoInput.trim().toUpperCase();
     const found = promos.find((p) => p.code.toUpperCase() === cleanCode);
 
@@ -719,7 +751,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const validStampsCount = stamps.filter(s => s.status === 'valid').length;
-  const publicVouchersList = getActivePromoCodes().filter(p => p.visibility !== 'hidden');
+  const publicVouchersList = availablePromos.filter(p => p.visibility !== 'hidden');
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -1523,7 +1555,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 </div>
 
                 {orderType === 'today' ? (
-                  <div className="bg-[#061d16] border border-emerald-800/60 rounded-xl p-3 space-y-2 text-xs">
+                  <div className="bg-[#061c16] border border-emerald-800/60 rounded-xl p-3 space-y-2 text-xs">
                     <p className="text-[11px] text-emerald-200 font-medium">
                       {fulfillment === 'delivery' && deliveryOption === 'our'
                         ? 'Select your preferred personal delivery time slot (live slots checked):'
@@ -1564,7 +1596,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     )}
                   </div>
                 ) : (
-                  <div className="bg-[#061d16] border border-emerald-800/60 rounded-xl p-3 space-y-2.5 text-xs">
+                  <div className="bg-[#061c16] border border-emerald-800/60 rounded-xl p-3 space-y-2.5 text-xs">
                     <p className="text-[11px] text-lime-400 font-bold">Select Reservation Date & Time:</p>
                     <div className="space-y-2">
                       <div>
