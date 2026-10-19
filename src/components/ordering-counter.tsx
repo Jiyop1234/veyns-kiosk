@@ -8,8 +8,8 @@ import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
 
-function Photo({ id, alt, className }: { id: string; alt: string; className: string }) {
-  const src = menuImages[id];
+function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; alt: string; className: string }) {
+  const src = dbImage || menuImages[id];
   if (!src) {
     return (
       <div className={`${className} flex items-center justify-center bg-[#0d2e26] font-display text-sm font-bold text-[#d4af37]`}>
@@ -510,7 +510,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
             >
               <div>
                 <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-[#071F19] mb-4 flex items-center justify-center">
-                  <Photo id={item.id} alt={item.name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                  <Photo id={item.id} dbImage={item.image} alt={item.name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                   
                   {item.bestSeller && (
                     <span className="absolute top-2.5 right-2.5 rounded-full bg-lime-400 text-black px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider shadow-md flex items-center gap-1">
@@ -772,7 +772,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
             <div className="my-4 flex justify-center">
               <div className="relative aspect-square w-48 h-48 overflow-hidden rounded-2xl bg-[#061e17] border border-emerald-800/40 flex items-center justify-center">
-                <Photo id={selected.id} alt={selected.name} className="h-full w-full object-cover" />
+                <Photo id={selected.id} dbImage={selected.image} alt={selected.name} className="h-full w-full object-cover" />
               </div>
             </div>
 
@@ -914,7 +914,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   )}
 
                   <div className="h-20 w-20 rounded-lg bg-[#08291f] overflow-hidden mb-2 flex items-center justify-center shrink-0">
-                    <Photo id={item.id} alt={item.name} className="h-full w-full object-cover" />
+                    <Photo id={item.id} dbImage={item.image} alt={item.name} className="h-full w-full object-cover" />
                   </div>
                   <div className="space-y-0.5 mb-2 w-full">
                     <h4 className="text-[11px] font-bold text-white line-clamp-1 leading-tight">{item.name}</h4>
