@@ -51,6 +51,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [newTempPassword, setNewTempPassword] = useState('');
   const [visiblePasswords, setVisiblePasswords] = useState<{ [key: string]: boolean }>({});
 
+  // Customer Edit State
+  const [editingCustomer, setEditingCustomer] = useState<any>(null);
+  const [editCustName, setEditCustName] = useState('');
+  const [editCustIdentifier, setEditCustIdentifier] = useState('');
+
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
   const [selectedSlotDate, setSelectedSlotDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -145,7 +150,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           } else {
             localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
           }
-          return { name: p.name || 'Valued Regular', identifier: p.identifier, type: p.role || 'regular', stamps_data: p.stamps_data, penalty_data: p.penalty_data };
+          return { id: p.id, name: p.name || 'Valued Regular', identifier: p.identifier, type: p.role || 'regular', stamps_data: p.stamps_data, penalty_data: p.penalty_data };
         });
         setCustomers(formattedProfiles);
       } else {
@@ -370,6 +375,64 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     setResetTargetUser(null);
     setNewTempPassword('');
     fetchCloudData();
+  };
+
+  const handleSaveCustomerEdits = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCustomer) return;
+
+    const oldIdentifierKey = editingCustomer.identifier.toLowerCase().trim();
+    const newIdentifierKey = editCustIdentifier.trim().toLowerCase();
+    const newName = editCustName.trim();
+
+    if (!newIdentifierKey || !newName) {
+      alert('Nickname and identifier cannot be blank.');
+      return;
+    }
+
+    try {
+      // Update in Supabase profiles table
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: newName,
+          identifier: newIdentifierKey
+        })
+        .eq('identifier', oldIdentifierKey);
+
+      if (error) {
+        alert('Error updating customer profile: ' + error.message);
+        return;
+      }
+
+      // Migrate localStorage keys if identifier changed
+      if (oldIdentifierKey !== newIdentifierKey) {
+        const plainPass = localStorage.getItem(`veyns_pwd_plain_${oldIdentifierKey}`);
+        const hashPass = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
+        const stamps = localStorage.getItem(`veyns_stamps_${oldIdentifierKey}`);
+        const detailedStamps = localStorage.getItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
+        const penalty = localStorage.getItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
+
+        if (plainPass) localStorage.setItem(`veyns_pwd_plain_${newIdentifierKey}`, plainPass);
+        if (hashPass) localStorage.setItem(`veyns_pwd_hash_${newIdentifierKey}`, hashPass);
+        if (stamps) localStorage.setItem(`veyns_stamps_${newIdentifierKey}`, stamps);
+        if (detailedStamps) localStorage.setItem(`veyns_detailed_stamps_${newIdentifierKey}`, detailedStamps);
+        if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newIdentifierKey}`, penalty);
+
+        localStorage.removeItem(`veyns_pwd_plain_${oldIdentifierKey}`);
+        localStorage.removeItem(`veyns_pwd_hash_${oldIdentifierKey}`);
+        localStorage.removeItem(`veyns_stamps_${oldIdentifierKey}`);
+        localStorage.removeItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
+        localStorage.removeItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
+      }
+
+      alert('Customer account successfully updated!');
+      setEditingCustomer(null);
+      fetchCloudData();
+    } catch (err) {
+      console.error(err);
+      alert('Error updating customer.');
+    }
   };
 
   const handleDeleteCustomer = async (identifier: string) => {
@@ -733,6 +796,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">{cust.type || 'Regular'}</span>
                           </td>
                           <td className="p-3 text-right space-x-2">
+                            <Button onClick={() => { setEditingCustomer(cust); setEditCustName(cust.name || ''); setEditCustIdentifier(cust.identifier || ''); }} size="sm" className="bg-[#062c21] hover:bg-emerald-800 text-lime-300 border border-emerald-700 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
+                              <Edit2 className="h-3.5 w-3.5 mr-1" /> Edit
+                            </Button>
                             <Button onClick={() => openStampManager(cust)} size="sm" className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
                               <Award className="h-3.5 w-3.5 mr-1" /> Stamps
                             </Button>
@@ -999,6 +1065,62 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   Close
                 </Button>
               </div>
+            </DialogContent>
+          )}
+        </Dialog>
+
+        {/* EDIT CUSTOMER ACCOUNT MODAL */}
+        <Dialog open={!!editingCustomer} onOpenChange={(open) => !open && setEditingCustomer(null)}>
+          {editingCustomer && (
+            <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
+              <div className="space-y-1 border-b border-emerald-900/60 pb-3">
+                <DialogTitle className="font-display text-lg font-extrabold text-white">
+                  Edit Account: {editingCustomer.name}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-emerald-300">
+                  Update customer nickname or Gmail/Phone identifier.
+                </DialogDescription>
+              </div>
+
+              <form onSubmit={handleSaveCustomerEdits} className="space-y-4 my-3 text-xs">
+                <div className="space-y-1">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Customer Nickname</label>
+                  <input
+                    type="text"
+                    required
+                    value={editCustName}
+                    onChange={(e) => setEditCustName(e.target.value)}
+                    className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Gmail / Phone Identifier</label>
+                  <input
+                    type="text"
+                    required
+                    value={editCustIdentifier}
+                    onChange={(e) => setEditCustIdentifier(e.target.value)}
+                    className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-white font-mono font-bold focus:outline-none focus:border-lime-400"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
+                  <Button
+                    type="button"
+                    onClick={() => setEditingCustomer(null)}
+                    className="flex-1 bg-emerald-950 text-emerald-200 font-bold py-2.5 rounded-xl text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg"
+                  >
+                    Save Changes
+                  </Button>
+                </div>
+              </form>
             </DialogContent>
           )}
         </Dialog>
