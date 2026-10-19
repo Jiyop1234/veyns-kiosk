@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation } from 'lucide-react';
+import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
@@ -169,6 +169,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const [fulfillment, setFulfillment] = useState<'pickup' | 'delivery'>('delivery');
   const [deliveryOption, setDeliveryOption] = useState<'our' | 'maxim'>('our');
+
+  // Order Type & Scheduling States
+  const [orderType, setOrderType] = useState<'today' | 'reservation'>('today');
+  const [todayTimeSlot, setTodayTimeSlot] = useState('12:00 PM - 1:00 PM');
+  const [reservationDate, setReservationDate] = useState('');
+  const [reservationTime, setReservationTime] = useState('12:00 PM - 1:00 PM');
 
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -349,7 +355,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
             total: o.total || 0,
             orderNumber: o.order_number,
             date: new Date(o.created_at).toLocaleString(),
-            promoCode: o.promo_code
+            promoCode: o.promo_code,
+            orderType: o.order_type || 'today',
+            scheduleInfo: o.schedule_info || 'Immediate / Today'
           }));
           setHistoryList(formattedCloudOrders);
           return;
@@ -421,6 +429,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           delivery_fee: newOrder.deliveryFee,
           items: newOrder.items,
           total: newOrder.total,
+          order_type: newOrder.orderType,
+          schedule_info: newOrder.scheduleInfo,
           status: 'completed'
         }
       ]);
@@ -572,6 +582,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const handleConfirmOrder = () => {
+    const scheduleInfoText =
+      orderType === 'today'
+        ? fulfillment === 'delivery' && deliveryOption === 'our'
+          ? `Today (${todayTimeSlot}) - Personal Delivery`
+          : `Today - Maxim Delivery (Anytime)`
+        : `Reservation on ${reservationDate || 'Upcoming Date'} (${reservationTime})`;
+
     const orderData = {
       orderNumber: `#${Math.floor(1000 + Math.random() * 9000)}`,
       accountNickname: currentUser ? (currentUser.name || currentUser.identifier || 'User') : 'Guest User',
@@ -582,6 +599,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       landmark: fulfillment === 'delivery' ? nearestLandmark : 'N/A',
       fulfillment,
       deliveryOption,
+      orderType,
+      scheduleInfo: scheduleInfoText,
       deliveryDistanceKm: fulfillment === 'delivery' ? deliveryDistanceKm : 0,
       deliveryFee: deliveryFeeTotal,
       paymentOption: 'Cash on Pickup / Delivery',
@@ -868,10 +887,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       <p className="text-[10px] text-emerald-300">{order.phone || order.email || 'No contact provided'}</p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-emerald-400/70 uppercase block font-bold">Fulfillment</span>
+                      <span className="text-[10px] text-emerald-400/70 uppercase block font-bold">Fulfillment & Schedule</span>
                       <span className="inline-block bg-[#07241c] text-lime-400 border border-emerald-800 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase mt-0.5">
-                        {order.fulfillment}
+                        {order.fulfillment} • {order.orderType === 'reservation' ? 'Reservation' : 'Today'}
                       </span>
+                      {order.scheduleInfo && (
+                        <p className="text-[10px] text-emerald-300 mt-1 font-medium">{order.scheduleInfo}</p>
+                      )}
                     </div>
                   </div>
 
@@ -1207,6 +1229,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     <span>Fulfillment:</span>
                     <span className="font-bold text-white uppercase">{placedOrderDetails.fulfillment}</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span>Order Schedule:</span>
+                    <span className="font-bold text-lime-400">{placedOrderDetails.scheduleInfo}</span>
+                  </div>
                   {placedOrderDetails.fulfillment === 'delivery' && (
                     <>
                       <div className="flex justify-between">
@@ -1331,6 +1357,98 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 </div>
                 {promoError && <p className="text-[10px] text-red-400 font-semibold">{promoError}</p>}
                 {appliedPromo && <p className="text-[10px] text-lime-400 font-semibold">🎉 Promo {appliedPromo.code} applied ({appliedPromo.discountPercent}% OFF)!</p>}
+              </div>
+
+              {/* ORDER TYPE SELECTION (Order Today vs Reservation) */}
+              <div className="space-y-2 border-t border-emerald-900/60 pt-3">
+                <h4 className="text-[11px] font-bold text-lime-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-lime-400" /> Order Schedule Type
+                </h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOrderType('today')}
+                    className={`p-2.5 rounded-xl text-xs font-extrabold border flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      orderType === 'today'
+                        ? 'bg-[#082d22] border-lime-400 text-lime-400'
+                        : 'bg-[#061c16] border-emerald-800/60 text-emerald-200'
+                    }`}
+                  >
+                    <Clock className="h-4 w-4" /> Order Today
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderType('reservation')}
+                    className={`p-2.5 rounded-xl text-xs font-extrabold border flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      orderType === 'reservation'
+                        ? 'bg-[#082d22] border-lime-400 text-lime-400'
+                        : 'bg-[#061c16] border-emerald-800/60 text-emerald-200'
+                    }`}
+                  >
+                    <Calendar className="h-4 w-4" /> Reservation
+                  </button>
+                </div>
+
+                {/* CONDITIONAL SCHEDULE DETAILS BASED ON SELECTION */}
+                {orderType === 'today' ? (
+                  <div className="bg-[#061d16] border border-emerald-800/60 rounded-xl p-3 space-y-2 text-xs">
+                    <p className="text-[11px] text-emerald-200 font-medium">
+                      {fulfillment === 'delivery' && deliveryOption === 'our'
+                        ? 'Select your preferred personal delivery time slot:'
+                        : fulfillment === 'delivery' && deliveryOption === 'maxim'
+                        ? 'Maxim Courier selected: You can have your order delivered anytime today.'
+                        : 'Pick up today at your convenience.'}
+                    </p>
+
+                    {fulfillment === 'delivery' && deliveryOption === 'our' && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => (
+                          <button
+                            key={slot}
+                            type="button"
+                            onClick={() => setTodayTimeSlot(slot)}
+                            className={`p-2 rounded-lg border text-[11px] font-bold transition-all ${
+                              todayTimeSlot === slot
+                                ? 'bg-lime-400 text-black border-lime-400'
+                                : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50'
+                            }`}
+                          >
+                            {slot}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-[#061d16] border border-emerald-800/60 rounded-xl p-3 space-y-2.5 text-xs">
+                    <p className="text-[11px] text-lime-400 font-bold">Select Reservation Date & Time:</p>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-[10px] text-emerald-300 block mb-1">Reservation Date *</label>
+                        <input
+                          type="date"
+                          value={reservationDate}
+                          onChange={(e) => setReservationDate(e.target.value)}
+                          className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white text-xs focus:outline-none focus:border-lime-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-emerald-300 block mb-1">Time Slot *</label>
+                        <select
+                          value={reservationTime}
+                          onChange={(e) => setReservationTime(e.target.value)}
+                          className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white text-xs focus:outline-none focus:border-lime-400"
+                        >
+                          <option value="12:00 PM - 1:00 PM">12:00 PM - 1:00 PM</option>
+                          <option value="4:00 PM - 5:00 PM">4:00 PM - 5:00 PM</option>
+                          <option value="7:00 PM - 8:00 PM">7:00 PM - 8:00 PM</option>
+                          <option value="10:00 PM - 11:00 PM">10:00 PM - 11:00 PM</option>
+                          <option value="Custom Time">Anytime / Other Schedule</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2 border-t border-emerald-900/60 pt-3">
@@ -1478,7 +1596,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         }`}
                       >
                         <span>Our Delivery</span>
-                        <span className="text-[10px] opacity-80 font-normal">Calculated by distance</span>
+                        <span className="text-[10px] opacity-80 font-normal">Calculated by distance & fixed slots</span>
                       </button>
 
                       <button
@@ -1491,7 +1609,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         }`}
                       >
                         <span>Maxim Courier</span>
-                        <span className="text-[10px] opacity-80 font-normal">Standard Maxim rates apply</span>
+                        <span className="text-[10px] opacity-80 font-normal">Deliver anytime</span>
                       </button>
                     </div>
                   </div>
@@ -1569,7 +1687,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   disabled={
                     lines.length === 0 ||
                     (fulfillment === 'delivery' && (!customerName || !customerEmail || !customerPhone || !customerLocation || !nearestLandmark)) ||
-                    (fulfillment === 'pickup' && !customerName)
+                    (fulfillment === 'pickup' && !customerName) ||
+                    (orderType === 'reservation' && !reservationDate)
                   }
                   onClick={handleConfirmOrder}
                   className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-sm transition-all shadow-lg disabled:opacity-50 cursor-pointer"
