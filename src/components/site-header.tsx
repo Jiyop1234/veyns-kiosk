@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
-import { Award, Lock, LogOut, ShoppingBag, UtensilsCrossed, Settings, UserPlus, Login, Edit3, KeyRound, ChevronDown, Facebook, Instagram } from 'lucide-react';
+import { Lock, LogOut, ShoppingBag, UtensilsCrossed, Settings, UserPlus, Edit3, KeyRound, ChevronDown, Facebook, Instagram } from 'lucide-react';
 import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
 
@@ -55,8 +55,44 @@ export function SiteHeader({
           <span className="font-display text-xl sm:text-2xl font-extrabold text-white">VEYNS<span className="text-lime-400">.</span></span>
         </a>
 
-        <nav className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium flex-wrap justify-end relative">
+        <nav className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm font-medium flex-wrap justify-end relative">
           
+          {/* Plain Text Greeting or Guest Login prompt */}
+          {isGuest ? (
+            <button 
+              onClick={onOpenSignUp}
+              className="flex items-center gap-1 text-emerald-300 hover:text-lime-400 transition-colors text-xs sm:text-sm font-bold cursor-pointer"
+              title="Login or sign up"
+            >
+              <Lock className="size-3 text-lime-400 shrink-0" />
+              <span>Login</span>
+            </button>
+          ) : currentUser ? (
+            <span 
+              onClick={onOpenLoyalty}
+              className="text-lime-400 font-extrabold text-xs sm:text-sm tracking-wide cursor-pointer hover:underline"
+              title="Account Settings"
+            >
+              Hi, {nickname}
+            </span>
+          ) : null}
+
+          {/* My Order / Shopping Bag Button */}
+          <Button 
+            variant="outline"
+            onClick={onOpenOrders}
+            className="relative flex items-center gap-1.5 bg-[#061d16] border-emerald-700/80 text-white hover:border-lime-400 hover:bg-[#082a20] cursor-pointer px-2.5 sm:px-3.5 py-1.5 h-9 text-xs"
+            title="My order"
+          >
+            <ShoppingBag className="size-4 text-lime-400 shrink-0" />
+            <span className="hidden sm:inline">My order</span>
+            {count > 0 && (
+              <span className="absolute -right-1 -top-1 flex size-4 sm:size-5 items-center justify-center rounded-full bg-lime-400 text-[10px] sm:text-xs font-bold text-black">
+                {count}
+              </span>
+            )}
+          </Button>
+
           {/* Settings Dropdown Button */}
           <div className="relative" ref={dropdownRef}>
             <Button 
@@ -146,7 +182,7 @@ export function SiteHeader({
                       )}
                     </div>
 
-                    {/* Log Out button right next to / under My Account */}
+                    {/* Log Out button */}
                     <button
                       onClick={() => {
                         setSettingsOpen(false);
@@ -161,45 +197,6 @@ export function SiteHeader({
               </div>
             )}
           </div>
-
-          {/* Guest vs Regular Customer Greeting Button */}
-          {isGuest ? (
-            <Button 
-              variant="outline"
-              onClick={onOpenSignUp}
-              className="flex items-center gap-1.5 bg-[#061d16] border-emerald-700/85 text-emerald-300 hover:border-lime-400 hover:text-lime-400 hover:bg-[#082a20] cursor-pointer rounded-full px-2.5 sm:px-3.5 py-1.5 text-[11px] sm:text-xs h-9"
-              title="Login or sign up"
-            >
-              <Lock className="size-3 text-lime-400 shrink-0" />
-              <span className="font-bold truncate max-w-[90px] sm:max-w-none">Login</span>
-            </Button>
-          ) : currentUser ? (
-            <Button 
-              variant="outline"
-              onClick={onOpenLoyalty}
-              className="flex items-center gap-1.5 bg-[#061d16] border-emerald-700/80 text-lime-400 hover:border-lime-400 hover:bg-[#082a20] cursor-pointer rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs h-9"
-              title="Account Settings"
-            >
-              <Award className="size-3.5 text-lime-400 shrink-0" />
-              <span className="font-extrabold truncate max-w-[100px] sm:max-w-none">Hi {nickname}</span>
-            </Button>
-          ) : null}
-
-          {/* My Order / Shopping Bag Button */}
-          <Button 
-            variant="outline"
-            onClick={onOpenOrders}
-            className="relative flex items-center gap-1.5 bg-[#061d16] border-emerald-700/80 text-white hover:border-lime-400 hover:bg-[#082a20] cursor-pointer px-2.5 sm:px-3.5 py-1.5 h-9 text-xs"
-            title="My order"
-          >
-            <ShoppingBag className="size-4 text-lime-400 shrink-0" />
-            <span className="hidden sm:inline">My order</span>
-            {count > 0 && (
-              <span className="absolute -right-1 -top-1 flex size-4 sm:size-5 items-center justify-center rounded-full bg-lime-400 text-[10px] sm:text-xs font-bold text-black">
-                {count}
-              </span>
-            )}
-          </Button>
         </nav>
       </div>
     </header>
