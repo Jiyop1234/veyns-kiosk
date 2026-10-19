@@ -43,7 +43,7 @@ export function App() {
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
 
   const loadUserStampsAndPenalties = async (userObj: any) => {
-    if (!userObj) return;
+    if (!userObj || userObj.type === 'guest') return;
     try {
       const identifierKey = (userObj.identifier || 'default').toLowerCase().trim();
       
@@ -112,15 +112,25 @@ export function App() {
     try {
       const savedUser = localStorage.getItem('veyns_current_user');
       const savedMode = localStorage.getItem('veyns_auth_mode');
-      const savedOrders = localStorage.getItem('veyns_order_history');
 
       if (savedUser && savedMode) {
         const userObj = JSON.parse(savedUser);
         setCurrentUser(userObj);
         setAuthMode(savedMode as any);
-        loadUserStampsAndPenalties(userObj);
+
+        if (userObj.type === 'guest') {
+          // Guest order history is session-bound (stored in sessionStorage)
+          const sessionOrders = sessionStorage.getItem('veyns_guest_order_history');
+          if (sessionOrders) setOrderHistory(JSON.parse(sessionOrders));
+          setStamps([]);
+          setFairPlayPenalty(null);
+        } else {
+          // Regular user order history stored in localStorage
+          const savedOrders = localStorage.getItem('veyns_order_history');
+          if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
+          loadUserStampsAndPenalties(userObj);
+        }
       }
-      if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
     } catch (e) {
       console.error(e);
     }
@@ -128,7 +138,10 @@ export function App() {
     const handleStorageChange = () => {
       const savedUser = localStorage.getItem('veyns_current_user');
       if (savedUser) {
-        loadUserStampsAndPenalties(JSON.parse(savedUser));
+        const userObj = JSON.parse(savedUser);
+        if (userObj.type !== 'guest') {
+          loadUserStampsAndPenalties(userObj);
+        }
       }
     };
     window.addEventListener('storage', handleStorageChange);
@@ -269,12 +282,17 @@ export function App() {
     setAuthMode('regular');
     localStorage.setItem('veyns_current_user', JSON.stringify(userData));
     localStorage.setItem('veyns_auth_mode', 'regular');
+    
+    // Load regular user order history
+    const savedOrders = localStorage.getItem('veyns_order_history');
+    if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
+
     loadUserStampsAndPenalties(userData);
   };
 
   const handleUpdateIdentifierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || !newIdentifierInput) return;
+    if (!currentUser || currentUser.type === 'guest' || !newIdentifierInput) return;
 
     const oldIdentifierKey = currentUser.identifier.toLowerCase().trim();
     const newIdKey = newIdentifierInput.toLowerCase().trim();
@@ -321,7 +339,7 @@ export function App() {
 
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || !currentPasswordInput || !newPasswordSettingInput) return;
+    if (!currentUser || currentUser.type === 'guest' || !currentPasswordInput || !newPasswordSettingInput) return;
 
     const identifierKey = currentUser.identifier.toLowerCase().trim();
 
@@ -391,8 +409,12 @@ export function App() {
     setAuthMode('guest');
     localStorage.setItem('veyns_current_user', JSON.stringify(guestData));
     localStorage.setItem('veyns_auth_mode', 'guest');
-    setStamps(Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })));
+    
+    // Clear stamps and order history for guest session
+    setStamps([]);
     setFairPlayPenalty(null);
+    setOrderHistory([]);
+    sessionStorage.removeItem('veyns_guest_order_history');
   };
 
   const handleLogout = () => {
@@ -404,8 +426,10 @@ export function App() {
     setAuthName('');
     setStamps([]);
     setFairPlayPenalty(null);
+    setOrderHistory([]);
     localStorage.removeItem('veyns_current_user');
     localStorage.removeItem('veyns_auth_mode');
+    sessionStorage.removeItem('veyns_guest_order_history');
   };
 
   const handleResetMenu = () => {
@@ -680,7 +704,7 @@ export function App() {
           onBackToStore={() => {
             setIsAdminDashboardOpen(false);
             setAuthMode('select');
-            if (currentUser) {
+            if (currentUser && currentUser.type !== 'guest') {
               loadUserStampsAndPenalties(currentUser);
             }
           }} 
@@ -749,6 +773,10 @@ export function App() {
           onResetMenu={handleResetMenu}
           currentUser={currentUser}
           onOpenLoyalty={() => {
+            if (!currentUser || currentUser.type === 'guest') {
+              alert('Guests cannot access account settings or loyalty stamps. Please create an account to unlock loyalty rewards!');
+              return;
+            }
             loadUserStampsAndPenalties(currentUser);
             setShowLoyaltyModal(true);
             setShowAccountSettingsPanel(true);
@@ -757,6 +785,10 @@ export function App() {
           }}
           onLogout={handleLogout}
           onOpenAccountSettings={(tab) => {
+            if (!currentUser || currentUser.type === 'guest') {
+              alert('Guests cannot access account settings. Please create an account to unlock this feature!');
+              return;
+            }
             loadUserStampsAndPenalties(currentUser);
             setShowLoyaltyModal(true);
             setShowAccountSettingsPanel(true);
@@ -784,7 +816,14 @@ export function App() {
             showMyOrders={showMyOrders} 
             setShowMyOrders={setShowMyOrders} 
             orderHistory={orderHistory}
-            setOrderHistory={setOrderHistory}
+            setOrderHistory={(newHistory) => {
+              setOrderHistory(newHistory);
+              if (currentUser && currentUser.type === 'guest') {
+                sessionStorage.setItem('veyns_guest_order_history', JSON.stringify(newHistory));
+              } else if (currentUser && currentUser.type === 'regular') {
+                localStorage.setItem('veyns_order_history', JSON.stringify(newHistory));
+              }
+            }}
             resetKey={resetTrigger}
             currentUser={currentUser}
             onOrderPlacedSuccess={recordOrderForLoyalty}
