@@ -312,12 +312,17 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     );
   };
 
-  // SEARCH ADDRESS/SHOP VIA OPENSTREETMAP NOMINATIM
   const handleSearchAddress = async () => {
     if (!addressSearchQuery.trim()) return;
     setIsSearchingAddress(true);
     try {
-      const query = encodeURIComponent(addressSearchQuery + ', Cebu, Philippines');
+      let rawQuery = addressSearchQuery.trim();
+      const queryLower = rawQuery.toLowerCase();
+      if (!queryLower.includes('cebu') && !queryLower.includes('philippines')) {
+        rawQuery += ', Cebu, Philippines';
+      }
+
+      const query = encodeURIComponent(rawQuery);
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`, {
         headers: {
           'User-Agent': 'VeynsKioskDeliveryApp/1.0'
@@ -336,7 +341,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           await processSelectedCoordinates(lat, lng);
           setCustomerLocation(data[0].display_name);
         } else {
-          alert('Address not found. Please try adding more details (e.g. street, barangay, city).');
+          alert('Location or shop not found. Try adding the barangay or city (e.g. "The Preloved Shop Casuntingan Mandaue").');
         }
       }
     } catch (e) {
@@ -1406,7 +1411,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
                   />
 
-                  {/* Interactive Map Pin Section with Address Search */}
+                  {/* Interactive Map Pin Section with Smart Search */}
                   <div className="space-y-2 pt-1">
                     <div className="flex items-center justify-between">
                       <label className="font-bold text-lime-400 uppercase tracking-wider text-[10px]">
@@ -1435,7 +1440,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         <div className="flex gap-1.5">
                           <input
                             type="text"
-                            placeholder="Search address, landmark, or shop name..."
+                            placeholder="Search shop name, address, or landmark..."
                             value={addressSearchQuery}
                             onChange={(e) => setAddressSearchQuery(e.target.value)}
                             onKeyDown={(e) => {
@@ -1458,7 +1463,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
                         <div ref={mapRef} className="w-full h-48 rounded-xl border border-emerald-800 overflow-hidden bg-black/50" />
                         <p className="text-[10px] text-emerald-300 italic text-center">
-                          💡 Search an address above or drag the marker to pin your exact delivery location.
+                          💡 Type any shop name or address (auto-searches Cebu) or drag the marker to pin.
                         </p>
                       </div>
                     )}
