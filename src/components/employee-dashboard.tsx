@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload } from 'lucide-react';
+import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
@@ -31,6 +31,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [itemDescription, setItemDescription] = useState('');
   const [itemPrice, setItemPrice] = useState('');
   const [itemDiscount, setItemDiscount] = useState('');
+  const [itemBestSeller, setItemBestSeller] = useState(false);
   const [itemImageFile, setItemImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState('');
 
@@ -149,7 +150,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
   const fetchCloudData = async () => {
     try {
-      // 1. Fetch Menu Items from Supabase Database
       const { data: cloudMenu } = await supabase.from('menu_items').select('*');
       if (cloudMenu && cloudMenu.length > 0) {
         const formattedMenu = cloudMenu.map((m: any) => ({
@@ -160,12 +160,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           price: Number(m.price),
           discountPercent: Number(m.discount_percent || 0),
           isAvailable: m.is_available,
+          bestSeller: m.best_seller,
           image: m.image_url
         }));
         setMenuItems(formattedMenu);
         localStorage.setItem('veyns_manageable_menu', JSON.stringify(formattedMenu));
       } else {
-        // Seed database automatically if table is empty
         for (const item of MENU_GRID) {
           await supabase.from('menu_items').upsert({
             id: item.id,
@@ -175,13 +175,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             price: item.price,
             discount_percent: item.discountPercent || 0,
             is_available: item.isAvailable !== false,
+            best_seller: item.bestSeller || false,
             image_url: menuImages[item.id] || ''
           }, { onConflict: 'id' });
         }
         setMenuItems(MENU_GRID);
       }
 
-      // 2. Fetch Orders
       const { data: cloudOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
       if (cloudOrders) {
         setOrders(cloudOrders.map((o: any) => ({
@@ -197,7 +197,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         })));
       }
 
-      // 3. Fetch Profiles
       const { data: cloudProfiles } = await supabase.from('profiles').select('*');
       if (cloudProfiles && cloudProfiles.length > 0) {
         const formattedProfiles = cloudProfiles.map((p: any) => {
@@ -274,6 +273,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       price: parseFloat(itemPrice),
       discount_percent: itemDiscount !== '' ? parseFloat(itemDiscount) : 0,
       is_available: editingItem ? editingItem.isAvailable : true,
+      best_seller: itemBestSeller,
       image_url: imageUrl
     };
 
@@ -292,6 +292,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     setItemDescription('');
     setItemPrice('');
     setItemDiscount('');
+    setItemBestSeller(false);
     setItemImageFile(null);
     setImagePreviewUrl('');
     fetchCloudData();
@@ -374,45 +375,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
     setResetTargetUser(null);
     setNewTempPassword('');
-    fetchCloudData();
-  };
-
-  const handleUpdateIdentifierSubmit = async () => {
-    if (!editIdentifierUser || !newIdentifierInput) return;
-    const oldIdentifierKey = editIdentifierUser.identifier.toLowerCase().trim();
-    const newIdentifierKey = newIdentifierInput.toLowerCase().trim();
-
-    try {
-      await supabase
-        .from('profiles')
-        .update({ identifier: newIdentifierKey })
-        .eq('identifier', oldIdentifierKey);
-
-      const plainPass = localStorage.getItem(`veyns_pwd_plain_${oldIdentifierKey}`);
-      const hashPass = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
-      const detailedStamps = localStorage.getItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
-      const userStamps = localStorage.getItem(`veyns_stamps_${oldIdentifierKey}`);
-      const penalty = localStorage.getItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
-
-      if (plainPass) localStorage.setItem(`veyns_pwd_plain_${newIdentifierKey}`, plainPass);
-      if (hashPass) localStorage.setItem(`veyns_pwd_hash_${newIdentifierKey}`, hashPass);
-      if (detailedStamps) localStorage.setItem(`veyns_detailed_stamps_${newIdentifierKey}`, detailedStamps);
-      if (userStamps) localStorage.setItem(`veyns_stamps_${newIdentifierKey}`, userStamps);
-      if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newIdentifierKey}`, penalty);
-
-      localStorage.removeItem(`veyns_pwd_plain_${oldIdentifierKey}`);
-      localStorage.removeItem(`veyns_pwd_hash_${oldIdentifierKey}`);
-      localStorage.removeItem(`veyns_stamps_${oldIdentifierKey}`);
-      localStorage.removeItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
-      localStorage.removeItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
-
-      alert(`Login identifier successfully updated to "${newIdentifierInput}" for ${editIdentifierUser.name}!`);
-    } catch (e) {
-      console.error(e);
-    }
-
-    setEditIdentifierUser(null);
-    setNewIdentifierInput('');
     fetchCloudData();
   };
 
@@ -843,6 +805,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   setItemDescription('');
                   setItemPrice('');
                   setItemDiscount('');
+                  setItemBestSeller(false);
                   setItemImageFile(null);
                   setImagePreviewUrl('');
                   setEditingItem(null);
@@ -870,7 +833,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             <Photo src={displayImage} alt={item.name} className="h-full w-full object-cover" />
                           </div>
                           <div>
-                            <h4 className="font-display font-bold text-white text-sm">{item.name}</h4>
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="font-display font-bold text-white text-sm">{item.name}</h4>
+                              {item.bestSeller && (
+                                <span className="bg-lime-400 text-black px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase">BEST SELLER</span>
+                              )}
+                            </div>
                             <span className="text-[10px] text-emerald-400/80 uppercase font-semibold">{item.category}</span>
                           </div>
                         </div>
@@ -923,6 +891,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                           setItemDescription(item.description || '');
                           setItemPrice(item.price.toString());
                           setItemDiscount((item.discountPercent || 0).toString());
+                          setItemBestSeller(item.bestSeller || false);
                           setImagePreviewUrl(displayImage || '');
                           setIsAddingNewItem(true);
                         }}
@@ -1037,9 +1006,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
                 >
                   <option value="Rice Bowls">Rice Bowls</option>
-                  <option value="Meals & Specialties">Meals & Specialties</option>
-                  <option value="Desserts & Sweets">Desserts & Sweets</option>
-                  <option value="Apparel & Merch">Apparel & Merch</option>
+                  <option value="Noodle Bowls">Noodle Bowls</option>
+                  <option value="Sides">Sides</option>
+                  <option value="Apparel">Apparel</option>
                 </select>
               </div>
 
@@ -1066,6 +1035,21 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-2.5 p-3 rounded-xl border border-emerald-800/80 bg-[#041913] cursor-pointer hover:border-lime-400/60 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={itemBestSeller}
+                    onChange={(e) => setItemBestSeller(e.target.checked)}
+                    className="rounded border-emerald-700 text-lime-400 focus:ring-lime-400 bg-black/40 h-4 w-4"
+                  />
+                  <div>
+                    <span className="font-bold text-lime-400 uppercase tracking-wider text-xs block">Mark as Best Seller</span>
+                    <span className="text-[10px] text-emerald-300">Pins item with a badge and prioritizes it at the top of the menu</span>
+                  </div>
+                </label>
               </div>
 
               <div className="space-y-1.5">

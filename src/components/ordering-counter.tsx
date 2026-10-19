@@ -85,6 +85,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const loadMenuFromCloud = async () => {
+    let mergedMenu = [...MENU_GRID];
+
     try {
       const { data: cloudMenu, error } = await supabase.from('menu_items').select('*');
       if (cloudMenu && cloudMenu.length > 0) {
@@ -98,26 +100,27 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           isAvailable: m.is_available,
           bestSeller: m.best_seller,
           isCustomizable: m.is_customizable,
-          hasBrothEggOption: m.has_broth_egg_option
+          hasBrothEggOption: m.has_broth_egg_option,
+          image: m.image_url
         }));
-        setCurrentMenuGrid(formatted);
-        return;
+        
+        const cloudIds = new Set(formatted.map(item => item.id));
+        const localOnly = MENU_GRID.filter(item => !cloudIds.has(item.id));
+        mergedMenu = [...formatted, ...localOnly];
       }
     } catch (e) {
       console.error('Error fetching cloud menu:', e);
     }
 
-    try {
-      const savedMenu = localStorage.getItem('veyns_manageable_menu');
-      if (savedMenu) {
-        const parsed = JSON.parse(savedMenu);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setCurrentMenuGrid(parsed);
-          return;
-        }
-      }
-    } catch (e) {}
-    setCurrentMenuGrid(MENU_GRID);
+    mergedMenu.sort((a, b) => {
+      if (a.category === 'Apparel' && b.category !== 'Apparel') return 1;
+      if (a.category !== 'Apparel' && b.category === 'Apparel') return -1;
+      if (a.bestSeller && !b.bestSeller) return -1;
+      if (!a.bestSeller && b.bestSeller) return 1;
+      return 0;
+    });
+
+    setCurrentMenuGrid(mergedMenu);
   };
 
   useEffect(() => {
