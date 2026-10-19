@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star, Calendar, Search } from 'lucide-react';
+import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star, Calendar, Search, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
@@ -37,6 +37,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [promos, setPromos] = useState<any[]>([]);
   const [newPromoCode, setNewPromoCode] = useState('');
   const [newPromoDiscount, setNewPromoDiscount] = useState('');
+  const [newPromoType, setNewPromoType] = useState<'percent' | 'peso'>('percent');
+  const [newVoucherExpiryVal, setNewVoucherExpiryVal] = useState('60'); // default expiry minutes
+  const [newVoucherExpiryUnit, setNewVoucherExpiryUnit] = useState<'minutes' | 'hours'>('minutes');
 
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
@@ -262,11 +265,24 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const handleAddPromo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPromoCode || !newPromoDiscount) return;
-    const updated = [...promos, { code: newPromoCode.trim().toUpperCase(), discountPercent: parseFloat(newPromoDiscount) }];
+    
+    const expiryNum = parseFloat(newVoucherExpiryVal) || 60;
+    const expiryMs = newVoucherExpiryUnit === 'hours' ? expiryNum * 60 * 60 * 1000 : expiryNum * 60 * 1000;
+
+    const newVoucherObj = {
+      code: newPromoCode.trim().toUpperCase(),
+      type: newPromoType, // 'percent' or 'peso'
+      discountValue: parseFloat(newPromoDiscount),
+      expiryDurationMs: expiryMs,
+      expiryUnitText: `${expiryNum} ${newVoucherExpiryUnit}`
+    };
+
+    const updated = [...promos.filter(p => p.code !== newVoucherObj.code), newVoucherObj];
     setPromos(updated);
     saveActivePromoCodes(updated);
     setNewPromoCode('');
     setNewPromoDiscount('');
+    alert(`Voucher / Promo "${newVoucherObj.code}" created successfully with expiration time of ${newVoucherObj.expiryUnitText}!`);
   };
 
   const handleDeletePromo = (code: string) => {
@@ -454,7 +470,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             <Tag className="h-4 w-4" /> Menu Manager ({menuItems.length})
           </button>
           <button onClick={() => setActiveTab('promos')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'promos' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
-            <DollarSign className="h-4 w-4" /> Promo Codes ({promos.length})
+            <Ticket className="h-4 w-4" /> Vouchers & Promos ({promos.length})
           </button>
         </div>
 
@@ -766,39 +782,62 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </div>
         )}
 
+        {/* VOUCHERS & PROMOS MANAGER TAB */}
         {activeTab === 'promos' && (
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
-            <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide border-b border-emerald-900/60 pb-3">Promo Codes Manager</h3>
+            <div className="flex items-center gap-2 border-b border-emerald-900/60 pb-3">
+              <Ticket className="h-5 w-5 text-lime-400" />
+              <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Create Vouchers & Promo Codes Manager</h3>
+            </div>
 
-            <form onSubmit={handleAddPromo} className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4">
+            <form onSubmit={handleAddPromo} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Promo Code Name</label>
-                <input type="text" placeholder="e.g. VEYNS15" value={newPromoCode} onChange={(e) => setNewPromoCode(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white uppercase placeholder:normal-case focus:outline-none focus:border-lime-400" />
+                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Voucher Code Name</label>
+                <input type="text" placeholder="e.g. HAPPYHALLOWEEN" value={newPromoCode} onChange={(e) => setNewPromoCode(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white uppercase placeholder:normal-case focus:outline-none focus:border-lime-400 font-bold" />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Discount Percentage (%)</label>
-                <input type="number" placeholder="e.g. 15" value={newPromoDiscount} onChange={(e) => setNewPromoDiscount(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-lime-400" />
+                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Discount Type & Value</label>
+                <div className="flex gap-1.5">
+                  <select value={newPromoType} onChange={(e) => setNewPromoType(e.target.value as any)} className="bg-[#04140f] border border-emerald-800 rounded-xl px-2 py-2 text-xs text-lime-300 font-bold focus:outline-none">
+                    <option value="peso">₱ OFF</option>
+                    <option value="percent">% OFF</option>
+                  </select>
+                  <input type="number" placeholder={newPromoType === 'peso' ? "e.g. 15" : "e.g. 10"} value={newPromoDiscount} onChange={(e) => setNewPromoDiscount(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Claim Expiration Limit</label>
+                <div className="flex gap-1.5">
+                  <input type="number" value={newVoucherExpiryVal} onChange={(e) => setNewVoucherExpiryVal(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
+                  <select value={newVoucherExpiryUnit} onChange={(e) => setNewVoucherExpiryUnit(e.target.value as any)} className="bg-[#04140f] border border-emerald-800 rounded-xl px-2 py-2 text-xs text-emerald-300 font-bold focus:outline-none">
+                    <option value="minutes">Mins</option>
+                    <option value="hours">Hours</option>
+                  </select>
+                </div>
               </div>
               <div className="flex items-end">
                 <Button type="submit" className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs transition-all shadow-lg cursor-pointer">
-                  <Plus className="h-4 w-4 mr-1" /> Add Promo Code
+                  <Plus className="h-4 w-4 mr-1" /> Create Voucher
                 </Button>
               </div>
             </form>
 
             <div className="space-y-2">
-              <h4 className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Active Promo Codes ({promos.length})</h4>
+              <h4 className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Active Vouchers & Promos ({promos.length})</h4>
               {promos.length === 0 ? (
-                <p className="text-xs text-emerald-400/60 py-6 text-center">No active promo codes.</p>
+                <p className="text-xs text-emerald-400/60 py-6 text-center">No active vouchers or promo codes available.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {promos.map((p, idx) => (
-                    <div key={idx} className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-3.5 flex items-center justify-between text-xs">
-                      <div>
-                        <span className="font-extrabold text-lime-400 text-sm">{p.code}</span>
-                        <p className="text-[11px] text-emerald-300">{p.discountPercent}% Discount</p>
+                    <div key={idx} className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-4 flex items-center justify-between text-xs shadow-md">
+                      <div className="space-y-1">
+                        <span className="font-extrabold text-lime-400 text-sm tracking-wide block">{p.code}</span>
+                        <p className="text-emerald-200 font-bold">
+                          {p.type === 'peso' ? formatPeso(p.discountValue) + ' OFF' : `${p.discountValue}% OFF`}
+                        </p>
+                        <p className="text-[10px] text-amber-300">⏱️ Claim Expiry: {p.expiryUnitText || '60 minutes'}</p>
                       </div>
-                      <button onClick={() => handleDeletePromo(p.code)} className="text-red-400 hover:text-red-300 p-1.5 rounded-lg bg-red-950/40 border border-red-900/60 cursor-pointer">
+                      <button onClick={() => handleDeletePromo(p.code)} className="text-red-400 hover:text-red-300 p-2 rounded-lg bg-red-950/40 border border-red-900/60 cursor-pointer">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
