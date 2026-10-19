@@ -37,7 +37,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [promos, setPromos] = useState<any[]>([]);
   const [newPromoCode, setNewPromoCode] = useState('');
   const [newPromoDiscount, setNewPromoDiscount] = useState('');
-  const [newPromoType, setNewPromoType] = useState<'percent' | 'peso'>('percent');
+  const [newPromoType, setNewPromoType] = useState<'percentage' | 'peso'>('percentage');
   const [newVoucherVisibility, setNewVoucherVisibility] = useState<'public' | 'hidden'>('public');
   const [newVoucherExpiryVal, setNewVoucherExpiryVal] = useState('60'); 
   const [newVoucherExpiryUnit, setNewVoucherExpiryUnit] = useState<'minutes' | 'hours' | 'never'>('minutes');
@@ -79,11 +79,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     const orderChannel = supabase.channel('public:orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCloudData).subscribe();
     const menuChannel = supabase.channel('public:menu_items').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, fetchCloudData).subscribe();
     const slotsChannel = supabase.channel('public:slot_capacities').on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, fetchCloudData).subscribe();
+    const promosChannel = supabase.channel('public:promos_dashboard').on('postgres_changes', { event: '*', schema: 'public', table: 'promos' }, fetchCloudData).subscribe();
 
     return () => {
       supabase.removeChannel(orderChannel);
       supabase.removeChannel(menuChannel);
       supabase.removeChannel(slotsChannel);
+      supabase.removeChannel(promosChannel);
     };
   }, []);
 
@@ -157,11 +159,29 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       if (cloudSlots) {
         setSlotCapacities(cloudSlots);
       }
+
+      const { data: cloudPromos } = await supabase.from('promos').select('*');
+      if (cloudPromos && cloudPromos.length > 0) {
+        const formattedPromos = cloudPromos.map((p: any) => ({
+          code: p.code,
+          type: p.type,
+          discountValue: Number(p.discount_value),
+          visibility: p.visibility,
+          expiryDurationMs: Number(p.expiry_duration_ms),
+          usageLimit: p.usage_limit ? Number(p.usage_limit) : null,
+          usageCount: Number(p.usage_count || 0),
+          createdAt: Number(p.created_at || Date.now()),
+          expiryUnitText: Number(p.expiry_duration_ms) > 0 ? `${Number(p.expiry_duration_ms) / (60 * 1000)} minutes` : 'Never expires'
+        }));
+        setPromos(formattedPromos);
+      } else {
+        setPromos(getActivePromoCodes());
+      }
     } catch (e) {
       console.error('Error fetching cloud data:', e);
       setMenuItems(MENU_GRID);
+      setPromos(getActivePromoCodes());
     }
-    setPromos(getActivePromoCodes());
   };
 
   const handleUpdateSlotCapacity = async (dateKey: string, slotTime: string, maxSlots: number, isFullyBooked: boolean) => {
@@ -257,13 +277,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     } catch (e) {}
   };
 
-  const saveActivePromoCodes = (codes: any[]) => {
-    try {
-      localStorage.setItem('veyns_promo_codes', JSON.stringify(codes));
-    } catch (e) {}
-  };
-
-  const handleAddPromo = (e: React.FormEvent) => {
+  const handleAddPromo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPromoCode || !newPromoDiscount) return;
     
@@ -278,37 +292,51 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       expiryMs = expiryNum * 60 * 60 * 1000;
       expiryUnitText = `${expiryNum} hours`;
     } else {
-      expiryMs = 0; // Never expires
+      expiryMs = 0; 
       expiryUnitText = 'Never expires';
     }
 
     const usageLimitNum = newVoucherUsageLimit ? parseInt(newVoucherUsageLimit) : null;
+    const cleanCode = newPromoCode.trim().toUpperCase();
 
-    const newVoucherObj = {
-      code: newPromoCode.trim().toUpperCase(),
-      type: newPromoType, // 'percent' or 'peso'
-      discountValue: parseFloat(newPromoDiscount),
+    const newVoucherPayload = {
+      code: cleanCode,
+      type: newPromoType, // 'percentage' or 'peso'
+      discount_value: parseFloat(newPromoDiscount),
       visibility: newVoucherVisibility, // 'public' or 'hidden'
-      expiryDurationMs: expiryMs,
-      expiryUnitText: expiryUnitText,
-      usageLimit: usageLimitNum,
-      usageCount: 0,
-      createdAt: Date.now()
+      expiry_duration_ms: expiryMs,
+      usage_limit: usageLimitNum,
+      usage_count: 0,
+      created_at: Date.now()
     };
 
-    const updated = [...promos.filter(p => p.code !== newVoucherObj.code), newVoucherObj];
-    setPromos(updated);
-    saveActivePromoCodes(updated);
-    setNewPromoCode('');
-    setNewPromoDiscount('');
-    setNewVoucherUsageLimit('');
-    alert(`Voucher / Promo "${newVoucherObj.code}" created successfully (${newVoucherVisibility.toUpperCase()}, Expires: ${expiryUnitText}, Limit: ${usageLimitNum || 'Unlimited'})!`);
+    try {
+      const { error } = await supabase.from('promos').upsert([newVoucherPayload], { onConflict: 'code' });
+      if (error) {
+        console.error("Supabase promo insert error:", error.message);
+        alert("Failed to save promo to database: " + error.message);
+        return;
+      }
+
+      alert(`Voucher / Promo "${cleanCode}" successfully created and synced to cloud!`);
+      setNewPromoCode('');
+      setNewPromoDiscount('');
+      setNewVoucherUsageLimit('');
+      fetchCloudData();
+    } catch (err) {
+      console.error("Exception saving promo:", err);
+      alert("Database connection error while creating voucher.");
+    }
   };
 
-  const handleDeletePromo = (code: string) => {
-    const updated = promos.filter((p) => p.code !== code);
-    setPromos(updated);
-    saveActivePromoCodes(updated);
+  const handleDeletePromo = async (code: string) => {
+    if (!confirm(`Are you sure you want to delete promo ${code}?`)) return;
+    try {
+      await supabase.from('promos').delete().eq('code', code);
+      fetchCloudData();
+    } catch (e) {
+      alert('Error deleting promo from database.');
+    }
   };
 
   const handleClearSalesLog = async () => {
@@ -819,7 +847,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <div className="flex gap-1.5">
                   <select value={newPromoType} onChange={(e) => setNewPromoType(e.target.value as any)} className="bg-[#04140f] border border-emerald-800 rounded-xl px-2 py-2 text-xs text-lime-300 font-bold focus:outline-none">
                     <option value="peso">₱ OFF</option>
-                    <option value="percent">% OFF</option>
+                    <option value="percentage">% OFF</option>
                   </select>
                   <input type="number" placeholder={newPromoType === 'peso' ? "e.g. 50" : "e.g. 10"} value={newPromoDiscount} onChange={(e) => setNewPromoDiscount(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
                 </div>
