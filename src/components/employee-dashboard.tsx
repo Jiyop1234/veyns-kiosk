@@ -38,8 +38,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [newPromoCode, setNewPromoCode] = useState('');
   const [newPromoDiscount, setNewPromoDiscount] = useState('');
   const [newPromoType, setNewPromoType] = useState<'percent' | 'peso'>('percent');
-  const [newVoucherExpiryVal, setNewVoucherExpiryVal] = useState('60'); // default expiry minutes
-  const [newVoucherExpiryUnit, setNewVoucherExpiryUnit] = useState<'minutes' | 'hours'>('minutes');
+  const [newVoucherVisibility, setNewVoucherVisibility] = useState<'public' | 'hidden'>('public');
+  const [newVoucherExpiryVal, setNewVoucherExpiryVal] = useState('60'); 
+  const [newVoucherExpiryUnit, setNewVoucherExpiryUnit] = useState<'minutes' | 'hours' | 'never'>('minutes');
+  const [newVoucherUsageLimit, setNewVoucherUsageLimit] = useState('');
 
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
@@ -49,7 +51,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [newTempPassword, setNewTempPassword] = useState('');
   const [visiblePasswords, setVisiblePasswords] = useState<{ [key: string]: boolean }>({});
 
-  // Slot Capacities States
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
   const [selectedSlotDate, setSelectedSlotDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -267,14 +268,32 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     if (!newPromoCode || !newPromoDiscount) return;
     
     const expiryNum = parseFloat(newVoucherExpiryVal) || 60;
-    const expiryMs = newVoucherExpiryUnit === 'hours' ? expiryNum * 60 * 60 * 1000 : expiryNum * 60 * 1000;
+    let expiryMs = 0;
+    let expiryUnitText = 'Never expires';
+
+    if (newVoucherExpiryUnit === 'minutes') {
+      expiryMs = expiryNum * 60 * 1000;
+      expiryUnitText = `${expiryNum} minutes`;
+    } else if (newVoucherExpiryUnit === 'hours') {
+      expiryMs = expiryNum * 60 * 60 * 1000;
+      expiryUnitText = `${expiryNum} hours`;
+    } else {
+      expiryMs = 0; // Never expires
+      expiryUnitText = 'Never expires';
+    }
+
+    const usageLimitNum = newVoucherUsageLimit ? parseInt(newVoucherUsageLimit) : null;
 
     const newVoucherObj = {
       code: newPromoCode.trim().toUpperCase(),
       type: newPromoType, // 'percent' or 'peso'
       discountValue: parseFloat(newPromoDiscount),
+      visibility: newVoucherVisibility, // 'public' or 'hidden'
       expiryDurationMs: expiryMs,
-      expiryUnitText: `${expiryNum} ${newVoucherExpiryUnit}`
+      expiryUnitText: expiryUnitText,
+      usageLimit: usageLimitNum,
+      usageCount: 0,
+      createdAt: Date.now()
     };
 
     const updated = [...promos.filter(p => p.code !== newVoucherObj.code), newVoucherObj];
@@ -282,7 +301,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     saveActivePromoCodes(updated);
     setNewPromoCode('');
     setNewPromoDiscount('');
-    alert(`Voucher / Promo "${newVoucherObj.code}" created successfully with expiration time of ${newVoucherObj.expiryUnitText}!`);
+    setNewVoucherUsageLimit('');
+    alert(`Voucher / Promo "${newVoucherObj.code}" created successfully (${newVoucherVisibility.toUpperCase()}, Expires: ${expiryUnitText}, Limit: ${usageLimitNum || 'Unlimited'})!`);
   };
 
   const handleDeletePromo = (code: string) => {
@@ -580,7 +600,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </div>
         )}
 
-        {/* SLOT CAPACITY & FULLY BOOKED MANAGER TAB */}
         {activeTab === 'slots' && (
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-emerald-900/60 pb-3 gap-3">
@@ -790,10 +809,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Create Vouchers & Promo Codes Manager</h3>
             </div>
 
-            <form onSubmit={handleAddPromo} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4">
+            <form onSubmit={handleAddPromo} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Voucher Code Name</label>
-                <input type="text" placeholder="e.g. HAPPYHALLOWEEN" value={newPromoCode} onChange={(e) => setNewPromoCode(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white uppercase placeholder:normal-case focus:outline-none focus:border-lime-400 font-bold" />
+                <input type="text" placeholder="e.g. GEOGWAPO" value={newPromoCode} onChange={(e) => setNewPromoCode(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white uppercase placeholder:normal-case focus:outline-none focus:border-lime-400 font-bold" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Discount Type & Value</label>
@@ -802,18 +821,32 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     <option value="peso">₱ OFF</option>
                     <option value="percent">% OFF</option>
                   </select>
-                  <input type="number" placeholder={newPromoType === 'peso' ? "e.g. 15" : "e.g. 10"} value={newPromoDiscount} onChange={(e) => setNewPromoDiscount(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
+                  <input type="number" placeholder={newPromoType === 'peso' ? "e.g. 50" : "e.g. 10"} value={newPromoDiscount} onChange={(e) => setNewPromoDiscount(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Claim Expiration Limit</label>
+                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Visibility in Checkout</label>
+                <select value={newVoucherVisibility} onChange={(e) => setNewVoucherVisibility(e.target.value as any)} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none">
+                  <option value="public">Public (Visible in Vouchers List)</option>
+                  <option value="hidden">Hidden (Via Events/Posts Only)</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Expiry Time Type</label>
                 <div className="flex gap-1.5">
-                  <input type="number" value={newVoucherExpiryVal} onChange={(e) => setNewVoucherExpiryVal(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
-                  <select value={newVoucherExpiryUnit} onChange={(e) => setNewVoucherExpiryUnit(e.target.value as any)} className="bg-[#04140f] border border-emerald-800 rounded-xl px-2 py-2 text-xs text-emerald-300 font-bold focus:outline-none">
-                    <option value="minutes">Mins</option>
+                  {newVoucherExpiryUnit !== 'never' && (
+                    <input type="number" value={newVoucherExpiryVal} onChange={(e) => setNewVoucherExpiryVal(e.target.value)} required className="w-20 bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
+                  )}
+                  <select value={newVoucherExpiryUnit} onChange={(e) => setNewVoucherExpiryUnit(e.target.value as any)} className="flex-1 bg-[#04140f] border border-emerald-800 rounded-xl px-2 py-2 text-xs text-emerald-300 font-bold focus:outline-none">
+                    <option value="minutes">Minutes</option>
                     <option value="hours">Hours</option>
+                    <option value="never">Never Expires</option>
                   </select>
                 </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Input Usage Limit (Optional)</label>
+                <input type="number" placeholder="e.g. 15 (Max inputs)" value={newVoucherUsageLimit} onChange={(e) => setNewVoucherUsageLimit(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
               </div>
               <div className="flex items-end">
                 <Button type="submit" className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs transition-all shadow-lg cursor-pointer">
@@ -831,11 +864,17 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   {promos.map((p, idx) => (
                     <div key={idx} className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-4 flex items-center justify-between text-xs shadow-md">
                       <div className="space-y-1">
-                        <span className="font-extrabold text-lime-400 text-sm tracking-wide block">{p.code}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-lime-400 text-sm tracking-wide">{p.code}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase ${p.visibility === 'hidden' ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'}`}>
+                            {p.visibility || 'public'}
+                          </span>
+                        </div>
                         <p className="text-emerald-200 font-bold">
                           {p.type === 'peso' ? formatPeso(p.discountValue) + ' OFF' : `${p.discountValue}% OFF`}
                         </p>
-                        <p className="text-[10px] text-amber-300">⏱️ Claim Expiry: {p.expiryUnitText || '60 minutes'}</p>
+                        <p className="text-[10px] text-amber-300">⏱️ Expiry: {p.expiryUnitText || 'Never'}</p>
+                        <p className="text-[10px] text-emerald-300">🔢 Usage: {p.usageCount || 0} / {p.usageLimit ? `${p.usageLimit} limit` : 'Unlimited'}</p>
                       </div>
                       <button onClick={() => handleDeletePromo(p.code)} className="text-red-400 hover:text-red-300 p-2 rounded-lg bg-red-950/40 border border-red-900/60 cursor-pointer">
                         <Trash2 className="h-4 w-4" />
@@ -1079,7 +1118,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   );
 }
 
-// Subcomponent for managing individual slot capacity
 function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialFullyBooked, onSave }: any) {
   const [maxSlots, setMaxSlots] = useState(initialMax);
   const [isFullyBooked, setIsFullyBooked] = useState(initialFullyBooked);

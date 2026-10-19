@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar, UserPlus } from 'lucide-react';
+import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar, UserPlus, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
@@ -190,6 +190,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [promoInput, setPromoInput] = useState('');
   const [appliedPromo, setAppliedPromo] = useState<any>(null);
   const [promoError, setPromoError] = useState('');
+  const [claimedVouchersState, setClaimedVouchersState] = useState<{ [code: string]: number }>({});
 
   const isOrdersOpen = showMyOrders !== undefined ? showMyOrders : internalShowMyOrders;
   const setIsOrdersOpen = setShowMyOrders || setInternalShowMyOrders;
@@ -464,6 +465,17 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       if (orderError) {
         console.error('Supabase order insert error:', orderError.message);
       }
+
+      if (newOrder.promoCode) {
+        const promos = getActivePromoCodes();
+        const updatedPromos = promos.map(p => {
+          if (p.code.toUpperCase() === newOrder.promoCode.toUpperCase()) {
+            return { ...p, usageCount: (p.usageCount || 0) + 1 };
+          }
+          return p;
+        });
+        localStorage.setItem('veyns_promo_codes', JSON.stringify(updatedPromos));
+      }
     } catch (err) {
       console.error('Supabase order exception:', err);
     }
@@ -588,16 +600,63 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const handleApplyPromo = () => {
     setPromoError('');
     const promos = getActivePromoCodes();
-    const found = promos.find((p) => p.code.toUpperCase() === promoInput.trim().toUpperCase());
+    const cleanCode = promoInput.trim().toUpperCase();
+    const found = promos.find((p) => p.code.toUpperCase() === cleanCode);
+
     if (!found) {
       setPromoError('Invalid promo code.');
       setAppliedPromo(null);
       return;
     }
+
+    if (found.expiryDurationMs && found.expiryDurationMs > 0 && found.createdAt) {
+      const expiresAt = found.createdAt + found.expiryDurationMs;
+      if (Date.now() > expiresAt) {
+        setPromoError('This voucher code has expired.');
+        setAppliedPromo(null);
+        return;
+      }
+    }
+
+    if (found.usageLimit && (found.usageCount || 0) >= found.usageLimit) {
+      setPromoError(`This voucher has reached its maximum usage limit of ${found.usageLimit} inputs.`);
+      setAppliedPromo(null);
+      return;
+    }
+
     setAppliedPromo(found);
   };
 
-  const promoDiscountAmount = appliedPromo ? (total * appliedPromo.discountPercent) / 100 : 0;
+  const handleClaimVoucher = (promo) => {
+    if (promo.usageLimit && (promo.usageCount || 0) >= promo.usageLimit) {
+      alert('This voucher has already reached its maximum usage limit.');
+      return;
+    }
+
+    if (promo.expiryDurationMs && promo.expiryDurationMs > 0 && promo.createdAt) {
+      const expiresAt = promo.createdAt + promo.expiryDurationMs;
+      if (Date.now() > expiresAt) {
+        alert('This voucher has expired.');
+        return;
+      }
+    }
+
+    const expiryMs = promo.expiryDurationMs || (60 * 60 * 1000);
+    setClaimedVouchersState(prev => ({ ...prev, [promo.code]: Date.now() + expiryMs }));
+    
+    if (appliedPromo) setAppliedPromo(null);
+    setPromoInput(promo.code);
+  };
+
+  const calculatePromoDiscount = () => {
+    if (!appliedPromo) return 0;
+    if (appliedPromo.type === 'peso') {
+      return Math.min(total, appliedPromo.discountValue);
+    }
+    return (total * appliedPromo.discountValue) / 100;
+  };
+
+  const promoDiscountAmount = calculatePromoDiscount();
   const deliveryFeeTotal = fulfillment === 'delivery' ? calculatedDeliveryFee : 0;
   const finalCartTotal = Math.max(0, total - promoDiscountAmount + deliveryFeeTotal);
 
@@ -660,6 +719,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const validStampsCount = stamps.filter(s => s.status === 'valid').length;
+  const publicVouchersList = getActivePromoCodes().filter(p => p.visibility !== 'hidden');
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -949,7 +1009,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   {order.promoCode && (
                     <div className="flex justify-between text-amber-400 pt-1 border-t border-emerald-900/40 text-[11px]">
                       <span>Promo ({order.promoCode}):</span>
-                      <span>-{formatPeso(order.promoDiscount)}</span>
+                      <span>Applied</span>
                     </div>
                   )}
 
@@ -1379,7 +1439,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="e.g. VEYNS10"
+                    placeholder="e.g. GEOGWAPO"
                     value={promoInput}
                     onChange={(e) => setPromoInput(e.target.value)}
                     className="flex-1 bg-[#041913] border border-emerald-800/80 rounded-xl px-3 py-2 text-xs text-white uppercase placeholder:normal-case placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
@@ -1393,7 +1453,43 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   </Button>
                 </div>
                 {promoError && <p className="text-[10px] text-red-400 font-semibold">{promoError}</p>}
-                {appliedPromo && <p className="text-[10px] text-lime-400 font-semibold">🎉 Promo {appliedPromo.code} applied ({appliedPromo.discountPercent}% OFF)!</p>}
+                {appliedPromo && <p className="text-[10px] text-lime-400 font-semibold">🎉 Promo {appliedPromo.code} applied successfully!</p>}
+
+                {publicVouchersList.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider flex items-center gap-1">
+                      <Ticket className="size-3 text-lime-400" /> Available Public Vouchers:
+                    </span>
+                    <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                      {publicVouchersList.map((promo, pIdx) => {
+                        const claimExpiryTime = claimedVouchersState[promo.code];
+                        const isClaimed = claimExpiryTime && claimExpiryTime > Date.now();
+
+                        return (
+                          <div key={pIdx} className="bg-[#061d16] border border-emerald-800/70 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                            <div className="space-y-0.5">
+                              <span className="font-extrabold text-lime-400 text-xs">{promo.code}</span>
+                              <p className="text-[10px] text-emerald-200">
+                                {promo.type === 'peso' ? formatPeso(promo.discountValue) + ' OFF' : `${promo.discountValue}% OFF`}
+                              </p>
+                              {isClaimed && (
+                                <p className="text-[9px] text-amber-300">⏱️ Claimed! Click apply or pick another combo.</p>
+                              )}
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleClaimVoucher(promo)}
+                              className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-extrabold text-[10px] px-3 py-1 rounded-lg cursor-pointer"
+                            >
+                              {isClaimed ? 'Claimed ✓' : 'Claim'}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ORDER TYPE SELECTION (Order Today vs Reservation with Slot Capacity Checks) */}
@@ -1426,7 +1522,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   </button>
                 </div>
 
-                {/* CONDITIONAL SCHEDULE DETAILS BASED ON SELECTION & SLOTS */}
                 {orderType === 'today' ? (
                   <div className="bg-[#061d16] border border-emerald-800/60 rounded-xl p-3 space-y-2 text-xs">
                     <p className="text-[11px] text-emerald-200 font-medium">
@@ -1568,7 +1663,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
                   />
 
-                  {/* Clean Map Pin Section */}
                   <div className="space-y-2 pt-1">
                     <div className="flex items-center justify-between">
                       <label className="font-bold text-lime-400 uppercase tracking-wider text-[10px]">
@@ -1617,7 +1711,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
                   />
 
-                  {/* Delivery Distance & Fee Summary Box */}
                   {deliveryDistanceKm !== null && (
                     <div className="bg-[#03120d] border border-lime-400/60 rounded-xl p-3 text-xs space-y-1">
                       <div className="flex justify-between font-bold text-white">
