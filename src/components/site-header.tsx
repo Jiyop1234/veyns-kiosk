@@ -27,7 +27,7 @@ export function SiteHeader({
   const count = cart.count || 0;
   
   const isGuest = !currentUser || currentUser?.type === 'guest';
-  const nickname = currentUser?.name ? currentUser.name.split(' ')[0] : 'Account';
+  const nickname = currentUser?.name ? currentUser.name.split(' ')[0] : 'Guest';
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [accountSubmenuOpen, setAccountSubmenuOpen] = useState(false);
@@ -55,21 +55,18 @@ export function SiteHeader({
           <span className="font-display text-xl sm:text-2xl font-extrabold text-white">VEYNS<span className="text-lime-400">.</span></span>
         </a>
 
-        <nav className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm font-medium flex-wrap justify-end relative">
+        <nav className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm font-medium flex-wrap justify-end relative">
           
-          {/* Non-clickable Greeting or Guest Login prompt */}
+          {/* Non-clickable Greeting for Guest or Regular Customer */}
           {isGuest ? (
-            <button 
-              onClick={onOpenSignUp}
-              className="flex items-center gap-1 text-emerald-300 hover:text-lime-400 transition-colors text-xs sm:text-sm font-bold cursor-pointer"
-              title="Login or sign up"
+            <span 
+              className="text-lime-400 font-extrabold text-xs sm:text-sm tracking-wide select-none"
             >
-              <Lock className="size-3 text-lime-400 shrink-0" />
-              <span>Login</span>
-            </button>
+              Hi, "Guest"
+            </span>
           ) : currentUser ? (
             <span 
-              className="text-lime-400 font-extrabold text-xs sm:text-sm tracking-wide select-none truncate max-w-[100px] sm:max-w-none"
+              className="text-lime-400 font-extrabold text-xs sm:text-sm tracking-wide select-none"
             >
               Hi, {nickname}
             </span>
@@ -79,7 +76,7 @@ export function SiteHeader({
           <Button 
             variant="outline"
             onClick={onOpenOrders}
-            className="relative flex items-center gap-1.5 bg-[#061d16] border-emerald-700/80 text-white hover:border-lime-400 hover:bg-[#082a20] cursor-pointer px-2.5 sm:px-4 py-1.5 h-9 text-xs rounded-full"
+            className="relative flex items-center gap-1.5 bg-[#061d16] border-emerald-700/80 text-white hover:border-lime-400 hover:bg-[#082a20] cursor-pointer px-3 sm:px-4 py-1.5 h-9 text-xs rounded-full"
             title="My order"
           >
             <ShoppingBag className="size-4 text-lime-400 shrink-0" />
@@ -91,7 +88,7 @@ export function SiteHeader({
             )}
           </Button>
 
-          {/* Settings Dropdown Button (Icon-only on mobile, full text on desktop) */}
+          {/* Settings Dropdown Button */}
           <div className="relative" ref={dropdownRef}>
             <Button 
               variant="ghost" 
