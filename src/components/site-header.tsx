@@ -27,7 +27,7 @@ export function SiteHeader({
   const count = cart.count || 0;
   
   const isGuest = !currentUser || currentUser?.type === 'guest';
-  const nickname = currentUser?.name ? currentUser.name.split(' ')[0] : 'Guest';
+  const nickname = currentUser?.name ? currentUser.name.split(' ')[0] : 'GUEST';
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [accountSubmenuOpen, setAccountSubmenuOpen] = useState(false);
@@ -62,7 +62,7 @@ export function SiteHeader({
             <span 
               className="text-lime-400 font-extrabold text-xs sm:text-sm tracking-wide select-none"
             >
-              Hi, Guest!
+              Hi, GUEST!
             </span>
           ) : currentUser ? (
             <span 
