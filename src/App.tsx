@@ -6,7 +6,7 @@ import { EmployeeDashboard } from '@/components/employee-dashboard';
 import { CartProvider } from '@/lib/cart';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings, Edit3, Facebook, Instagram, Eye, EyeOff, Mail, Phone } from 'lucide-react';
+import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings, Edit3, Facebook, Instagram, Eye, EyeOff, ChevronDown } from 'lucide-react';
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
 
@@ -16,6 +16,8 @@ export function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   
   const [isSignUp, setIsSignUp] = useState(false);
+  
+  // Selector State ('email' | 'phone')
   const [authInputType, setAuthInputType] = useState<'email' | 'phone'>('email');
   const [authEmailInput, setAuthEmailInput] = useState('');
   const [authPhoneInput, setAuthPhoneInput] = useState('');
@@ -24,7 +26,7 @@ export function App() {
   const [signUpSuccessMsg, setSignUpSuccessMsg] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Forgot password identifier state
+  // Forgot password selector state
   const [forgotInputType, setForgotInputType] = useState<'email' | 'phone'>('email');
   const [forgotEmailInput, setForgotEmailInput] = useState('');
   const [forgotPhoneInput, setForgotPhoneInput] = useState('');
@@ -44,6 +46,7 @@ export function App() {
   const [isUpdatingIdentifier, setIsUpdatingIdentifier] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
 
+  // Account settings update selector state
   const [updateInputType, setUpdateInputType] = useState<'email' | 'phone'>('email');
   const [newEmailInput, setNewEmailInput] = useState('');
   const [newPhoneInput, setNewPhoneInput] = useState('');
@@ -185,12 +188,13 @@ export function App() {
     return minLength && hasNumber && hasSymbol;
   };
 
-  const getResolvedIdentifier = (type: 'email' | 'phone', emailVal: string, phoneVal: string) => {
+  // Canonical normalization for phone numbers: +639494685430
+  const getCanonicalIdentifier = (type: 'email' | 'phone', emailVal: string, phoneVal: string) => {
     if (type === 'email') {
       return emailVal.trim().toLowerCase();
     } else {
-      const cleanPhone = phoneVal.replace(/\D/g, '');
-      return `+63${cleanPhone}`;
+      const cleanDigits = phoneVal.replace(/\D/g, '');
+      return `+63${cleanDigits}`;
     }
   };
 
@@ -204,9 +208,9 @@ export function App() {
     const rawIdentifier = authInputType === 'email' ? authEmailInput : authPhoneInput;
     if (!rawIdentifier.trim()) {
       if (isSignUp) {
-        setIdentifierError(authInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter your 9-digit mobile number.');
+        setIdentifierError(authInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid Philippine mobile number.');
       } else {
-        setLoginError('Please enter your email or phone number.');
+        setLoginError('Incorrect email or phone number or password.');
       }
       return;
     }
@@ -215,16 +219,16 @@ export function App() {
       if (isSignUp) {
         setPasswordError('Password must be at least 8 characters long and include at least one number and one symbol.');
       } else {
-        setLoginError('Please enter your password.');
+        setLoginError('Incorrect email or phone number or password.');
       }
       return;
     }
 
     const ADMIN_HASH = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
     const enteredPasswordHash = await hashPassword(authPassword);
-    const identifierKey = getResolvedIdentifier(authInputType, authEmailInput, authPhoneInput);
+    const canonicalKey = getCanonicalIdentifier(authInputType, authEmailInput, authPhoneInput);
 
-    if (!isSignUp && identifierKey === 'admin') {
+    if (!isSignUp && canonicalKey === 'admin') {
       if (enteredPasswordHash === ADMIN_HASH) {
         const adminUserData = { name: 'Admin Regular', identifier: 'admin', type: 'regular' };
         setCurrentUser(adminUserData);
@@ -247,7 +251,7 @@ export function App() {
       }
 
       if (!validateIdentifier(rawIdentifier, authInputType)) {
-        setIdentifierError(authInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid 9-digit mobile number (e.g., 9494685430).');
+        setIdentifierError(authInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid Philippine mobile number.');
         return;
       }
 
@@ -260,13 +264,13 @@ export function App() {
         const { data: existingProfiles, error: checkError } = await supabase
           .from('profiles')
           .select('*')
-          .or(`identifier.eq.${identifierKey},name.eq.${nicknameToSave}`);
+          .or(`identifier.eq.${canonicalKey},name.eq.${nicknameToSave}`);
 
         if (existingProfiles && existingProfiles.length > 0) {
           let hasConflict = false;
           existingProfiles.forEach((match: any) => {
-            if (match.identifier.toLowerCase() === identifierKey) {
-              setIdentifierError('This email or phone number is already registered.');
+            if (match.identifier.toLowerCase() === canonicalKey) {
+              setIdentifierError(authInputType === 'email' ? 'This email address is already registered.' : 'Please enter a valid Philippine mobile number.');
               hasConflict = true;
             }
             if (match.name.toLowerCase() === nicknameToSave.toLowerCase()) {
@@ -277,12 +281,12 @@ export function App() {
           if (hasConflict) return;
         }
 
-        localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, authPassword);
-        localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, enteredPasswordHash);
+        localStorage.setItem(`veyns_pwd_plain_${canonicalKey}`, authPassword);
+        localStorage.setItem(`veyns_pwd_hash_${canonicalKey}`, enteredPasswordHash);
 
         const { error: dbError } = await supabase.from('profiles').upsert(
           { 
-            identifier: identifierKey, 
+            identifier: canonicalKey, 
             name: nicknameToSave, 
             password_hash: enteredPasswordHash, 
             role: 'regular' 
@@ -311,50 +315,60 @@ export function App() {
       return;
     }
 
-    let resolvedName = rawIdentifier.split('@')[0] || 'Valued Regular';
+    // Login flow
     try {
       const { data: cloudUser, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('identifier', identifierKey)
+        .eq('identifier', canonicalKey)
         .single();
 
       if (cloudUser) {
-        resolvedName = cloudUser.name || resolvedName;
         if (cloudUser.password_hash && cloudUser.password_hash !== enteredPasswordHash) {
           setLoginError('Incorrect email or phone number or password.');
           return;
         }
+        const userData = {
+          name: cloudUser.name || 'Valued Regular',
+          identifier: canonicalKey,
+          type: 'regular',
+        };
+        setCurrentUser(userData);
+        setAuthMode('regular');
+        localStorage.setItem('veyns_current_user', JSON.stringify(userData));
+        localStorage.setItem('veyns_auth_mode', 'regular');
+        
+        const savedOrders = localStorage.getItem('veyns_order_history');
+        if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
+
+        loadUserStampsAndPenalties(userData);
+        return;
       } else {
-        const storedPwdHash = localStorage.getItem(`veyns_pwd_hash_${identifierKey}`);
+        const storedPwdHash = localStorage.getItem(`veyns_pwd_hash_${canonicalKey}`);
         if (!storedPwdHash || storedPwdHash !== enteredPasswordHash) {
           setLoginError('Incorrect email or phone number or password.');
           return;
         }
-      }
-    } catch (e) {
-      const storedPwdHash = localStorage.getItem(`veyns_pwd_hash_${identifierKey}`);
-      if (!storedPwdHash || storedPwdHash !== enteredPasswordHash) {
-        setLoginError('Incorrect email or phone number or password.');
+        const userData = {
+          name: rawIdentifier.split('@')[0] || 'Valued Regular',
+          identifier: canonicalKey,
+          type: 'regular',
+        };
+        setCurrentUser(userData);
+        setAuthMode('regular');
+        localStorage.setItem('veyns_current_user', JSON.stringify(userData));
+        localStorage.setItem('veyns_auth_mode', 'regular');
+        
+        const savedOrders = localStorage.getItem('veyns_order_history');
+        if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
+
+        loadUserStampsAndPenalties(userData);
         return;
       }
+    } catch (e) {
+      setLoginError('Incorrect email or phone number or password.');
+      return;
     }
-
-    const userData = {
-      name: resolvedName,
-      identifier: identifierKey,
-      type: 'regular',
-    };
-
-    setCurrentUser(userData);
-    setAuthMode('regular');
-    localStorage.setItem('veyns_current_user', JSON.stringify(userData));
-    localStorage.setItem('veyns_auth_mode', 'regular');
-    
-    const savedOrders = localStorage.getItem('veyns_order_history');
-    if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
-
-    loadUserStampsAndPenalties(userData);
   };
 
   const handleUpdateIdentifierSubmit = async (e: React.FormEvent) => {
@@ -365,17 +379,17 @@ export function App() {
     if (!rawNewId) return;
 
     if (!validateIdentifier(rawNewId, updateInputType)) {
-      alert(updateInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid 9-digit mobile number (e.g., 9494685430).');
+      alert(updateInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid Philippine mobile number.');
       return;
     }
 
     const oldIdentifierKey = currentUser.identifier.toLowerCase().trim();
-    const newIdKey = getResolvedIdentifier(updateInputType, newEmailInput, newPhoneInput);
+    const newCanonicalKey = getCanonicalIdentifier(updateInputType, newEmailInput, newPhoneInput);
 
     try {
       await supabase
         .from('profiles')
-        .update({ identifier: newIdKey })
+        .update({ identifier: newCanonicalKey })
         .eq('identifier', oldIdentifierKey);
 
       const plainPass = localStorage.getItem(`veyns_pwd_plain_${oldIdentifierKey}`);
@@ -384,11 +398,11 @@ export function App() {
       const userStamps = localStorage.getItem(`veyns_stamps_${oldIdentifierKey}`);
       const penalty = localStorage.getItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
 
-      if (plainPass) localStorage.setItem(`veyns_pwd_plain_${newIdKey}`, plainPass);
-      if (hashPass) localStorage.setItem(`veyns_pwd_hash_${newIdKey}`, hashPass);
-      if (detailedStamps) localStorage.setItem(`veyns_detailed_stamps_${newIdKey}`, detailedStamps);
-      if (userStamps) localStorage.setItem(`veyns_stamps_${newIdKey}`, userStamps);
-      if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newIdKey}`, penalty);
+      if (plainPass) localStorage.setItem(`veyns_pwd_plain_${newCanonicalKey}`, plainPass);
+      if (hashPass) localStorage.setItem(`veyns_pwd_hash_${newCanonicalKey}`, hashPass);
+      if (detailedStamps) localStorage.setItem(`veyns_detailed_stamps_${newCanonicalKey}`, detailedStamps);
+      if (userStamps) localStorage.setItem(`veyns_stamps_${newCanonicalKey}`, userStamps);
+      if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newCanonicalKey}`, penalty);
 
       localStorage.removeItem(`veyns_pwd_plain_${oldIdentifierKey}`);
       localStorage.removeItem(`veyns_pwd_hash_${oldIdentifierKey}`);
@@ -396,7 +410,7 @@ export function App() {
       localStorage.removeItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
       localStorage.removeItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
 
-      const updatedUser = { ...currentUser, identifier: newIdKey };
+      const updatedUser = { ...currentUser, identifier: newCanonicalKey };
       setCurrentUser(updatedUser);
       localStorage.setItem('veyns_current_user', JSON.stringify(updatedUser));
       loadUserStampsAndPenalties(updatedUser);
@@ -461,13 +475,13 @@ export function App() {
       return;
     }
 
-    const identifierKey = getResolvedIdentifier(forgotInputType, forgotEmailInput, forgotPhoneInput);
+    const canonicalKey = getCanonicalIdentifier(forgotInputType, forgotEmailInput, forgotPhoneInput);
     const newHash = await hashPassword(newPasswordInput);
     
     try {
-      await supabase.from('profiles').update({ password_hash: newHash }).eq('identifier', identifierKey);
-      localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, newPasswordInput);
-      localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, newHash);
+      await supabase.from('profiles').update({ password_hash: newHash }).eq('identifier', canonicalKey);
+      localStorage.setItem(`veyns_pwd_plain_${canonicalKey}`, newPasswordInput);
+      localStorage.setItem(`veyns_pwd_hash_${canonicalKey}`, newHash);
       setForgotSuccess(true);
       setTimeout(() => {
         setForgotSuccess(false);
@@ -581,8 +595,6 @@ export function App() {
     }
   };
 
-  const validStampsCount = stamps.filter(s => s.status === 'valid').length;
-
   if (authMode === 'select') {
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
@@ -674,26 +686,25 @@ export function App() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">Login / Signup With</label>
-                <div className="flex bg-[#041913] border border-emerald-800/80 rounded-xl p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => { setAuthInputType('email'); setIdentifierError(''); }}
-                    className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                      authInputType === 'email' ? 'bg-lime-400 text-black shadow' : 'text-emerald-400 hover:text-white'
-                    }`}
+                <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">
+                  {authInputType === 'email' ? 'Email Address' : 'Phone Number'}
+                </label>
+                <div className="relative">
+                  <select
+                    value={authInputType}
+                    onChange={(e) => {
+                      setAuthInputType(e.target.value as 'email' | 'phone');
+                      setAuthEmailInput('');
+                      setAuthPhoneInput('');
+                      setIdentifierError('');
+                      setLoginError('');
+                    }}
+                    className="bg-[#041913] text-lime-400 border border-emerald-800/80 rounded-xl px-3 py-1 text-[11px] font-bold focus:outline-none focus:border-lime-400 cursor-pointer appearance-none pr-7 shadow-sm"
                   >
-                    <Mail className="size-3" /> Email
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAuthInputType('phone'); setIdentifierError(''); }}
-                    className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                      authInputType === 'phone' ? 'bg-lime-400 text-black shadow' : 'text-emerald-400 hover:text-white'
-                    }`}
-                  >
-                    <Phone className="size-3" /> Phone
-                  </button>
+                    <option value="email">Email</option>
+                    <option value="phone">Phone Number</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-lime-400 pointer-events-none" />
                 </div>
               </div>
 
@@ -718,12 +729,12 @@ export function App() {
                 <div className={`flex items-center w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 ${
                   identifierError || (loginError && !isSignUp) ? 'border-red-500' : 'border-emerald-800/80 focus-within:border-lime-400'
                 }`}>
-                  <span className="text-xs font-mono font-bold text-lime-400 mr-1 select-none">+63</span>
+                  <span className="text-xs font-mono font-bold text-lime-400 mr-1 select-none cursor-default">+63</span>
                   <input
                     type="tel"
                     required
                     maxLength={10}
-                    placeholder="9494685430"
+                    placeholder="Enter your mobile number"
                     value={authPhoneInput}
                     onChange={(e) => {
                       const val = e.target.value.replace(/\D/g, '');
@@ -843,26 +854,23 @@ export function App() {
             <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">Account Type</label>
-                  <div className="flex bg-[#041913] border border-emerald-800/80 rounded-xl p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setForgotInputType('email')}
-                      className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                        forgotInputType === 'email' ? 'bg-lime-400 text-black shadow' : 'text-emerald-400 hover:text-white'
-                      }`}
+                  <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">
+                    {forgotInputType === 'email' ? 'Email Address' : 'Phone Number'}
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={forgotInputType}
+                      onChange={(e) => {
+                        setForgotInputType(e.target.value as 'email' | 'phone');
+                        setForgotEmailInput('');
+                        setForgotPhoneInput('');
+                      }}
+                      className="bg-[#041913] text-lime-400 border border-emerald-800/80 rounded-xl px-3 py-1 text-[11px] font-bold focus:outline-none focus:border-lime-400 cursor-pointer appearance-none pr-7 shadow-sm"
                     >
-                      <Mail className="size-3" /> Email
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setForgotInputType('phone')}
-                      className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                        forgotInputType === 'phone' ? 'bg-lime-400 text-black shadow' : 'text-emerald-400 hover:text-white'
-                      }`}
-                    >
-                      <Phone className="size-3" /> Phone
-                    </button>
+                      <option value="email">Email</option>
+                      <option value="phone">Phone Number</option>
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-lime-400 pointer-events-none" />
                   </div>
                 </div>
 
@@ -870,19 +878,19 @@ export function App() {
                   <input
                     type="email"
                     required
-                    placeholder="Enter your registered email"
+                    placeholder="Enter your email address"
                     value={forgotEmailInput}
                     onChange={(e) => setForgotEmailInput(e.target.value)}
                     className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
                   />
                 ) : (
                   <div className="flex items-center w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 focus-within:border-lime-400">
-                    <span className="text-xs font-mono font-bold text-lime-400 mr-1 select-none">+63</span>
+                    <span className="text-xs font-mono font-bold text-lime-400 mr-1 select-none cursor-default">+63</span>
                     <input
                       type="tel"
                       required
                       maxLength={10}
-                      placeholder="9494685430"
+                      placeholder="Enter your mobile number"
                       value={forgotPhoneInput}
                       onChange={(e) => setForgotPhoneInput(e.target.value.replace(/\D/g, ''))}
                       className="w-full bg-transparent text-xs text-white placeholder:text-emerald-700 font-mono focus:outline-none"
@@ -1023,8 +1031,10 @@ export function App() {
             if (tab === 'update') {
               setIsUpdatingIdentifier(true);
               setIsResettingPassword(false);
-              setNewEmailInput(currentUser?.identifier?.includes('@') ? currentUser.identifier : '');
-              setNewPhoneInput(currentUser?.identifier?.startsWith('+63') ? currentUser.identifier.replace('+63', '') : '');
+              const isEmail = currentUser?.identifier?.includes('@');
+              setUpdateInputType(isEmail ? 'email' : 'phone');
+              setNewEmailInput(isEmail ? currentUser.identifier : '');
+              setNewPhoneInput(!isEmail && currentUser?.identifier?.startsWith('+63') ? currentUser.identifier.replace('+63', '') : '');
             } else if (tab === 'password') {
               setIsResettingPassword(true);
               setIsUpdatingIdentifier(false);
@@ -1113,8 +1123,10 @@ export function App() {
                           onClick={() => {
                             setIsUpdatingIdentifier(true);
                             setIsResettingPassword(false);
-                            setNewEmailInput(currentUser.identifier?.includes('@') ? currentUser.identifier : '');
-                            setNewPhoneInput(currentUser.identifier?.startsWith('+63') ? currentUser.identifier.replace('+63', '') : '');
+                            const isEmail = currentUser.identifier?.includes('@');
+                            setUpdateInputType(isEmail ? 'email' : 'phone');
+                            setNewEmailInput(isEmail ? currentUser.identifier : '');
+                            setNewPhoneInput(!isEmail && currentUser.identifier?.startsWith('+63') ? currentUser.identifier.replace('+63', '') : '');
                           }}
                           className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-[11px] cursor-pointer flex items-center justify-center gap-1"
                         >
@@ -1137,26 +1149,23 @@ export function App() {
                       <form onSubmit={handleUpdateIdentifierSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">Update Type</label>
-                            <div className="flex bg-[#041913] border border-emerald-800 rounded-xl p-0.5">
-                              <button
-                                type="button"
-                                onClick={() => setUpdateInputType('email')}
-                                className={`px-2.5 py-0.5 rounded-lg text-[9px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                                  updateInputType === 'email' ? 'bg-lime-400 text-black shadow' : 'text-emerald-400 hover:text-white'
-                                }`}
+                            <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">
+                              {updateInputType === 'email' ? 'Email Address' : 'Phone Number'}
+                            </label>
+                            <div className="relative">
+                              <select
+                                value={updateInputType}
+                                onChange={(e) => {
+                                  setUpdateInputType(e.target.value as 'email' | 'phone');
+                                  setNewEmailInput('');
+                                  setNewPhoneInput('');
+                                }}
+                                className="bg-[#041913] text-lime-400 border border-emerald-800 rounded-xl px-2.5 py-1 text-[10px] font-bold focus:outline-none focus:border-lime-400 cursor-pointer appearance-none pr-6 shadow-sm"
                               >
-                                <Mail className="size-2.5" /> Email
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setUpdateInputType('phone')}
-                                className={`px-2.5 py-0.5 rounded-lg text-[9px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                                  updateInputType === 'phone' ? 'bg-lime-400 text-black shadow' : 'text-emerald-400 hover:text-white'
-                                }`}
-                              >
-                                <Phone className="size-2.5" /> Phone
-                              </button>
+                                <option value="email">Email</option>
+                                <option value="phone">Phone Number</option>
+                              </select>
+                              <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 size-3 text-lime-400 pointer-events-none" />
                             </div>
                           </div>
 
@@ -1171,12 +1180,12 @@ export function App() {
                             />
                           ) : (
                             <div className="flex items-center w-full rounded-xl border border-emerald-800 bg-[#041913] px-3 py-2.5 focus-within:border-lime-400">
-                              <span className="text-xs font-mono font-bold text-lime-400 mr-1 select-none">+63</span>
+                              <span className="text-xs font-mono font-bold text-lime-400 mr-1 select-none cursor-default">+63</span>
                               <input
                                 type="tel"
                                 required
                                 maxLength={10}
-                                placeholder="9494685430"
+                                placeholder="Enter your mobile number"
                                 value={newPhoneInput}
                                 onChange={(e) => setNewPhoneInput(e.target.value.replace(/\D/g, ''))}
                                 className="w-full bg-transparent text-xs text-white placeholder:text-emerald-700 font-mono focus:outline-none"
