@@ -37,6 +37,27 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const isGuest = !currentUser || currentUser.role === 'guest' || (currentUser.name && currentUser.name.toLowerCase().includes('guest')) || (currentUser.identifier && currentUser.identifier.toLowerCase().includes('guest'));
 
+  // Helper to check if "Order Today" is allowed in Philippine Time (Asia/Manila)
+  // Closed from 12:00 AM (00:00) until 12:00 PM (12:00)
+  const isOrderTodayAllowed = () => {
+    try {
+      const options: Intl.DateTimeFormatOptions = {
+        timeZone: 'Asia/Manila',
+        hour: 'numeric',
+        hour12: false
+      };
+      const formatter = new Intl.DateTimeFormat([], options);
+      const hourInPhilippines = parseInt(formatter.format(new Date()), 10);
+      return !(hourInPhilippines >= 0 && hourInPhilippines < 12);
+    } catch (e) {
+      // Fallback if environment doesn't support Intl timeZone
+      const currentHour = new Date().getHours();
+      return !(currentHour >= 0 && currentHour < 12);
+    }
+  };
+
+  const orderTodayOpen = isOrderTodayAllowed();
+
   const loadSlotCapacities = async () => {
     try {
       const { data, error } = await supabase.from('slot_capacities').select('*');
@@ -233,7 +254,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [deliveryOption, setDeliveryOption] = useState<'our' | 'maxim'>('our');
 
   // Order Type & Scheduling States
-  const [orderType, setOrderType] = useState<'today' | 'reservation'>('today');
+  const [orderType, setOrderType] = useState<'today' | 'reservation'>(orderTodayOpen ? 'today' : 'reservation');
   const [todayTimeSlot, setTodayTimeSlot] = useState('12:00 PM - 1:00 PM');
   const [reservationDate, setReservationDate] = useState('');
   const [reservationTime, setReservationTime] = useState('12:00 PM - 1:00 PM');
@@ -752,6 +773,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const handleConfirmOrder = () => {
+    if (orderType === 'today' && !isOrderTodayAllowed()) {
+      alert('⚠️ "Order Today" is currently closed (Unavailable between 12:00 AM and 12:00 PM in the Philippines). Please select "Reservation" for a future schedule instead!');
+      return;
+    }
+
     const scheduleInfoText =
       orderType === 'today'
         ? fulfillment === 'delivery' && deliveryOption === 'our'
@@ -1599,7 +1625,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 )}
               </div>
 
-              {/* ORDER TYPE SELECTION (Order Today vs Reservation with Slot Capacity Checks) */}
+              {/* ORDER TYPE SELECTION (Order Today vs Reservation with Philippine 12AM-12PM Lock) */}
               <div className="space-y-2 border-t border-emerald-900/60 pt-3">
                 <h4 className="text-[11px] font-bold text-lime-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5 text-lime-400" /> Order Schedule Type
@@ -1607,14 +1633,23 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setOrderType('today')}
+                    disabled={!orderTodayOpen}
+                    onClick={() => {
+                      if (!orderTodayOpen) {
+                        alert('⚠️ "Order Today" is currently closed (Unavailable between 12:00 AM and 12:00 PM in the Philippines). Please select "Reservation" instead!');
+                        return;
+                      }
+                      setOrderType('today');
+                    }}
                     className={`p-2.5 rounded-xl text-xs font-extrabold border flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                      orderType === 'today'
+                      !orderTodayOpen
+                        ? 'bg-red-950/40 border-red-900/60 text-red-400/60 opacity-50 cursor-not-allowed'
+                        : orderType === 'today'
                         ? 'bg-[#082d22] border-lime-400 text-lime-400'
                         : 'bg-[#061c16] border-emerald-800/60 text-emerald-200'
                     }`}
                   >
-                    <Clock className="h-4 w-4" /> Order Today
+                    <Clock className="h-4 w-4" /> Order Today {!orderTodayOpen && '(Closed < 12PM)'}
                   </button>
                   <button
                     type="button"
@@ -1625,7 +1660,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         : 'bg-[#061c16] border-emerald-800/60 text-emerald-200'
                     }`}
                   >
-                    <Calendar className="h-4 w-4" /> Reservation
+                    <Calendar className="h-4 w-4" /> Reservation (Open)
                   </button>
                 </div>
 
@@ -1944,7 +1979,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     lines.length === 0 ||
                     (fulfillment === 'delivery' && (!customerName || !customerEmail || !customerPhone || !customerLocation || !nearestLandmark)) ||
                     (fulfillment === 'pickup' && !customerName) ||
-                    (orderType === 'reservation' && !reservationDate)
+                    (orderType === 'reservation' && !reservationDate) ||
+                    (orderType === 'today' && !orderTodayOpen)
                   }
                   onClick={handleConfirmOrder}
                   className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-sm transition-all shadow-lg disabled:opacity-50 cursor-pointer"
