@@ -180,6 +180,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null);
   const [calculatedDeliveryFee, setCalculatedDeliveryFee] = useState<number>(0);
   const [isPinning, setIsPinning] = useState(false);
+  const [addressSearchQuery, setAddressSearchQuery] = useState('');
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markerInstanceRef = useRef<any>(null);
@@ -236,7 +239,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // Initial customer pin starts at the store (0.0 km) until they drag or click GPS
     const customerInitialLat = STORE_LAT;
     const customerInitialLng = STORE_LNG;
 
@@ -288,7 +290,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }, 600);
   };
 
-  // TRUE BROWSER GEOLOCATION for Customer Real-Time GPS
   const handleUseCurrentGPS = () => {
     if (!navigator.geolocation) {
       alert('Geolocation is not supported by your browser');
@@ -309,6 +310,40 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         alert('Unable to retrieve your location. Please drop a pin on the map.');
       }
     );
+  };
+
+  // SEARCH ADDRESS/SHOP VIA OPENSTREETMAP NOMINATIM
+  const handleSearchAddress = async () => {
+    if (!addressSearchQuery.trim()) return;
+    setIsSearchingAddress(true);
+    try {
+      const query = encodeURIComponent(addressSearchQuery + ', Cebu, Philippines');
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`, {
+        headers: {
+          'User-Agent': 'VeynsKioskDeliveryApp/1.0'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.length > 0) {
+          const lat = parseFloat(data[0].lat);
+          const lng = parseFloat(data[0].lon);
+          
+          if (mapInstanceRef.current && markerInstanceRef.current) {
+            mapInstanceRef.current.setView([lat, lng], 16);
+            markerInstanceRef.current.setLatLng([lat, lng]);
+          }
+          await processSelectedCoordinates(lat, lng);
+          setCustomerLocation(data[0].display_name);
+        } else {
+          alert('Address not found. Please try adding more details (e.g. street, barangay, city).');
+        }
+      }
+    } catch (e) {
+      alert('Error searching address. Please drop a pin on the map instead.');
+    } finally {
+      setIsSearchingAddress(false);
+    }
   };
 
   const [internalOrderHistory, setInternalOrderHistory] = useState<any[]>([]);
@@ -1371,7 +1406,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
                   />
 
-                  {/* Interactive Map Pin Section */}
+                  {/* Interactive Map Pin Section with Address Search */}
                   <div className="space-y-2 pt-1">
                     <div className="flex items-center justify-between">
                       <label className="font-bold text-lime-400 uppercase tracking-wider text-[10px]">
@@ -1392,13 +1427,38 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         onClick={() => setIsPinning(true)}
                         className="w-full bg-[#04261d] hover:bg-[#063829] text-lime-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow"
                       >
-                        <MapPin className="size-4 text-lime-400" /> Open Map to Drop Pin / Auto-Calculate KM
+                        <MapPin className="size-4 text-lime-400" /> Open Map to Drop Pin / Search Address
                       </Button>
                     ) : (
                       <div className="space-y-2">
+                        {/* Address Search Bar */}
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="Search address, landmark, or shop name..."
+                            value={addressSearchQuery}
+                            onChange={(e) => setAddressSearchQuery(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSearchAddress();
+                              }
+                            }}
+                            className="flex-1 bg-[#041913] border border-emerald-800/80 rounded-xl px-3 py-2 text-xs text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
+                          />
+                          <Button
+                            type="button"
+                            disabled={isSearchingAddress}
+                            onClick={handleSearchAddress}
+                            className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                          >
+                            {isSearchingAddress ? 'Searching...' : 'Search'}
+                          </Button>
+                        </div>
+
                         <div ref={mapRef} className="w-full h-48 rounded-xl border border-emerald-800 overflow-hidden bg-black/50" />
                         <p className="text-[10px] text-emerald-300 italic text-center">
-                          💡 Drag the marker or click anywhere on the map to pin your exact delivery location.
+                          💡 Search an address above or drag the marker to pin your exact delivery location.
                         </p>
                       </div>
                     )}
