@@ -47,7 +47,6 @@ export function App() {
     try {
       const identifierKey = (userObj.identifier || 'default').toLowerCase().trim();
       
-      // Fetch live data from Supabase profiles table
       const { data: cloudProfile, error } = await supabase
         .from('profiles')
         .select('stamps_data, penalty_data')
@@ -73,7 +72,6 @@ export function App() {
         return;
       }
 
-      // Fallback to local storage if offline or cloud profile not found
       const detailedStampsKey = `veyns_detailed_stamps_${identifierKey}`;
       const penaltyKey = `veyns_fair_play_penalty_${identifierKey}`;
       
@@ -427,7 +425,6 @@ export function App() {
             localStorage.setItem('veyns_loyalty_stamps', JSON.stringify(validDates));
           }
 
-          // Sync order stamp to Supabase
           await supabase
             .from('profiles')
             .update({ stamps_data: currentStamps })
