@@ -19,7 +19,7 @@ function Photo({ src, alt, className }: { src?: string; alt: string; className: 
 }
 
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers'>('menu');
+  const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers'>('sales');
 
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -39,6 +39,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [newPromoDiscount, setNewPromoDiscount] = useState('');
 
   const [orders, setOrders] = useState<any[]>([]);
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [customers, setCustomers] = useState<any[]>([]);
   const [resetTargetUser, setResetTargetUser] = useState<any>(null);
   const [newTempPassword, setNewTempPassword] = useState('');
@@ -116,11 +117,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           email: o.email || '',
           phone: o.phone || '',
           fulfillment: o.fulfillment || 'delivery',
+          location: o.location || o.address || '',
+          landmark: o.landmark || '',
           items: o.items || [],
           total: o.total || 0,
           orderNumber: o.order_number,
           date: new Date(o.created_at).toLocaleString(),
-          promoCode: o.promo_code
+          promoCode: o.promo_code || o.promoCode || ''
         })));
       }
 
@@ -385,18 +388,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const totalOrdersCount = orders.length;
   const averageOrderValue = totalOrdersCount > 0 ? totalGrossSales / totalOrdersCount : 0;
 
-  const getCustomerStampCount = (customerName: string, customerIdentifier?: string) => {
-    try {
-      const identifierKey = (customerIdentifier || customerName || 'default').toLowerCase().trim();
-      const detailedSaved = localStorage.getItem(`veyns_detailed_stamps_${identifierKey}`);
-      if (detailedSaved) {
-        const parsed = JSON.parse(detailedSaved);
-        if (Array.isArray(parsed)) return parsed.filter((s: any) => s?.status === 'valid').length;
-      }
-    } catch (e) {}
-    return 0;
-  };
-
   return (
     <div className="min-h-screen bg-[#020b08] text-white p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -477,34 +468,44 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         <th className="p-3">Order #</th>
                         <th className="p-3">Customer & Contact</th>
                         <th className="p-3">Fulfillment</th>
+                        <th className="p-3">Delivery Address & Landmark</th>
                         <th className="p-3">Items Summary</th>
-                        <th className="p-3">Loyalty Stamps</th>
                         <th className="p-3">Promo</th>
-                        <th className="p-3 text-right">Total (₱)</th>
+                        <th className="p-3">Total (₱)</th>
+                        <th className="p-3 text-right">Invoice</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-emerald-950">
-                      {orders.map((order, idx) => {
-                        const stampCount = getCustomerStampCount(order.name, order.email || order.phone || order.name);
-                        return (
-                          <tr key={idx} className="hover:bg-[#071F19]/50 transition-colors">
-                            <td className="p-3 font-extrabold text-lime-400">{order.orderNumber}</td>
-                            <td className="p-3">
-                              <p className="font-bold text-white">{order.name}</p>
-                              <p className="text-[10px] text-emerald-300">{order.phone || order.email || 'No contact provided'}</p>
-                            </td>
-                            <td className="p-3">
-                              <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">{order.fulfillment}</span>
-                            </td>
-                            <td className="p-3 space-y-0.5 max-w-xs">
-                              {order.items.map((it: any, i: number) => <div key={i} className="text-emerald-200">{it.qty}x {it.item.name}</div>)}
-                            </td>
-                            <td className="p-3 font-extrabold text-lime-400">{stampCount} / 12</td>
-                            <td className="p-3 font-semibold text-amber-400">{order.promoCode || '—'}</td>
-                            <td className="p-3 text-right font-extrabold text-lime-400 text-sm">{formatPeso(order.total)}</td>
-                          </tr>
-                        );
-                      })}
+                      {orders.map((order, idx) => (
+                        <tr key={idx} className="hover:bg-[#071F19]/50 transition-colors">
+                          <td className="p-3 font-extrabold text-lime-400">{order.orderNumber}</td>
+                          <td className="p-3">
+                            <p className="font-bold text-white">{order.name}</p>
+                            <p className="text-[10px] text-emerald-300">{order.phone || 'No phone'} • {order.email || 'No email'}</p>
+                          </td>
+                          <td className="p-3">
+                            <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">{order.fulfillment}</span>
+                          </td>
+                          <td className="p-3 text-emerald-200">
+                            <p className="font-semibold text-white max-w-[200px] truncate">{order.location || 'No address specified'}</p>
+                            <p className="text-[10px] text-emerald-400">Landmark: {order.landmark || 'None'}</p>
+                          </td>
+                          <td className="p-3 space-y-0.5 max-w-xs">
+                            {order.items.map((it: any, i: number) => <div key={i} className="text-emerald-200">{it.qty}x {it.item?.name || it.name}</div>)}
+                          </td>
+                          <td className="p-3 font-semibold text-amber-400">{order.promoCode || '—'}</td>
+                          <td className="p-3 font-extrabold text-lime-400 text-sm">{formatPeso(order.total)}</td>
+                          <td className="p-3 text-right">
+                            <Button
+                              size="sm"
+                              onClick={() => setSelectedInvoice(order)}
+                              className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-extrabold text-[10px] px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+                            >
+                              See Invoice
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -692,6 +693,85 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             </div>
           </div>
         )}
+
+        {/* See Invoice Modal */}
+        <Dialog open={!!selectedInvoice} onOpenChange={(open) => !open && setSelectedInvoice(null)}>
+          {selectedInvoice && (
+            <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
+              <div id="printable-invoice" className="space-y-4">
+                <div className="text-center border-b border-emerald-900/60 pb-3 space-y-1">
+                  <DialogTitle className="font-display text-xl font-extrabold text-lime-400 uppercase">
+                    VEYNS. Official Invoice
+                  </DialogTitle>
+                  <p className="text-xs text-emerald-300">Reference: <strong>{selectedInvoice.orderNumber}</strong></p>
+                  <p className="text-[10px] text-emerald-400">{selectedInvoice.date}</p>
+                </div>
+
+                <div className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-3 text-xs space-y-1.5">
+                  <p className="font-bold text-lime-400 uppercase text-[10px] tracking-wider">Customer & Contact Info:</p>
+                  <p className="font-bold text-white text-sm">{selectedInvoice.name}</p>
+                  <p className="text-emerald-200">Phone: <strong>{selectedInvoice.phone || 'N/A'}</strong></p>
+                  <p className="text-emerald-200">Email: <strong>{selectedInvoice.email || 'N/A'}</strong></p>
+                </div>
+
+                <div className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-3 text-xs space-y-1.5">
+                  <p className="font-bold text-lime-400 uppercase text-[10px] tracking-wider">Fulfillment & Delivery:</p>
+                  <p className="text-white uppercase font-bold">Method: {selectedInvoice.fulfillment}</p>
+                  <p className="text-emerald-200">Address: <strong>{selectedInvoice.location || 'N/A'}</strong></p>
+                  <p className="text-emerald-200">Landmark: <strong>{selectedInvoice.landmark || 'N/A'}</strong></p>
+                </div>
+
+                <div className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-3 text-xs space-y-2">
+                  <p className="font-bold text-lime-400 uppercase text-[10px] tracking-wider">Order Summary:</p>
+                  <div className="space-y-1 border-b border-emerald-900/60 pb-2">
+                    {selectedInvoice.items?.map((it: any, i: number) => (
+                      <div key={i} className="flex justify-between text-white">
+                        <span>{it.qty}x {it.item?.name || it.name}</span>
+                        <span className="font-bold text-lime-400">{formatPeso((it.item?.price || it.price || 0) * it.qty)}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {selectedInvoice.promoCode && (
+                    <div className="flex justify-between text-amber-400 text-xs font-semibold">
+                      <span>Promo Applied ({selectedInvoice.promoCode}):</span>
+                      <span>Applied</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between text-sm font-extrabold text-white pt-1">
+                    <span>Total Amount Due:</span>
+                    <span className="text-lime-400 text-base">{formatPeso(selectedInvoice.total)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-3 border-t border-emerald-900/60">
+                <Button
+                  onClick={() => {
+                    const printContent = document.getElementById('printable-invoice')?.innerHTML;
+                    const originalContents = document.body.innerHTML;
+                    if (printContent) {
+                      document.body.innerHTML = printContent;
+                      window.print();
+                      document.body.innerHTML = originalContents;
+                      window.location.reload();
+                    }
+                  }}
+                  className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs shadow-lg cursor-pointer"
+                >
+                  Print Invoice
+                </Button>
+                <Button
+                  onClick={() => setSelectedInvoice(null)}
+                  className="bg-emerald-950 hover:bg-emerald-900 text-emerald-200 font-bold py-2.5 px-4 rounded-xl text-xs cursor-pointer"
+                >
+                  Close
+                </Button>
+              </div>
+            </DialogContent>
+          )}
+        </Dialog>
 
         <Dialog open={isAddingNewItem} onOpenChange={(open) => !open && setIsAddingNewItem(false)}>
           <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/85 shadow-2xl p-6 rounded-3xl max-h-[95vh] overflow-y-auto">
