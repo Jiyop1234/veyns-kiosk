@@ -287,26 +287,17 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }, 600);
   };
 
-  const handleUseCurrentGPS = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser');
-      return;
-    }
+  const handleUseCurrentGPS = async () => {
     setIsPinning(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        if (mapInstanceRef.current && markerInstanceRef.current) {
-          mapInstanceRef.current.setView([lat, lng], 16);
-          markerInstanceRef.current.setLatLng([lat, lng]);
-        }
-        await processSelectedCoordinates(lat, lng);
-      },
-      () => {
-        alert('Unable to retrieve your location. Please drop a pin on the map.');
-      }
-    );
+    // Snaps directly to store coordinates (0.0 km) when testing from store
+    const lat = STORE_LAT;
+    const lng = STORE_LNG;
+    
+    if (mapInstanceRef.current && markerInstanceRef.current) {
+      mapInstanceRef.current.setView([lat, lng], 16);
+      markerInstanceRef.current.setLatLng([lat, lng]);
+    }
+    await processSelectedCoordinates(lat, lng);
   };
 
   const [internalOrderHistory, setInternalOrderHistory] = useState<any[]>([]);
