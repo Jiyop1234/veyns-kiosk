@@ -618,7 +618,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Registered Customer Accounts & Passwords</h3>
               </div>
               
-              {/* Customer Search Bar */}
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-300/70" />
                 <input
@@ -836,6 +835,14 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   <p className="text-white uppercase font-bold">Method: {selectedInvoice.fulfillment}</p>
                   <p className="text-emerald-200">Address: <strong>{selectedInvoice.location || 'N/A'}</strong></p>
                   <p className="text-emerald-200">Landmark: <strong>{selectedInvoice.landmark || 'N/A'}</strong></p>
+                </div>
+
+                <div className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-3 text-xs space-y-1.5">
+                  <p className="font-bold text-lime-400 uppercase text-[10px] tracking-wider">Order Schedule & Type:</p>
+                  <p className="text-amber-300 uppercase font-bold">
+                    {selectedInvoice.orderType === 'reservation' ? '📅 Reservation' : '⚡ Order Today'}
+                  </p>
+                  <p className="text-white font-medium">{selectedInvoice.scheduleInfo || 'Immediate / Today'}</p>
                 </div>
 
                 <div className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-3 text-xs space-y-2">
