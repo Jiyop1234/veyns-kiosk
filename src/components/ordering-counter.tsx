@@ -185,12 +185,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const markerInstanceRef = useRef<any>(null);
   const geocodeTimeoutRef = useRef<any>(null);
 
-  // Store Point A Coordinates: Julio B. Alinsug, Basak, Mandaue City, Cebu 6014
+  // Store Point A Coordinates: Julio B. Alinsug, Basak, Mandaue City, Cebu 6014 (Imaginary Center)
   const STORE_LAT = 10.3475;
   const STORE_LNG = 123.9388;
 
   const calculateDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371; // Radius of the earth in km
+    const R = 6371;
     const dLat = (lat2 - lat1) * (Math.PI / 180);
     const dLon = (lon2 - lon1) * (Math.PI / 180);
     const a =
@@ -201,12 +201,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const computeFeeFromKm = (km: number) => {
-    if (km <= 2.0) return 0; // Free delivery for <= 2km
+    if (km <= 2.0) return 30; // Within 2km = ₱30 fixed
     const succeedingKm = km - 2.0;
-    return 30 + Math.ceil(succeedingKm) * 5; // 30 pesos base for first 2km + 5 pesos per succeeding km
+    return 30 + Math.ceil(succeedingKm) * 5; // ₱30 base + ₱5 per succeeding km
   };
 
-  // Initialize Leaflet map inside checkout when delivery is selected & pinning is active
   useEffect(() => {
     if (showCheckout && fulfillment === 'delivery' && isPinning) {
       if (!window.L) {
@@ -230,46 +229,20 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     const L = window.L;
     if (!L) return;
 
-    const initialLat = STORE_LAT;
-    const initialLng = STORE_LNG;
-
-    const map = L.map(mapRef.current).setView([initialLat, initialLng], 14);
+    // Center map around store area
+    const map = L.map(mapRef.current).setView([STORE_LAT, STORE_LNG], 14);
     mapInstanceRef.current = map;
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // Fixed Store Marker (Point A)
-    const storeIcon = L.divIcon({
-      className: 'custom-store-pin',
-      html: `<div style="background-color: #84cc16; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #000; box-shadow: 0 0 10px #84cc16;"></div>`,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
-    });
-    L.marker([STORE_LAT, STORE_LNG], { icon: storeIcon }).addTo(map).bindPopup('<b>VEYNS Store (Point A)</b><br/>Julio B. Alinsug, Basak, Mandaue');
+    // Customer Movable Pin ONLY (No store marker or radius circles displayed)
+    const customerInitialLat = STORE_LAT + 0.005;
+    const customerInitialLng = STORE_LNG + 0.005;
 
-    // 2km Radius Circle (Blue / Free Delivery Zone)
-    L.circle([STORE_LAT, STORE_LNG], {
-      color: '#3b82f6',
-      fillColor: '#3b82f6',
-      fillOpacity: 0.15,
-      radius: 2000
-    }).addTo(map).bindPopup('<b>2 km Zone</b><br/>Free Delivery (₱0)!');
-
-    // 4km Radius Circle (Yellow / Tier Zone)
-    L.circle([STORE_LAT, STORE_LNG], {
-      color: '#eab308',
-      fillColor: '#eab308',
-      fillOpacity: 0.08,
-      radius: 4000
-    }).addTo(map).bindPopup('<b>4 km Zone</b><br/>30 PHP base + 5 PHP/km');
-
-    // Customer Movable Pin (Point B)
-    const customerLat = STORE_LAT + 0.008;
-    const customerLng = STORE_LNG + 0.008;
-
-    const marker = L.marker([customerLat, customerLng], { draggable: true }).addTo(map);
+    const marker = L.marker([customerInitialLat, customerInitialLng], { draggable: true }).addTo(map);
+    marker.bindPopup('<b>Drop your pin here!</b>').openPopup();
     markerInstanceRef.current = marker;
 
     marker.on('dragend', async () => {
@@ -282,7 +255,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       await processSelectedCoordinates(e.latlng.lat, e.latlng.lng);
     });
 
-    processSelectedCoordinates(customerLat, customerLng);
+    processSelectedCoordinates(customerInitialLat, customerInitialLng);
   };
 
   const processSelectedCoordinates = async (lat: number, lng: number) => {
@@ -1457,7 +1430,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       <div className="flex justify-between font-bold text-white">
                         <span>Delivery Fee Rule:</span>
                         <span className="text-lime-400">
-                          {deliveryDistanceKm <= 2 ? 'Free Delivery (<=2km)' : `₱30 (first 2km) + ₱5/km`}
+                          {deliveryDistanceKm <= 2 ? '₱30 Fixed (<=2km)' : `₱30 base + ₱5/km succeeding`}
                         </span>
                       </div>
                       <div className="flex justify-between font-extrabold text-sm pt-1 border-t border-emerald-900/60 text-white">
