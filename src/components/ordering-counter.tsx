@@ -230,7 +230,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     const L = window.L;
     if (!L) return;
 
-    // Fix marker shadow tracking prevention warning by using inline SVG divIcon
     const customIcon = L.divIcon({
       className: 'custom-map-marker',
       html: '<div style="background-color: #a3e635; width: 20px; height: 20px; border-radius: 50%; border: 3px solid #000; box-shadow: 0 0 10px rgba(0,0,0,0.5);"></div>',
@@ -340,9 +339,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         if (cloudOrders && cloudOrders.length > 0) {
           const formattedCloudOrders = cloudOrders.map((o: any) => ({
             name: o.customer_name,
+            accountNickname: o.account_nickname || 'Guest',
             email: o.email || '',
             phone: o.phone || '',
             fulfillment: o.fulfillment || 'delivery',
+            location: o.location || o.address || '',
+            landmark: o.landmark || '',
             items: o.items || [],
             total: o.total || 0,
             orderNumber: o.order_number,
@@ -407,7 +409,16 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       const { error: orderError } = await supabase.from('orders').insert([
         {
           order_number: newOrder.orderNumber,
+          account_nickname: newOrder.accountNickname,
           customer_name: newOrder.name,
+          email: newOrder.email,
+          phone: newOrder.phone,
+          fulfillment: newOrder.fulfillment,
+          location: newOrder.location,
+          landmark: newOrder.landmark,
+          promo_code: newOrder.promoCode,
+          promo_discount: newOrder.promoDiscount,
+          delivery_fee: newOrder.deliveryFee,
           items: newOrder.items,
           total: newOrder.total,
           status: 'completed'
@@ -562,6 +573,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const handleConfirmOrder = () => {
     const orderData = {
+      orderNumber: `#${Math.floor(1000 + Math.random() * 9000)}`,
+      accountNickname: currentUser ? (currentUser.name || currentUser.identifier || 'User') : 'Guest User',
       name: customerName || (currentUser ? currentUser.name : 'Valued Customer'),
       email: customerEmail,
       phone: customerPhone,
@@ -577,7 +590,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       promoCode: appliedPromo ? appliedPromo.code : null,
       promoDiscount: promoDiscountAmount,
       total: finalCartTotal,
-      orderNumber: `#${Math.floor(1000 + Math.random() * 9000)}`,
       date: new Date().toLocaleString(),
     };
     saveOrderToHistory(orderData);
@@ -1187,6 +1199,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 </div>
 
                 <div className="space-y-1.5 pt-1">
+                  <div className="flex justify-between">
+                    <span>Account Nickname:</span>
+                    <span className="font-bold text-white">{placedOrderDetails.accountNickname}</span>
+                  </div>
                   <div className="flex justify-between">
                     <span>Fulfillment:</span>
                     <span className="font-bold text-white uppercase">{placedOrderDetails.fulfillment}</span>

@@ -113,6 +113,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       const { data: cloudOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
       if (cloudOrders) {
         setOrders(cloudOrders.map((o: any) => ({
+          orderNumber: o.order_number,
+          accountNickname: o.account_nickname || 'Guest',
           name: o.customer_name,
           email: o.email || '',
           phone: o.phone || '',
@@ -121,7 +123,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           landmark: o.landmark || '',
           items: o.items || [],
           total: o.total || 0,
-          orderNumber: o.order_number,
           date: new Date(o.created_at).toLocaleString(),
           promoCode: o.promo_code || o.promoCode || ''
         })));
@@ -480,8 +481,17 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         <tr key={idx} className="hover:bg-[#071F19]/50 transition-colors">
                           <td className="p-3 font-extrabold text-lime-400">{order.orderNumber}</td>
                           <td className="p-3">
-                            <p className="font-bold text-white">{order.name}</p>
-                            <p className="text-[10px] text-emerald-300">{order.phone || 'No phone'} • {order.email || 'No email'}</p>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] uppercase bg-emerald-900/60 text-lime-300 px-1.5 py-0.5 rounded font-extrabold">Account:</span>
+                                <span className="font-bold text-white">{order.accountNickname}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] uppercase bg-[#07241c] text-emerald-300 px-1.5 py-0.5 rounded font-extrabold">Delivery:</span>
+                                <span className="text-emerald-200">{order.name} ({order.phone || 'No phone'})</span>
+                              </div>
+                              <p className="text-[10px] text-emerald-400 pl-1">{order.email || 'No email provided'}</p>
+                            </div>
                           </td>
                           <td className="p-3">
                             <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">{order.fulfillment}</span>
@@ -709,7 +719,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
                 <div className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-3 text-xs space-y-1.5">
                   <p className="font-bold text-lime-400 uppercase text-[10px] tracking-wider">Customer & Contact Info:</p>
-                  <p className="font-bold text-white text-sm">{selectedInvoice.name}</p>
+                  <p className="font-bold text-white text-sm">Account: {selectedInvoice.accountNickname}</p>
+                  <p className="font-bold text-emerald-200">Delivery Name: {selectedInvoice.name}</p>
                   <p className="text-emerald-200">Phone: <strong>{selectedInvoice.phone || 'N/A'}</strong></p>
                   <p className="text-emerald-200">Email: <strong>{selectedInvoice.email || 'N/A'}</strong></p>
                 </div>
