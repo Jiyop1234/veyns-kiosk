@@ -629,10 +629,30 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   };
 
-  const handleApplyPromo = () => {
+  // Helper for per-user promo limits tracking
+  const getUserVoucherUsageMap = () => {
+    try {
+      const userKey = currentUser ? (currentUser.identifier || 'guest').toLowerCase().trim() : 'guest';
+      const saved = localStorage.getItem(`veyns_user_voucher_uses_${userKey}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  };
+
+  const recordUserVoucherUse = (code: string) => {
+    try {
+      const userKey = currentUser ? (currentUser.identifier || 'guest').toLowerCase().trim() : 'guest';
+      const usageMap = getUserVoucherUsageMap();
+      usageMap[code] = (usageMap[code] || 0) + 1;
+      localStorage.setItem(`veyns_user_voucher_uses_${userKey}`, JSON.stringify(usageMap));
+    } catch (e) {}
+  };
+
+  const handleApplyPromoCodeString = (codeToApply: string) => {
     setPromoError('');
     const promos = availablePromos;
-    const cleanCode = promoInput.trim().toUpperCase();
+    const cleanCode = codeToApply.trim().toUpperCase();
     const found = promos.find((p) => p.code.toUpperCase() === cleanCode);
 
     if (!found) {
@@ -651,15 +671,31 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
 
     if (found.usageLimit && (found.usageCount || 0) >= found.usageLimit) {
-      setPromoError(`This voucher has reached its maximum usage limit of ${found.usageLimit} inputs.`);
+      setPromoError(`This voucher has reached its maximum global usage limit of ${found.usageLimit}.`);
+      setAppliedPromo(null);
+      return;
+    }
+
+    const userUsageMap = getUserVoucherUsageMap();
+    const userUses = userUsageMap[cleanCode] || 0;
+    const maxPerPerson = found.perPersonLimit || 1; // Default 1 use per person
+
+    if (userUses >= maxPerPerson) {
+      setPromoError(`You have already used this voucher the maximum allowed ${maxPerPerson} time(s).`);
       setAppliedPromo(null);
       return;
     }
 
     setAppliedPromo(found);
+    setPromoInput(cleanCode);
   };
 
-  const handleClaimVoucher = (promo) => {
+  const handleApplyPromo = () => {
+    handleApplyPromoCodeString(promoInput);
+  };
+
+  // Public vouchers auto-apply immediately upon clicking "Claim"
+  const handleClaimVoucher = (promo: any) => {
     if (promo.usageLimit && (promo.usageCount || 0) >= promo.usageLimit) {
       alert('This voucher has already reached its maximum usage limit.');
       return;
@@ -675,9 +711,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
     const expiryMs = promo.expiryDurationMs || (60 * 60 * 1000);
     setClaimedVouchersState(prev => ({ ...prev, [promo.code]: Date.now() + expiryMs }));
-    
-    if (appliedPromo) setAppliedPromo(null);
-    setPromoInput(promo.code);
+
+    // Automatically apply the claimed public voucher right away
+    handleApplyPromoCodeString(promo.code);
   };
 
   const calculatePromoDiscount = () => {
@@ -705,6 +741,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           ? `Today (${todayTimeSlot}) - Personal Delivery`
           : `Today - Maxim Delivery (Anytime)`
         : `Reservation on ${reservationDate || 'Upcoming Date'} (${reservationTime})`;
+
+    if (appliedPromo) {
+      recordUserVoucherUse(appliedPromo.code);
+    }
 
     const orderData = {
       orderNumber: `#${Math.floor(1000 + Math.random() * 9000)}`,
@@ -1505,7 +1545,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                                 {promo.type === 'peso' ? formatPeso(promo.discountValue) + ' OFF' : `${promo.discountValue}% OFF`}
                               </p>
                               {isClaimed && (
-                                <p className="text-[9px] text-amber-300">⏱️ Claimed! Click apply or pick another combo.</p>
+                                <p className="text-[9px] text-amber-300">⏱️ Claimed! Automatically applied.</p>
                               )}
                             </div>
                             <Button
