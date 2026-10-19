@@ -86,6 +86,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           discountPercent: Number(m.discount_percent || 0),
           isAvailable: m.is_available,
           bestSeller: m.best_seller,
+          sortOrder: Number(m.sort_order || 100),
           image: m.image_url
         }));
         setMenuItems(formattedMenu);
@@ -101,6 +102,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             discount_percent: item.discountPercent || 0,
             is_available: item.isAvailable !== false,
             best_seller: item.bestSeller || false,
+            sort_order: item.sortOrder || 100,
             image_url: menuImages[item.id] || ''
           }, { onConflict: 'id' });
         }
@@ -161,6 +163,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       const { data } = supabase.storage.from('menu-images').getPublicUrl(fileName);
       return data.publicUrl;
     } catch (error) {
+      console.error('Storage upload error:', error);
       return null;
     }
   };
@@ -185,12 +188,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       discount_percent: itemDiscount !== '' ? parseFloat(itemDiscount) : 0,
       is_available: editingItem ? editingItem.isAvailable : true,
       best_seller: itemBestSeller,
+      sort_order: editingItem ? (editingItem.sortOrder || 100) : 100,
       image_url: imageUrl
     };
 
     try {
       await supabase.from('menu_items').upsert(newItemData, { onConflict: 'id' });
-      alert('Menu item successfully saved to database!');
+      alert('Menu item & photo successfully saved to database and synced!');
     } catch (err) {
       alert('Error saving menu item to database.');
     }
