@@ -62,7 +62,7 @@ export function SiteHeader({
             <span 
               className="text-lime-400 font-extrabold text-xs sm:text-sm tracking-wide select-none"
             >
-              Hi, "Guest"
+              Hi, Guest!
             </span>
           ) : currentUser ? (
             <span 
