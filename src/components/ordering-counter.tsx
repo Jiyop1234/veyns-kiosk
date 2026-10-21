@@ -242,7 +242,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [addedItemName, setAddedItemName] = useState('');
 
   const [promoInput, setPromoInput] = useState('');
-  const [appliedPromos, setAppliedPromos] = useState<any[]>([]);
+  const [appliedPromos, setAppliedPromos] = useState<any[]>([]); // Stacking multiple vouchers
   const [promoError, setPromoError] = useState('');
   const [claimedVouchersState, setClaimedVouchersState] = useState<{ [code: string]: number }>({});
 
@@ -252,6 +252,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [fulfillment, setFulfillment] = useState<'pickup' | 'delivery'>('delivery');
   const [deliveryOption, setDeliveryOption] = useState<'our' | 'maxim'>('our');
 
+  // Order Type & Scheduling States
   const [orderType, setOrderType] = useState<'today' | 'reservation'>(orderTodayOpen ? 'today' : 'reservation');
   const [todayTimeSlot, setTodayTimeSlot] = useState('12:00 PM - 1:00 PM');
   const [reservationDate, setReservationDate] = useState('');
@@ -263,6 +264,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [customerLocation, setCustomerLocation] = useState('');
   const [nearestLandmark, setNearestLandmark] = useState('');
 
+  // Distance & Delivery Fee states
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null);
   const [calculatedDeliveryFee, setCalculatedDeliveryFee] = useState<number>(0);
   const [isPinning, setIsPinning] = useState(false);
@@ -272,6 +274,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const markerInstanceRef = useRef<any>(null);
   const geocodeTimeoutRef = useRef<any>(null);
 
+  // TRUE STORE COORDINATES (Center Origin = 0.0 km)
   const STORE_LAT = 10.359511;
   const STORE_LNG = 123.952739;
 
@@ -287,9 +290,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const computeFeeFromKm = (km: number) => {
-    if (km <= 2.0) return 40;
+    if (km <= 2.0) return 40; // Within 2km = ₱40 fixed
     const succeedingKm = km - 2.0;
-    return 40 + Math.ceil(succeedingKm) * 5;
+    return 40 + Math.ceil(succeedingKm) * 5; // ₱40 base + ₱5 per succeeding km
   };
 
   useEffect(() => {
@@ -374,7 +377,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
             setCustomerLocation(data.display_name);
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Fallback remains Lat/Lng
+      }
     }, 600);
   };
 
@@ -511,6 +516,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         }
       ]);
 
+      if (orderError) {
+        console.error('Supabase order insert error:', orderError.message);
+      }
+
       if (newOrder.promoCodesList && newOrder.promoCodesList.length > 0) {
         const promos = availablePromos;
         for (const code of newOrder.promoCodesList) {
@@ -521,7 +530,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           }
         }
       }
-    } catch (err) {}
+    } catch (err) {
+      console.error('Supabase order exception:', err);
+    }
 
     let userSaved = [];
     try {
@@ -543,6 +554,17 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       } else {
         localStorage.setItem(userHistoryStorageKey, JSON.stringify(updatedUserOrders));
       }
+    } catch (e) {}
+
+    let globalSaved = [];
+    try {
+      const existingGlobal = localStorage.getItem('veyns_order_history');
+      if (existingGlobal) globalSaved = JSON.parse(existingGlobal);
+    } catch (e) {}
+
+    const updatedGlobalOrders = [newOrder, ...globalSaved];
+    try {
+      localStorage.setItem('veyns_order_history', JSON.stringify(updatedGlobalOrders));
     } catch (e) {}
   };
 
@@ -629,6 +651,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   };
 
+  // Helper for per-user promo limits tracking
   const getUserVoucherUsageMap = () => {
     try {
       const userKey = currentUser ? (currentUser.identifier || 'guest').toLowerCase().trim() : 'guest';
@@ -698,6 +721,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setAppliedPromos(prev => prev.filter(p => p.code !== codeToRemove));
   };
 
+  // Public vouchers auto-apply immediately upon clicking "Claim" (Stashing to appliedPromos)
   const handleClaimVoucher = (promo: any) => {
     if (promo.usageLimit && (promo.usageCount || 0) >= promo.usageLimit) {
       alert('This voucher has already reached its maximum usage limit.');
@@ -714,6 +738,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
     const expiryMs = promo.expiryDurationMs || (60 * 60 * 1000);
     setClaimedVouchersState(prev => ({ ...prev, [promo.code]: Date.now() + expiryMs }));
+
+    // Apply or stack the claimed voucher right away
     handleApplyPromoCodeString(promo.code);
   };
 
@@ -812,6 +838,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const validStampsCount = stamps.filter(s => s.status === 'valid').length;
   const publicVouchersList = availablePromos.filter(p => p.visibility !== 'hidden');
+
   const isStoreClosedForToday = orderType === 'today' && !orderTodayOpen;
 
   return (
@@ -1599,6 +1626,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 )}
               </div>
 
+              {/* ORDER TYPE SELECTION (Order Today vs Reservation) */}
               <div className="space-y-2 border-t border-emerald-900/60 pt-3">
                 <h4 className="text-[11px] font-bold text-lime-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5 text-lime-400" /> Order Schedule Type
