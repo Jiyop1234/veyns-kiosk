@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
 import { menuImages } from '@/lib/menu-images';
 import { supabase } from '@/lib/supabase';
+import { DynamicCustomizationManager } from '@/components/dynamic-customization-manager';
 
 function Photo({ src, alt, className }: { src?: string; alt: string; className: string }) {
   if (!src) {
@@ -24,6 +25,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isAddingNewItem, setIsAddingNewItem] = useState(false);
+  const [customizationItem, setCustomizationItem] = useState<any>(null);
 
   const [itemName, setItemName] = useState('');
   const [itemCategory, setItemCategory] = useState('Rice Bowls');
@@ -892,7 +894,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     </div>
 
                     <div className="flex items-center justify-between border-t border-emerald-900/60 pt-3 mt-4">
-                      <div className="flex gap-1.5">
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button onClick={() => setCustomizationItem(item)} size="sm" className="bg-emerald-950 text-lime-300 border border-emerald-800 px-2.5 py-1.5 rounded-xl text-[11px] cursor-pointer">Customizations</Button>
                         <Button onClick={() => handleToggleAvailability(item.id, isAvailable)} size="sm" className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl cursor-pointer ${isAvailable ? 'bg-red-950/60 text-red-300 border border-red-800/60' : 'bg-emerald-950 text-lime-400 border border-emerald-800'}`}>
                           {isAvailable ? 'Hide' : 'Show'}
                         </Button>
@@ -909,6 +912,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 );
               })}
             </div>
+            {customizationItem && <DynamicCustomizationManager item={customizationItem} onClose={() => { setCustomizationItem(null); fetchCloudData(); }} />}
           </div>
         )}
 
