@@ -131,7 +131,7 @@ begin
     raise exception 'Duplicate customization option IDs are not allowed';
   end if;
 
-  select round(m.price * 100)::integer, coalesce(m.is_available, true)
+  select round(m.price * (1 - coalesce(m.discount_percent, 0) / 100.0) * 100)::integer, coalesce(m.is_available, true)
     into v_base_minor, v_item_available
   from public.menu_items m
   where m.id = p_menu_item_id;
@@ -175,7 +175,7 @@ begin
       continue;
     end if;
 
-    if v_selected_count < case when v_group.is_required then greatest(v_group.min_select, 1) else v_group.min_select end then
+    if v_selected_count < (case when v_group.is_required then greatest(v_group.min_select, 1) else v_group.min_select end) then
       raise exception 'Select more options for "%"', v_group.name;
     end if;
 
