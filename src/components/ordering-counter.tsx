@@ -7,6 +7,7 @@ import { MENU_GRID, UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } 
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
+import { MenuCustomizationPicker } from '@/components/menu-customization-picker';
 
 function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; alt: string; className: string }) {
   const src = dbImage || menuImages[id];
@@ -231,6 +232,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   }, [resetKey, currentUser]);
 
   const [selected, setSelected] = useState(null);
+  const [dynamicSelectedItem, setDynamicSelectedItem] = useState<any>(null);
   const [qty, setQty] = useState(1);
   const [brothEgg, setBrothEgg] = useState(false);
   const [hardboiledEgg, setHardboiledEgg] = useState(false);
@@ -901,7 +903,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           return (
             <div
               key={item.id}
-              onClick={() => handleOpenModal(item)}
+              onClick={() => { setDynamicSelectedItem(item); }}
               className="group cursor-pointer rounded-2xl border border-emerald-800/40 bg-[#051813] p-4 transition-all duration-200 hover:border-lime-400/60 hover:shadow-xl flex flex-col justify-between"
             >
               <div>
@@ -2003,6 +2005,18 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           )}
         </DialogContent>
       </Dialog>
+      {dynamicSelectedItem && (
+        <MenuCustomizationPicker
+          item={dynamicSelectedItem}
+          onCancel={() => setDynamicSelectedItem(null)}
+          onConfirm={(customizedLine, quantity) => {
+            add(customizedLine, quantity);
+            setAddedItemName(`${quantity} × ${customizedLine.name}`);
+            setDynamicSelectedItem(null);
+            setShowUpsell(true);
+          }}
+        />
+      )}
     </div>
   );
 }
