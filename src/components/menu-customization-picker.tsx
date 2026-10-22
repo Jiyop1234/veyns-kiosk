@@ -23,7 +23,8 @@ export function MenuCustomizationPicker({ item, onCancel, onConfirm }: { item:an
     const validOptionIds = new Set(options.filter(o=>visibleGroupIds.includes(o.group_id)).map(o=>o.id));
     setSelectedIds(prev=>{const next=prev.filter(id=>validOptionIds.has(id));return next.length===prev.length?prev:next;});
   },[assignments,options,selectedIds]);
-  const previewTotal=(Math.round(Number(item.price||0)*100)+selectedOptions.reduce((s,o)=>s+o.additional_price_minor,0))/100;
+  const effectiveBaseMinor=Math.round(Number(item.price||0)*(1-Number(item.discountPercent||0)/100)*100);
+  const previewTotal=(effectiveBaseMinor+selectedOptions.reduce((s,o)=>s+o.additional_price_minor,0))/100;
 
   useEffect(()=>{(async()=>{
     const [g,o,a]=await Promise.all([
@@ -69,7 +70,7 @@ export function MenuCustomizationPicker({ item, onCancel, onConfirm }: { item:an
 
   return <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/80 p-3 sm:p-6">
     <div className="mx-auto max-w-lg space-y-4 rounded-3xl border border-emerald-800 bg-[#04140f] p-5 text-white shadow-2xl">
-      <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-widest text-lime-400">Customize your order</p><h2 className="mt-1 text-2xl font-extrabold">{item.name}</h2><p className="text-sm text-emerald-300">Base price {formatPeso(item.price||0)}</p></div><button onClick={onCancel} className="rounded-xl border border-emerald-800 px-3 py-2 text-sm">Close</button></div>
+      <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-widest text-lime-400">Customize your order</p><h2 className="mt-1 text-2xl font-extrabold">{item.name}</h2><p className="text-sm text-emerald-300">Item price {formatPeso(effectiveBaseMinor/100)}</p></div><button onClick={onCancel} className="rounded-xl border border-emerald-800 px-3 py-2 text-sm">Close</button></div>
       {loading?<p className="text-sm text-emerald-300">Loading options…</p>:assignments.length===0?<p className="rounded-xl border border-emerald-900 p-3 text-sm text-emerald-300">No customizations configured for this item.</p>:visibleGroups.map(a=>{
         const g=groups.find(x=>x.id===a.group_id); if(!g)return null;
         const groupOptions=options.filter(o=>o.group_id===g.id).sort((x,y)=>x.sort_order-y.sort_order);
