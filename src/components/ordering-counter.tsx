@@ -1168,7 +1168,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     <div className="space-y-1">
                       {order.items.map((it: any, i: number) => (
                         <div key={i} className="flex justify-between text-white">
-                          <span>{it.qty}x {it.item.name}</span>
+                          <div className="min-w-0 flex-1"><span>{it.qty}x {it.item.name}</span>{(it.item.customizations || []).map((choice: any) => <p key={choice.optionId || choice.name} className="pl-3 text-[10px] text-emerald-300">• {choice.groupName}: {choice.name} {choice.additionalPriceMinor ? `(+${formatPeso(choice.additionalPriceMinor / 100)})` : '(Included)'}</p>)}</div>
                           <span className="font-bold text-lime-400">{formatPeso((it.item.price || 0) * it.qty)}</span>
                         </div>
                       ))}
@@ -1479,7 +1479,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   <div className="space-y-1">
                     {placedOrderDetails.items.map((itemLine, idx) => (
                       <div key={idx} className="flex justify-between text-white text-[11px]">
-                        <span>{itemLine.qty}x {itemLine.item.name}</span>
+                        <div className="min-w-0 flex-1"><span>{itemLine.qty}x {itemLine.item.name}</span>{(itemLine.item.customizations || []).map((choice: any) => <p key={choice.optionId || choice.name} className="pl-3 text-[10px] text-emerald-300">• {choice.groupName}: {choice.name} {choice.additionalPriceMinor ? `(+${formatPeso(choice.additionalPriceMinor / 100)})` : '(Included)'}</p>)}</div>
                         <span className="font-bold text-lime-400">{formatPeso((itemLine.item.price || 0) * itemLine.qty)}</span>
                       </div>
                     ))}
@@ -1571,6 +1571,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     <div key={line.item.id} className="flex items-center justify-between p-2.5 rounded-xl bg-[#061d16] border border-emerald-800/50 text-xs">
                       <div className="space-y-0.5 flex-1 pr-2">
                         <h4 className="font-bold text-white">{line.item.name}</h4>
+                        {(line.item.customizations || []).length > 0 && <div className="space-y-0.5 text-[10px] text-emerald-300">{line.item.customizations.map((choice: any) => <p key={choice.optionId || choice.name}>{choice.groupName}: {choice.name} {choice.additionalPriceMinor ? `( +${formatPeso(choice.additionalPriceMinor / 100)} )` : '(Included)'}</p>)}</div>}
                         <p className="text-[11px] text-lime-400 font-extrabold">{formatPeso((line.item.price || 0) * line.qty)}</p>
                       </div>
 
