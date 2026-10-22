@@ -677,7 +677,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             <p className="text-[10px] text-emerald-400">Landmark: {order.landmark || 'None'}</p>
                           </td>
                           <td className="p-3 space-y-0.5 max-w-xs">
-                            {order.items.map((it: any, i: number) => <div key={i} className="text-emerald-200">{it.qty}x {it.item?.name || it.name}</div>)}
+                            {order.items.map((it: any, i: number) => <div key={i} className="text-emerald-200"><div>{it.qty}x {it.item?.name || it.name}</div>{(it.item?.customizations || it.customizations || []).map((choice: any) => <div key={choice.optionId || choice.option_id || choice.name} className="pl-3 text-[10px] text-emerald-400">• {choice.groupName || choice.group_name}: {choice.name} {Number(choice.additionalPriceMinor ?? choice.additional_price_minor ?? 0) > 0 ? `(+${formatPeso(Number(choice.additionalPriceMinor ?? choice.additional_price_minor) / 100)})` : '(Included)'}</div>)}</div>)}
                           </td>
                           <td className="p-3 font-semibold text-amber-400">{order.promoCode || '—'}</td>
                           <td className="p-3 font-extrabold text-lime-400 text-sm">{formatPeso(order.total)}</td>
