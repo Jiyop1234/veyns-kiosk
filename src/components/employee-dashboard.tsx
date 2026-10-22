@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star, Calendar, Search, Ticket } from 'lucide-react';
+import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star, Calendar, Search, Ticket, Layers, ChevronUp, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
@@ -33,6 +33,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [itemBestSeller, setItemBestSeller] = useState(false);
   const [itemImageFile, setItemImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState('');
+  
+  // Dynamic Option Groups State for Menu Manager
+  const [itemOptionGroups, setItemOptionGroups] = useState<any[]>([]);
+  const [previewSelections, setPreviewSelections] = useState<{ [groupId: string]: string[] }>({});
 
   const [promos, setPromos] = useState<any[]>([]);
   const [newPromoCode, setNewPromoCode] = useState('');
@@ -109,7 +113,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           isAvailable: m.is_available,
           bestSeller: m.best_seller,
           sortOrder: Number(m.sort_order || 100),
-          image: m.image_url
+          image: m.image_url,
+          optionGroups: m.option_groups || []
         }));
         setMenuItems(formattedMenu);
         localStorage.setItem('veyns_manageable_menu', JSON.stringify(formattedMenu));
@@ -246,12 +251,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       is_available: editingItem ? editingItem.isAvailable : true,
       best_seller: itemBestSeller,
       sort_order: editingItem ? (editingItem.sortOrder || 100) : 100,
-      image_url: imageUrl
+      image_url: imageUrl,
+      option_groups: itemOptionGroups
     };
 
     try {
       await supabase.from('menu_items').upsert(newItemData, { onConflict: 'id' });
-      alert('Menu item & photo successfully saved to database and synced!');
+      alert('Menu item, photo & dynamic option groups successfully saved and synced!');
     } catch (err) {
       alert('Error saving menu item to database.');
     }
@@ -265,6 +271,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     setItemBestSeller(false);
     setItemImageFile(null);
     setImagePreviewUrl('');
+    setItemOptionGroups([]);
+    setPreviewSelections({});
     fetchCloudData();
   };
 
@@ -281,6 +289,101 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       await supabase.from('menu_items').delete().eq('id', id);
       fetchCloudData();
     } catch (e) {}
+  };
+
+  // Option Group Builder Handlers for Menu Manager
+  const handleAddOptionGroup = () => {
+    setItemOptionGroups(prev => [
+      ...prev,
+      {
+        id: `group_${Date.now()}`,
+        name: '',
+        description: '',
+        type: 'single', // 'single' | 'multi'
+        required: true,
+        minSelections: 0,
+        maxSelections: 1,
+        isActive: true,
+        parentOptionIds: [],
+        options: [
+          { id: `opt_${Date.now()}_1`, name: '', price: 0, active: true }
+        ]
+      }
+    ]);
+  };
+
+  const handleUpdateGroup = (groupId: string, field: string, value: any) => {
+    setItemOptionGroups(prev => prev.map(g => g.id === groupId ? { ...g, [field]: value } : g));
+  };
+
+  const handleDeleteGroup = (groupId: string) => {
+    setItemOptionGroups(prev => prev.filter(g => g.id !== groupId));
+  };
+
+  const handleReorderGroup = (index: number, direction: 'up' | 'down') => {
+    setItemOptionGroups(prev => {
+      const newGroups = [...prev];
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= newGroups.length) return prev;
+      const temp = newGroups[index];
+      newGroups[index] = newGroups[targetIndex];
+      newGroups[targetIndex] = temp;
+      return newGroups;
+    });
+  };
+
+  const handleAddOptionToGroup = (groupId: string) => {
+    setItemOptionGroups(prev => prev.map(g => {
+      if (g.id === groupId) {
+        return {
+          ...g,
+          options: [
+            ...g.options,
+            { id: `opt_${Date.now()}_${Math.random()}`, name: '', price: 0, active: true }
+          ]
+        };
+      }
+      return g;
+    }));
+  };
+
+  const handleUpdateOptionInGroup = (groupId: string, optId: string, field: string, value: any) => {
+    setItemOptionGroups(prev => prev.map(g => {
+      if (g.id === groupId) {
+        return {
+          ...g,
+          options: g.options.map((o: any) => o.id === optId ? { ...o, [field]: value } : o)
+        };
+      }
+      return g;
+    }));
+  };
+
+  const handleDeleteOptionFromGroup = (groupId: string, optId: string) => {
+    setItemOptionGroups(prev => prev.map(g => {
+      if (g.id === groupId) {
+        return {
+          ...g,
+          options: g.options.filter((o: any) => o.id !== optId)
+        };
+      }
+      return g;
+    }));
+  };
+
+  const handleReorderOptionInGroup = (groupId: string, optIndex: number, direction: 'up' | 'down') => {
+    setItemOptionGroups(prev => prev.map(g => {
+      if (g.id === groupId) {
+        const newOptions = [...g.options];
+        const targetIndex = direction === 'up' ? optIndex - 1 : optIndex + 1;
+        if (targetIndex < 0 || targetIndex >= newOptions.length) return g;
+        const temp = newOptions[optIndex];
+        newOptions[optIndex] = newOptions[targetIndex];
+        newOptions[targetIndex] = temp;
+        return { ...g, options: newOptions };
+      }
+      return g;
+    }));
   };
 
   const handleAddPromo = async (e: React.FormEvent) => {
@@ -319,7 +422,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     try {
       const { error } = await supabase.from('promos').upsert([newVoucherPayload], { onConflict: 'code' });
       if (error) {
-        console.error("Supabase promo insert error:", error.message);
         alert("Failed to save promo to database: " + error.message);
         return;
       }
@@ -330,7 +432,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       setNewVoucherUsageLimit('');
       fetchCloudData();
     } catch (err) {
-      console.error("Exception saving promo:", err);
       alert("Database connection error while creating voucher.");
     }
   };
@@ -437,7 +538,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       setEditingCustomer(null);
       fetchCloudData();
     } catch (err) {
-      console.error(err);
       alert('Error updating customer.');
     }
   };
@@ -551,6 +651,26 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const totalGrossSales = orders.reduce((acc, o) => acc + (o.total || 0), 0);
   const totalOrdersCount = orders.length;
   const averageOrderValue = totalOrdersCount > 0 ? totalGrossSales / totalOrdersCount : 0;
+
+  // Gather all options across groups for conditional parent dependency selection
+  const allAvailableOptions = itemOptionGroups.flatMap(g => 
+    (g.options || []).map((o: any) => ({
+      groupId: g.id,
+      groupName: g.name || 'Unnamed Group',
+      optId: o.id,
+      optName: o.name || 'Unnamed Option'
+    }))
+  );
+
+  // Compute preview price
+  const basePreviewPrice = parseFloat(itemPrice) || 0;
+  const previewAddonsTotal = itemOptionGroups.reduce((acc, group) => {
+    const selectedOptIds = previewSelections[group.id] || [];
+    const groupAddons = (group.options || [])
+      .filter((o: any) => selectedOptIds.includes(o.id))
+      .reduce((sum: number, o: any) => sum + (Number(o.price) || 0), 0);
+    return acc + groupAddons;
+  }, 0);
 
   return (
     <div className="min-h-screen bg-[#020b08] text-white p-4 sm:p-6 lg:p-8">
@@ -675,7 +795,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             <p className="text-[10px] text-emerald-400">Landmark: {order.landmark || 'None'}</p>
                           </td>
                           <td className="p-3 space-y-0.5 max-w-xs">
-                            {order.items.map((it: any, i: number) => <div key={i} className="text-emerald-200">{it.qty}x {it.item?.name || it.name}</div>)}
+                            {order.items.map((it: any, i: number) => (
+                              <div key={i} className="text-emerald-200">
+                                {it.qty}x {it.item?.name || it.name}
+                                {it.customizationsSummary && <span className="block text-[10px] text-lime-300 font-mono">↳ {it.customizationsSummary}</span>}
+                              </div>
+                            ))}
                           </td>
                           <td className="p-3 font-semibold text-amber-400">{order.promoCode || '—'}</td>
                           <td className="p-3 font-extrabold text-lime-400 text-sm">{formatPeso(order.total)}</td>
@@ -840,7 +965,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
             <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
               <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Database Menu Manager (Live Sync)</h3>
-              <Button onClick={() => { setItemName(''); setItemCategory('Rice Bowls'); setItemDescription(''); setItemPrice(''); setItemDiscount(''); setItemBestSeller(false); setItemImageFile(null); setImagePreviewUrl(''); setEditingItem(null); setIsAddingNewItem(true); }} className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg">
+              <Button onClick={() => { setItemName(''); setItemCategory('Rice Bowls'); setItemDescription(''); setItemPrice(''); setItemDiscount(''); setItemBestSeller(false); setItemImageFile(null); setImagePreviewUrl(''); setItemOptionGroups([]); setPreviewSelections({}); setEditingItem(null); setIsAddingNewItem(true); }} className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg">
                 <Plus className="h-4 w-4" /> Add New Menu Item
               </Button>
             </div>
@@ -889,6 +1014,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                           <span className="font-extrabold text-lime-400">{formatPeso(effectivePrice)}</span>
                         </div>
                       </div>
+
+                      {item.optionGroups && item.optionGroups.length > 0 && (
+                        <div className="bg-[#04140f] border border-emerald-900/60 rounded-xl p-2 text-[10px] text-emerald-300">
+                          <span className="font-bold text-lime-400 block mb-0.5">Customizations ({item.optionGroups.length} groups):</span>
+                          <p className="truncate font-mono">{item.optionGroups.map((g: any) => g.name).join(', ')}</p>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-between border-t border-emerald-900/60 pt-3 mt-4">
@@ -901,7 +1033,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         </Button>
                       </div>
 
-                      <Button onClick={() => { setEditingItem(item); setItemName(item.name); setItemCategory(item.category || 'Rice Bowls'); setItemDescription(item.description || ''); setItemPrice(item.price.toString()); setItemDiscount((item.discountPercent || 0).toString()); setItemBestSeller(item.bestSeller || false); setImagePreviewUrl(displayImage || ''); setIsAddingNewItem(true); }} size="sm" className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1">
+                      <Button onClick={() => { setEditingItem(item); setItemName(item.name); setItemCategory(item.category || 'Rice Bowls'); setItemDescription(item.description || ''); setItemPrice(item.price.toString()); setItemDiscount((item.discountPercent || 0).toString()); setItemBestSeller(item.bestSeller || false); setImagePreviewUrl(displayImage || ''); setItemOptionGroups(item.optionGroups || []); setPreviewSelections({}); setIsAddingNewItem(true); }} size="sm" className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1">
                         <Edit2 className="h-3.5 w-3.5" /> Edit Item
                       </Button>
                     </div>
@@ -1039,7 +1171,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   <div className="space-y-1 border-b border-emerald-900/60 pb-2">
                     {selectedInvoice.items?.map((it: any, i: number) => (
                       <div key={i} className="flex justify-between text-white">
-                        <span>{it.qty}x {it.item?.name || it.name}</span>
+                        <div>
+                          <span>{it.qty}x {it.item?.name || it.name}</span>
+                          {it.customizationsSummary && (
+                            <p className="text-[10px] text-lime-300 font-mono pl-2">↳ {it.customizationsSummary}</p>
+                          )}
+                        </div>
                         <span className="font-bold text-lime-400">{formatPeso((it.item?.price || it.price || 0) * it.qty)}</span>
                       </div>
                     ))}
@@ -1160,34 +1297,37 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           )}
         </Dialog>
 
+        {/* ADD / EDIT MENU ITEM MODAL WITH ENHANCED OPTION GROUP BUILDER */}
         <Dialog open={isAddingNewItem} onOpenChange={(open) => !open && setIsAddingNewItem(false)}>
-          <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/85 shadow-2xl p-6 rounded-3xl max-h-[95vh] overflow-y-auto">
+          <DialogContent className="max-w-3xl w-full bg-[#03120d] text-white border border-emerald-900/85 shadow-2xl p-6 rounded-3xl max-h-[95vh] overflow-y-auto">
             <div className="space-y-1 border-b border-emerald-900/60 pb-3">
               <DialogTitle className="font-display text-xl font-extrabold text-white">
                 {editingItem ? `Edit Menu Item: ${editingItem.name}` : 'Add New Menu Item'}
               </DialogTitle>
-              <DialogDescription className="text-xs text-emerald-300">Upload photo, update price, description, and sync directly to the database.</DialogDescription>
+              <DialogDescription className="text-xs text-emerald-300">Upload photo, configure pricing, description, and dynamic option groups.</DialogDescription>
             </div>
 
-            <form onSubmit={handleSaveNewOrEditedItem} className="space-y-4 my-4 text-xs">
-              <div className="space-y-1.5">
-                <label className="font-bold text-lime-400 uppercase tracking-wider block">Item Name</label>
-                <input type="text" required value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="e.g. Pork Sisig Rice Bowl" className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400" />
-              </div>
+            <form onSubmit={handleSaveNewOrEditedItem} className="space-y-5 my-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Item Name</label>
+                  <input type="text" required value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="e.g. Pork Sisig Rice Bowl" className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400" />
+                </div>
 
-              <div className="space-y-1.5">
-                <label className="font-bold text-lime-400 uppercase tracking-wider block">Category</label>
-                <select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400">
-                  <option value="Rice Bowls">Rice Bowls</option>
-                  <option value="Noodle Bowls">Noodle Bowls</option>
-                  <option value="Sides">Sides</option>
-                  <option value="Apparel">Apparel</option>
-                </select>
+                <div className="space-y-1.5">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Category</label>
+                  <select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400">
+                    <option value="Rice Bowls">Rice Bowls</option>
+                    <option value="Noodle Bowls">Noodle Bowls</option>
+                    <option value="Sides">Sides</option>
+                    <option value="Apparel">Apparel</option>
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Price (₱)</label>
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Base Price (₱)</label>
                   <input type="number" required value={itemPrice} onChange={(e) => setItemPrice(e.target.value)} placeholder="109" className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400" />
                 </div>
                 <div className="space-y-1.5">
@@ -1222,6 +1362,240 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </div>
                 </div>
               </div>
+
+              {/* ENHANCED DYNAMIC OPTION GROUPS BUILDER SECTION */}
+              <div className="space-y-3 pt-3 border-t border-emerald-900/60">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-display font-bold text-white text-sm flex items-center gap-1.5">
+                      <Layers className="size-4 text-lime-400" /> Dynamic Option Groups, Add-ons & Dependencies
+                    </h4>
+                    <p className="text-[10px] text-emerald-300">Configure customizable add-ons, pricing, selection limits, conditional visibility triggers, and group reordering.</p>
+                  </div>
+                  <Button type="button" onClick={handleAddOptionGroup} size="sm" className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-extrabold text-[10px] px-3 py-1.5 rounded-xl cursor-pointer">
+                    + Add Option Group
+                  </Button>
+                </div>
+
+                {itemOptionGroups.length === 0 ? (
+                  <div className="bg-[#041913] border border-emerald-800/60 rounded-xl p-4 text-center text-emerald-400/70 text-[11px]">
+                    No custom option groups configured for this item yet. Click "+ Add Option Group" to add add-ons (e.g. Add Egg, Ramen Style, Egg Preparation).
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {itemOptionGroups.map((group, gIdx) => (
+                      <div key={group.id} className="bg-[#041913] border border-emerald-800/80 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-2 border-b border-emerald-900/60 pb-2.5">
+                          <div className="flex items-center gap-2 flex-1">
+                            <span className="text-lime-400 font-mono font-bold text-xs">#{gIdx + 1}</span>
+                            <input
+                              type="text"
+                              placeholder="Group Name (e.g. Add Egg, Egg Preparation)"
+                              value={group.name}
+                              onChange={(e) => handleUpdateGroup(group.id, 'name', e.target.value)}
+                              className="flex-1 bg-[#061d16] border border-emerald-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-lime-400"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={() => handleReorderGroup(gIdx, 'up')} disabled={gIdx === 0} className="p-1 rounded bg-[#061d16] border border-emerald-800 text-emerald-300 hover:text-lime-400 disabled:opacity-30 cursor-pointer">
+                              <ChevronUp className="size-3.5" />
+                            </button>
+                            <button type="button" onClick={() => handleReorderGroup(gIdx, 'down')} disabled={gIdx === itemOptionGroups.length - 1} className="p-1 rounded bg-[#061d16] border border-emerald-800 text-emerald-300 hover:text-lime-400 disabled:opacity-30 cursor-pointer">
+                              <ChevronDown className="size-3.5" />
+                            </button>
+                            <button type="button" onClick={() => handleDeleteGroup(group.id)} className="text-red-400 hover:text-red-300 p-1.5 rounded-lg bg-red-950/40 border border-red-900/60 cursor-pointer ml-1">
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Optional Group Description */}
+                        <div>
+                          <input
+                            type="text"
+                            placeholder="Optional Group Description (e.g. Choose egg preparation method)"
+                            value={group.description || ''}
+                            onChange={(e) => handleUpdateGroup(group.id, 'description', e.target.value)}
+                            className="w-full bg-[#061d16] border border-emerald-800/60 rounded-lg px-2.5 py-1 text-[11px] text-emerald-200 focus:outline-none focus:border-lime-400"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <div>
+                            <label className="text-[9px] text-emerald-300 block mb-1 uppercase font-bold">Selection Type</label>
+                            <select
+                              value={group.type}
+                              onChange={(e) => handleUpdateGroup(group.id, 'type', e.target.value)}
+                              className="w-full bg-[#061d16] border border-emerald-800 rounded-lg p-1.5 text-xs text-lime-300 font-bold focus:outline-none"
+                            >
+                              <option value="single">Single-Select (Radio)</option>
+                              <option value="multi">Multi-Select (Checkbox)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-emerald-300 block mb-1 uppercase font-bold">Requirement</label>
+                            <select
+                              value={group.required ? 'true' : 'false'}
+                              onChange={(e) => handleUpdateGroup(group.id, 'required', e.target.value === 'true')}
+                              className="w-full bg-[#061d16] border border-emerald-800 rounded-lg p-1.5 text-xs text-lime-300 font-bold focus:outline-none"
+                            >
+                              <option value="true">Required Selection</option>
+                              <option value="false">Optional</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-emerald-300 block mb-1 uppercase font-bold">Min Selections</label>
+                            <input
+                              type="number"
+                              value={group.minSelections ?? 0}
+                              onChange={(e) => handleUpdateGroup(group.id, 'minSelections', parseInt(e.target.value) || 0)}
+                              className="w-full bg-[#061d16] border border-emerald-800 rounded-lg p-1.5 text-xs text-white font-bold focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-emerald-300 block mb-1 uppercase font-bold">Max Selections</label>
+                            <input
+                              type="number"
+                              value={group.maxSelections ?? 1}
+                              onChange={(e) => handleUpdateGroup(group.id, 'maxSelections', parseInt(e.target.value) || 1)}
+                              className="w-full bg-[#061d16] border border-emerald-800 rounded-lg p-1.5 text-xs text-white font-bold focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Conditional Visibility Trigger Rule */}
+                        <div className="bg-[#061d16] border border-emerald-800/60 rounded-xl p-2.5 space-y-1">
+                          <label className="text-[10px] font-bold text-amber-300 uppercase tracking-wider block">
+                            Conditional Visibility Rule (Trigger Option)
+                          </label>
+                          <p className="text-[9px] text-emerald-300">
+                            Only show this group if the customer selects a specific parent option (e.g. show "Egg Prep" only if "Add Egg" is selected).
+                          </p>
+                          <select
+                            value={(group.parentOptionIds && group.parentOptionIds[0]) || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              handleUpdateGroup(group.id, 'parentOptionIds', val ? [val] : []);
+                            }}
+                            className="w-full bg-[#04140f] border border-emerald-800 rounded-lg p-1.5 text-xs text-lime-300 font-bold focus:outline-none"
+                          >
+                            <option value="">Always Visible (No Parent Dependency)</option>
+                            {allAvailableOptions
+                              .filter(o => o.groupId !== group.id)
+                              .map(o => (
+                                <option key={o.optId} value={o.optId}>
+                                  Show when [{o.groupName}] → "{o.optName}" is selected
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        {/* Options List Inside Group */}
+                        <div className="space-y-2 pt-2 border-t border-emerald-900/40">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-lime-400 uppercase tracking-wider">Options & Additional Prices (₱)</span>
+                            <button type="button" onClick={() => handleAddOptionToGroup(group.id)} className="text-[10px] text-emerald-300 hover:text-lime-400 underline cursor-pointer">
+                              + Add Option
+                            </button>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            {group.options.map((opt: any, oIdx: number) => (
+                              <div key={opt.id} className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="Option name (e.g. Hard-Boiled Egg)"
+                                  value={opt.name}
+                                  onChange={(e) => handleUpdateOptionInGroup(group.id, opt.id, 'name', e.target.value)}
+                                  className="flex-1 bg-[#061d16] border border-emerald-800 rounded-lg px-2 py-1 text-xs text-white font-medium focus:outline-none focus:border-lime-400"
+                                />
+                                <div className="flex items-center gap-1 w-28">
+                                  <span className="text-[10px] text-emerald-400">+₱</span>
+                                  <input
+                                    type="number"
+                                    placeholder="0"
+                                    value={opt.price}
+                                    onChange={(e) => handleUpdateOptionInGroup(group.id, opt.id, 'price', parseFloat(e.target.value) || 0)}
+                                    className="w-full bg-[#061d16] border border-emerald-800 rounded-lg px-2 py-1 text-xs text-lime-300 font-bold focus:outline-none"
+                                  />
+                                </div>
+                                <button type="button" onClick={() => handleReorderOptionInGroup(group.id, oIdx, 'up')} disabled={oIdx === 0} className="p-1 rounded bg-[#061d16] border border-emerald-800 text-emerald-300 hover:text-lime-400 disabled:opacity-30 cursor-pointer">
+                                  <ChevronUp className="size-3" />
+                                </button>
+                                <button type="button" onClick={() => handleReorderOptionInGroup(group.id, oIdx, 'down')} disabled={oIdx === group.options.length - 1} className="p-1 rounded bg-[#061d16] border border-emerald-800 text-emerald-300 hover:text-lime-400 disabled:opacity-30 cursor-pointer">
+                                  <ChevronDown className="size-3" />
+                                </button>
+                                <button type="button" onClick={() => handleDeleteOptionFromGroup(group.id, opt.id)} className="text-red-400 hover:text-red-300 p-1 cursor-pointer">
+                                  <Trash2 className="size-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* LIVE CUSTOMIZATION PREVIEW BOX */}
+              {itemOptionGroups.length > 0 && (
+                <div className="bg-[#041913] border border-lime-400/40 rounded-2xl p-4 space-y-3">
+                  <span className="font-bold text-lime-400 text-xs uppercase tracking-wider block">
+                    👁️ Customer Customization Interactive Preview
+                  </span>
+                  <div className="space-y-3 bg-[#061d16] rounded-xl p-3 border border-emerald-800/80">
+                    {itemOptionGroups.map((group) => {
+                      // Conditional check
+                      if (group.parentOptionIds && group.parentOptionIds.length > 0) {
+                        const isTriggered = group.parentOptionIds.some(parentId => 
+                          Object.values(previewSelections).some(selList => selList.includes(parentId))
+                        );
+                        if (!isTriggered) return null;
+                      }
+
+                      const currentSelected = previewSelections[group.id] || [];
+
+                      return (
+                        <div key={group.id} className="space-y-1.5">
+                          <label className="text-xs font-bold text-white block">
+                            {group.name} {group.required && <span className="text-red-400">*</span>}
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            {(group.options || []).map((opt: any) => {
+                              const isSelected = currentSelected.includes(opt.id);
+                              return (
+                                <button
+                                  type="button"
+                                  key={opt.id}
+                                  onClick={() => {
+                                    if (group.type === 'single') {
+                                      setPreviewSelections(prev => ({ ...prev, [group.id]: [opt.id] }));
+                                    } else {
+                                      const existing = prev[group.id] || [];
+                                      const next = isSelected ? existing.filter(id => id !== opt.id) : [...existing, opt.id];
+                                      setPreviewSelections(prev => ({ ...prev, [group.id]: next }));
+                                    }
+                                  }}
+                                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${isSelected ? 'bg-lime-400 text-black border-lime-400' : 'bg-[#04140f] text-emerald-200 border-emerald-800 hover:border-lime-400/50'}`}
+                                >
+                                  {opt.name || 'Option'} {opt.price > 0 ? `(+₱${opt.price})` : ''}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div className="pt-2 border-t border-emerald-900/60 flex items-center justify-between text-xs">
+                      <span className="text-emerald-300 font-bold">Simulated Item Total:</span>
+                      <span className="text-lime-400 font-extrabold text-sm">{formatPeso(basePreviewPrice + previewAddonsTotal)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2 pt-3 border-t border-emerald-900/60">
                 <Button type="button" onClick={() => setIsAddingNewItem(false)} className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-3 rounded-xl text-xs cursor-pointer">Cancel</Button>
