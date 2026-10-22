@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatPeso } from '@/lib/menu-data';
+import { MenuCustomizationPicker } from '@/components/menu-customization-picker';
 
 type Group = {
   id: string; name: string; description: string; selection_mode: 'single' | 'multiple';
@@ -35,6 +36,7 @@ export function DynamicCustomizationManager({ item, onClose }: { item: any; onCl
   const [dependencyIds, setDependencyIds] = useState<string[]>([]);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const selectedGroup = groups.find(g => g.id === selectedGroupId);
   const groupOptions = options.filter(o => o.group_id === selectedGroupId);
@@ -174,7 +176,7 @@ export function DynamicCustomizationManager({ item, onClose }: { item: any; onCl
       <div className="mx-auto max-w-5xl space-y-5 rounded-3xl border border-emerald-800 bg-[#04140f] p-4 text-white shadow-2xl sm:p-6">
         <div className="flex items-start justify-between gap-3 border-b border-emerald-900 pb-4">
           <div><p className="text-xs font-bold uppercase tracking-widest text-lime-400">Menu Manager / Customizations</p><h2 className="mt-1 text-2xl font-extrabold">{item.name}</h2><p className="text-sm text-emerald-300">Base price: {formatPeso(item.price)} · Configure reusable groups and options.</p></div>
-          <button onClick={onClose} className="rounded-xl border border-emerald-800 px-3 py-2 text-sm">Close</button>
+          <div className="flex gap-2"><button onClick={() => setPreviewOpen(true)} className="rounded-xl border border-lime-500 px-3 py-2 text-sm font-bold text-lime-300">Preview customer view</button><button onClick={onClose} className="rounded-xl border border-emerald-800 px-3 py-2 text-sm">Close</button></div>
         </div>
         <div className="grid gap-5 lg:grid-cols-[1fr_1.2fr]">
           <section className="space-y-4 rounded-2xl border border-emerald-900 p-4">
@@ -232,6 +234,7 @@ export function DynamicCustomizationManager({ item, onClose }: { item: any; onCl
         </div>
         {status && <p role="status" className="rounded-xl border border-emerald-800 bg-emerald-950 p-3 text-sm text-lime-200">{status}</p>}
         <p className="text-xs text-emerald-400">Changes apply to future orders. Completed order customization snapshots must remain unchanged.</p>
+        {previewOpen && <MenuCustomizationPicker item={item} onCancel={() => setPreviewOpen(false)} onConfirm={(line) => { setPreviewOpen(false); setStatus(`Preview validated: ${line.name} — ${formatPeso(line.price)} per item.`); }} />}
       </div>
     </div>
   );
