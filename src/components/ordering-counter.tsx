@@ -7,6 +7,7 @@ import { MENU_GRID, UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } 
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
+import { MenuCustomizationPicker } from '@/components/menu-customization-picker';
 
 function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; alt: string; className: string }) {
   const src = dbImage || menuImages[id];
@@ -231,6 +232,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   }, [resetKey, currentUser]);
 
   const [selected, setSelected] = useState(null);
+  const [dynamicSelectedItem, setDynamicSelectedItem] = useState<any>(null);
   const [qty, setQty] = useState(1);
   const [brothEgg, setBrothEgg] = useState(false);
   const [hardboiledEgg, setHardboiledEgg] = useState(false);
@@ -771,7 +773,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setShowCheckout(true);
   };
 
-  const handleConfirmOrder = () => {
+  const handleConfirmOrder = async () => {
     if (orderType === 'today' && !isOrderTodayAllowed()) {
       alert('⚠️ Store is closed! Will be back later at 12 NOON. Please select "Reservation" for a future schedule instead.');
       return;
@@ -783,6 +785,53 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           ? `Today (${todayTimeSlot}) - Personal Delivery`
           : `Today - Maxim Delivery (Anytime)`
         : `Reservation on ${reservationDate || 'Upcoming Date'} (${reservationTime})`;
+
+    // Revalidate every configurable line against current database prices immediately before checkout.
+    // The browser's preview is never treated as the source of truth.
+    const validatedLines: any[] = [];
+    for (const line of lines) {
+      const menuItemId = line.item?.menuItemId;
+      if (!menuItemId) {
+        validatedLines.push(line);
+        continue;
+      }
+      const selectedOptionIds = (line.item.customizations || []).map((o: any) => o.optionId).filter(Boolean);
+      const { data: resolved, error: resolveError } = await supabase.rpc('resolve_menu_item_customizations', {
+        p_menu_item_id: menuItemId,
+        p_selected_option_ids: selectedOptionIds
+      });
+      if (resolveError) {
+        alert(`We couldn't validate "${line.item.baseName || line.item.name}". Please reopen the item and review its options. ${resolveError.message || ''}`);
+        return;
+      }
+      const priced = Array.isArray(resolved) ? resolved[0] : resolved;
+      if (!priced || Number(priced.unit_price_minor) !== Math.round(Number(line.item.price) * 100)) {
+        alert(`The price or availability of "${line.item.baseName || line.item.name}" changed. Remove it and add it again before checkout.`);
+        return;
+      }
+      validatedLines.push({
+        ...line,
+        item: {
+          ...line.item,
+          basePrice: Number(priced.base_price_minor) / 100,
+          price: Number(priced.unit_price_minor) / 100,
+          customizations: (priced.options || []).map((o: any) => ({
+            optionId: o.option_id,
+            groupId: o.group_id,
+            groupName: o.group_name,
+            name: o.name,
+            additionalPriceMinor: Number(o.additional_price_minor || 0)
+          })),
+          pricingValidated: true
+        }
+      });
+    }
+
+    const validatedSubtotal = validatedLines.reduce((sum, line) => sum + Number(line.item.price || 0) * line.qty, 0);
+    if (Math.round(validatedSubtotal * 100) !== Math.round(total * 100)) {
+      alert('Your cart total changed during validation. Please review your cart before checkout.');
+      return;
+    }
 
     if (appliedPromos.length > 0) {
       appliedPromos.forEach(p => recordUserVoucherUse(p.code));
@@ -806,8 +855,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       deliveryDistanceKm: fulfillment === 'delivery' ? deliveryDistanceKm : 0,
       deliveryFee: deliveryFeeTotal,
       paymentOption: 'Cash on Pickup / Delivery',
-      items: [...lines],
-      subtotal: total,
+      items: validatedLines,
+      subtotal: validatedSubtotal,
       promoCode: promoCodeString,
       promoCodesList,
       promoDiscount: promoDiscountAmount,
@@ -901,7 +950,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           return (
             <div
               key={item.id}
-              onClick={() => handleOpenModal(item)}
+              onClick={() => { setDynamicSelectedItem(item); }}
               className="group cursor-pointer rounded-2xl border border-emerald-800/40 bg-[#051813] p-4 transition-all duration-200 hover:border-lime-400/60 hover:shadow-xl flex flex-col justify-between"
             >
               <div>
@@ -1119,7 +1168,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     <div className="space-y-1">
                       {order.items.map((it: any, i: number) => (
                         <div key={i} className="flex justify-between text-white">
-                          <span>{it.qty}x {it.item.name}</span>
+                          <div className="min-w-0 flex-1"><span>{it.qty}x {it.item.name}</span>{(it.item.customizations || []).map((choice: any) => <p key={choice.optionId || choice.name} className="pl-3 text-[10px] text-emerald-300">• {choice.groupName}: {choice.name} {choice.additionalPriceMinor ? `(+${formatPeso(choice.additionalPriceMinor / 100)})` : '(Included)'}</p>)}</div>
                           <span className="font-bold text-lime-400">{formatPeso((it.item.price || 0) * it.qty)}</span>
                         </div>
                       ))}
@@ -1430,7 +1479,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   <div className="space-y-1">
                     {placedOrderDetails.items.map((itemLine, idx) => (
                       <div key={idx} className="flex justify-between text-white text-[11px]">
-                        <span>{itemLine.qty}x {itemLine.item.name}</span>
+                        <div className="min-w-0 flex-1"><span>{itemLine.qty}x {itemLine.item.name}</span>{(itemLine.item.customizations || []).map((choice: any) => <p key={choice.optionId || choice.name} className="pl-3 text-[10px] text-emerald-300">• {choice.groupName}: {choice.name} {choice.additionalPriceMinor ? `(+${formatPeso(choice.additionalPriceMinor / 100)})` : '(Included)'}</p>)}</div>
                         <span className="font-bold text-lime-400">{formatPeso((itemLine.item.price || 0) * itemLine.qty)}</span>
                       </div>
                     ))}
@@ -1522,6 +1571,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     <div key={line.item.id} className="flex items-center justify-between p-2.5 rounded-xl bg-[#061d16] border border-emerald-800/50 text-xs">
                       <div className="space-y-0.5 flex-1 pr-2">
                         <h4 className="font-bold text-white">{line.item.name}</h4>
+                        {(line.item.customizations || []).length > 0 && <div className="space-y-0.5 text-[10px] text-emerald-300">{line.item.customizations.map((choice: any) => <p key={choice.optionId || choice.name}>{choice.groupName}: {choice.name} {choice.additionalPriceMinor ? `( +${formatPeso(choice.additionalPriceMinor / 100)} )` : '(Included)'}</p>)}</div>}
                         <p className="text-[11px] text-lime-400 font-extrabold">{formatPeso((line.item.price || 0) * line.qty)}</p>
                       </div>
 
@@ -2003,6 +2053,18 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           )}
         </DialogContent>
       </Dialog>
+      {dynamicSelectedItem && (
+        <MenuCustomizationPicker
+          item={dynamicSelectedItem}
+          onCancel={() => setDynamicSelectedItem(null)}
+          onConfirm={(customizedLine, quantity) => {
+            add(customizedLine, quantity);
+            setAddedItemName(`${quantity} × ${customizedLine.name}`);
+            setDynamicSelectedItem(null);
+            setShowUpsell(true);
+          }}
+        />
+      )}
     </div>
   );
 }
