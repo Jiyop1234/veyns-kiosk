@@ -1,4 +1,5 @@
 // @ts-nocheck
+// SECTION 1: Imports for React, UI components, menu data, cart state, and Supabase.
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar, UserPlus, Ticket, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,9 +9,11 @@ import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
 
+// SECTION 2: Shared menu-image component with a branded fallback when no image is available.
 function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; alt: string; className: string }) {
   const src = dbImage || menuImages[id];
   if (!src) {
+  // SECTION 22: Render the customer-facing ordering interface and its related dialogs.
     return (
       <div className={`${className} flex items-center justify-center bg-[#0d2e26] font-display text-sm font-bold text-[#d4af37]`}>
         VEYNS
@@ -20,7 +23,9 @@ function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; 
   return <img src={src} alt={alt} width={512} height={512} className={className} />;
 }
 
+// SECTION 3: Main ordering experience, including menu browsing, checkout, order history, and loyalty UI.
 export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, setOrderHistory, resetKey, currentUser, onOrderPlacedSuccess, onOpenRegister }: any) {
+  // SECTION 4: Cart access and local state for menu browsing, promotions, loyalty, and slot availability.
   const { add, lines, setLineQty, remove, clear, total } = useCart();
   const [category, setCategory] = useState('All items');
   const [search, setSearch] = useState('');
@@ -35,6 +40,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   // Slot capacities & Fully Booked states
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
 
+  // SECTION 5: Customer type and ordering-time eligibility checks.
   const isGuest = !currentUser || currentUser.role === 'guest' || (currentUser.name && currentUser.name.toLowerCase().includes('guest')) || (currentUser.identifier && currentUser.identifier.toLowerCase().includes('guest'));
 
   // Helper to check if "Order Today" is allowed in Philippine Time (Asia/Manila)
@@ -57,6 +63,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const orderTodayOpen = isOrderTodayAllowed();
 
+  // SECTION 6: Load scheduling capacity, promotions, loyalty information, and menu configuration.
   const loadSlotCapacities = async () => {
     try {
       const { data, error } = await supabase.from('slot_capacities').select('*');
@@ -145,6 +152,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   };
 
+  // SECTION 7: Merge Supabase menu records with the existing local menu data and sort the result.
   const loadMenuFromCloud = async () => {
     let mergedMenu = [...MENU_GRID];
 
@@ -188,6 +196,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setCurrentMenuGrid(mergedMenu);
   };
 
+  // SECTION 8: Initial data loading, Supabase Realtime subscriptions, storage updates, and cleanup.
   useEffect(() => {
     loadMenuFromCloud();
     loadUserStampsAndPenalties();
@@ -231,6 +240,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     };
   }, [resetKey, currentUser]);
 
+  // SECTION 9: State for item customization, upsells, checkout, customer details, and order scheduling.
   const [selected, setSelected] = useState(null);
   const [qty, setQty] = useState(1);
   
@@ -276,6 +286,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const markerInstanceRef = useRef<any>(null);
   const geocodeTimeoutRef = useRef<any>(null);
 
+  // SECTION 10: Delivery map references, store coordinates, distance calculation, and delivery-fee calculation.
   // TRUE STORE COORDINATES (Center Origin = 0.0 km)
   const STORE_LAT = 10.359511;
   const STORE_LNG = 123.952739;
@@ -315,6 +326,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   }, [showCheckout, fulfillment, isPinning]);
 
+  // SECTION 11: Initialize the delivery map and allow customers to choose a delivery location.
   const initMap = () => {
     if (!mapRef.current || mapInstanceRef.current) return;
     const L = window.L;
@@ -354,6 +366,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     processSelectedCoordinates(customerInitialLat, customerInitialLng);
   };
 
+  // SECTION 12: Process selected coordinates, calculate delivery costs, and look up a readable address.
   const processSelectedCoordinates = async (lat: number, lng: number) => {
     const dist = calculateDistanceKm(STORE_LAT, STORE_LNG, lat, lng);
     const roundedDist = Number(dist.toFixed(2));
@@ -407,6 +420,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     );
   };
 
+  // SECTION 13: Customer order-history state and per-customer storage key.
   const [internalOrderHistory, setInternalOrderHistory] = useState<any[]>([]);
   const historyList = orderHistory !== undefined ? orderHistory : internalOrderHistory;
   const setHistoryList = setOrderHistory || setInternalOrderHistory;
@@ -417,6 +431,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const userIdentifier = isGuest ? 'guest_session_user' : (currentUser.email || currentUser.name || 'admin').toLowerCase().trim();
   const userHistoryStorageKey = `veyns_user_orders_${userIdentifier}`;
 
+  // SECTION 14: Retrieve and normalize order history from Supabase and local/session storage.
   const refreshOrderHistoryFromStorage = async () => {
     try {
       if (!isGuest) {
@@ -495,6 +510,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   }, [resetKey]);
 
+  // SECTION 15: Save a newly created order to the available history stores.
   const saveOrderToHistory = async (newOrder: any) => {
     try {
       const { error: orderError } = await supabase.from('orders').insert([
@@ -570,6 +586,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     } catch (e) {}
   };
 
+  // SECTION 16: Filter visible menu items by availability, category, and search text.
   const filtered = currentMenuGrid.filter((item) => {
     if (item.isAvailable === false) return false;
     const matchCategory = category === 'All items' || item.category === category;
@@ -580,6 +597,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     return matchCategory && matchSearch;
   });
 
+  // SECTION 17: Menu customization logic, conditional option groups, pricing, and cart insertion.
   const handleOpenModal = (item) => {
     setSelected(item);
     setQty(1);
@@ -721,6 +739,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setShowUpsell(true);
   };
 
+  // SECTION 18: Upsell quantity helpers and cart quantity updates.
   const getUpsellQty = (itemId) => {
     const line = lines.find((l) => l.item.id === itemId);
     return line ? line.qty : 0;
@@ -739,6 +758,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   };
 
+  // SECTION 19: Client-side voucher usage tracking and promotion-code interactions.
   // Helper for per-user promo limits tracking
   const getUserVoucherUsageMap = () => {
     try {
@@ -831,6 +851,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     handleApplyPromoCodeString(promo.code);
   };
 
+  // SECTION 20: Calculate the currently applied promotion discount and order totals.
   const calculatePromoDiscount = () => {
     if (appliedPromos.length === 0) return 0;
     let totalPercent = 0;
@@ -853,6 +874,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const deliveryFeeTotal = fulfillment === 'delivery' ? calculatedDeliveryFee : 0;
   const finalCartTotal = Math.max(0, total - promoDiscountAmount + deliveryFeeTotal);
 
+  // SECTION 21: Checkout review, order confirmation, and post-confirmation reset handlers.
   const handleReviewOrder = () => {
     setShowUpsell(false);
     setOrderPlaced(false);
@@ -924,6 +946,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setIsPinning(false);
   };
 
+  // SECTION 22: Derived values used by the rendered menu, loyalty, and checkout interface.
   const validStampsCount = stamps.filter(s => s.status === 'valid').length;
   const publicVouchersList = availablePromos.filter(p => p.visibility !== 'hidden');
 
@@ -931,6 +954,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      {/* SECTION 23: Menu search, customer account actions, and category navigation. */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-300/70" />
@@ -981,6 +1005,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         </div>
       </div>
 
+      {/* SECTION 24: Menu item cards and add-to-cart entry points. */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((item) => {
           const effectivePrice = getEffectiveItemPrice(item);
@@ -1035,6 +1060,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         })}
       </div>
 
+      {/* SECTION 25: Loyalty stamp card and fair-play status modal. */}
       <Dialog open={showLoyaltyModal} onOpenChange={setShowLoyaltyModal}>
         <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
           <div className="space-y-1 text-left border-b border-emerald-900/60 pb-3">
@@ -1156,6 +1182,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         </DialogContent>
       </Dialog>
 
+      {/* SECTION 26: Customer order-history modal. */}
       <Dialog open={isOrdersOpen} onOpenChange={(open) => {
         setIsOrdersOpen(open);
         if (setShowMyOrders) setShowMyOrders(open);
@@ -1247,6 +1274,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         </DialogContent>
       </Dialog>
 
+      {/* SECTION 27: Dynamic menu customization modal with option validation and price preview. */}
       {/* DYNAMIC MENU ITEM CUSTOMIZATION MODAL */}
       <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
         {selected && (
@@ -1395,6 +1423,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         )}
       </Dialog>
 
+      {/* SECTION 28: Post-add-to-cart upsell suggestions. */}
       <Dialog open={showUpsell} onOpenChange={setShowUpsell}>
         <DialogContent className="max-w-lg w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-5 rounded-3xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
           <div className="space-y-0.5 text-left border-b border-emerald-900/60 pb-3">
@@ -1491,6 +1520,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         </DialogContent>
       </Dialog>
 
+      {/* SECTION 29: Checkout flow, delivery/pickup details, scheduling, promotions, and order confirmation. */}
       <Dialog open={showCheckout} onOpenChange={setShowCheckout}>
         <DialogContent className="max-w-md sm:max-w-lg w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-4 sm:p-6 rounded-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           {orderPlaced && placedOrderDetails ? (
@@ -2136,4 +2166,5 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   );
 }
 
+// SECTION 30: Default export for the OrderingCounter component.
 export default OrderingCounter;
