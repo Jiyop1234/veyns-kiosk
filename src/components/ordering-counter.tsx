@@ -773,7 +773,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setShowCheckout(true);
   };
 
-  const handleConfirmOrder = () => {
+  const handleConfirmOrder = async () => {
     if (orderType === 'today' && !isOrderTodayAllowed()) {
       alert('⚠️ Store is closed! Will be back later at 12 NOON. Please select "Reservation" for a future schedule instead.');
       return;
@@ -785,6 +785,53 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           ? `Today (${todayTimeSlot}) - Personal Delivery`
           : `Today - Maxim Delivery (Anytime)`
         : `Reservation on ${reservationDate || 'Upcoming Date'} (${reservationTime})`;
+
+    // Revalidate every configurable line against current database prices immediately before checkout.
+    // The browser's preview is never treated as the source of truth.
+    const validatedLines: any[] = [];
+    for (const line of lines) {
+      const menuItemId = line.item?.menuItemId;
+      if (!menuItemId) {
+        validatedLines.push(line);
+        continue;
+      }
+      const selectedOptionIds = (line.item.customizations || []).map((o: any) => o.optionId).filter(Boolean);
+      const { data: resolved, error: resolveError } = await supabase.rpc('resolve_menu_item_customizations', {
+        p_menu_item_id: menuItemId,
+        p_selected_option_ids: selectedOptionIds
+      });
+      if (resolveError) {
+        alert(`We couldn't validate "${line.item.baseName || line.item.name}". Please reopen the item and review its options. ${resolveError.message || ''}`);
+        return;
+      }
+      const priced = Array.isArray(resolved) ? resolved[0] : resolved;
+      if (!priced || Number(priced.unit_price_minor) !== Math.round(Number(line.item.price) * 100)) {
+        alert(`The price or availability of "${line.item.baseName || line.item.name}" changed. Remove it and add it again before checkout.`);
+        return;
+      }
+      validatedLines.push({
+        ...line,
+        item: {
+          ...line.item,
+          basePrice: Number(priced.base_price_minor) / 100,
+          price: Number(priced.unit_price_minor) / 100,
+          customizations: (priced.options || []).map((o: any) => ({
+            optionId: o.option_id,
+            groupId: o.group_id,
+            groupName: o.group_name,
+            name: o.name,
+            additionalPriceMinor: Number(o.additional_price_minor || 0)
+          })),
+          pricingValidated: true
+        }
+      });
+    }
+
+    const validatedSubtotal = validatedLines.reduce((sum, line) => sum + Number(line.item.price || 0) * line.qty, 0);
+    if (Math.round(validatedSubtotal * 100) !== Math.round(total * 100)) {
+      alert('Your cart total changed during validation. Please review your cart before checkout.');
+      return;
+    }
 
     if (appliedPromos.length > 0) {
       appliedPromos.forEach(p => recordUserVoucherUse(p.code));
@@ -808,8 +855,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       deliveryDistanceKm: fulfillment === 'delivery' ? deliveryDistanceKm : 0,
       deliveryFee: deliveryFeeTotal,
       paymentOption: 'Cash on Pickup / Delivery',
-      items: [...lines],
-      subtotal: total,
+      items: validatedLines,
+      subtotal: validatedSubtotal,
       promoCode: promoCodeString,
       promoCodesList,
       promoDiscount: promoDiscountAmount,
