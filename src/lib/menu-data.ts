@@ -1,4 +1,32 @@
 // @ts-nocheck
+export interface MenuOption {
+  id: string;
+  name: string;
+  price: number;
+  active?: boolean;
+  display_order?: number;
+}
+
+export interface OptionDependency {
+  id?: string;
+  dependentGroupId: string;
+  parentOptionId: string;
+}
+
+export interface MenuOptionGroup {
+  id: string;
+  name: string;
+  type: 'single' | 'multi';
+  required: boolean;
+  minSelections?: number;
+  maxSelections?: number;
+  options: MenuOption[];
+  description?: string;
+  displayOrder?: number;
+  isActive?: boolean;
+  parentOptionIds?: string[];
+}
+
 export interface MenuItem {
   id: string;
   name: string;
@@ -11,6 +39,7 @@ export interface MenuItem {
   hasBrothEggOption?: boolean;
   discountPercent?: number;
   isAvailable?: boolean;
+  optionGroups?: MenuOptionGroup[];
 }
 
 export interface PromoCode {
@@ -93,7 +122,20 @@ export const menuItems: MenuItem[] = [
     price: 109,
     description: 'Grilled pork with rice, a 1 oz cup of toyomansi and 4 cucumber slices, served in a kraft paper bowl.',
     bestSeller: true,
-    sortOrder: 1
+    sortOrder: 1,
+    optionGroups: [
+      {
+        id: 'group_egg_sinugba',
+        name: 'Add Egg',
+        type: 'single',
+        required: true,
+        maxSelections: 1,
+        options: [
+          { id: 'opt_no_egg', name: 'No Egg', price: 0 },
+          { id: 'opt_add_egg', name: 'Add Egg', price: 6 }
+        ]
+      }
+    ]
   },
   {
     id: 'pork-sisig',
@@ -101,7 +143,20 @@ export const menuItems: MenuItem[] = [
     category: 'Rice Bowls',
     price: 119,
     description: 'Sizzling savory chopped pork seasoned with calamansi, onions, and creamy dressing over rice.',
-    sortOrder: 2
+    sortOrder: 2,
+    optionGroups: [
+      {
+        id: 'group_egg_sisig',
+        name: 'Add Egg',
+        type: 'single',
+        required: true,
+        maxSelections: 1,
+        options: [
+          { id: 'opt_no_egg', name: 'No Egg', price: 0 },
+          { id: 'opt_add_egg', name: 'Add Egg', price: 6 }
+        ]
+      }
+    ]
   },
   {
     id: 'pork-katsu',
@@ -119,10 +174,43 @@ export const menuItems: MenuItem[] = [
     category: 'Noodle Bowls',
     price: 119,
     description: 'Rich savory soup broth with noodles, fresh scallions, and your choice of egg or katsu toppings.',
-    isCustomizable: true,
-    hasBrothEggOption: true,
     bestSeller: true,
-    sortOrder: 4
+    sortOrder: 4,
+    optionGroups: [
+      {
+        id: 'group_ramen_style',
+        name: 'Ramen Style',
+        type: 'single',
+        required: true,
+        maxSelections: 1,
+        options: [
+          { id: 'plain_ramen', name: 'Plain Ramen', price: 0 },
+          { id: 'broth_egg', name: 'Ramen Broth Mixed With Egg', price: 6 }
+        ]
+      },
+      {
+        id: 'group_add_egg',
+        name: 'Add Egg',
+        type: 'single',
+        required: true,
+        maxSelections: 1,
+        options: [
+          { id: 'no_egg', name: 'No Egg', price: 0 },
+          { id: 'add_egg', name: 'Add Egg', price: 6 }
+        ]
+      },
+      {
+        id: 'group_add_katsu',
+        name: 'Add Pork Katsu',
+        type: 'single',
+        required: true,
+        maxSelections: 1,
+        options: [
+          { id: 'no_katsu', name: 'No Pork Katsu', price: 0 },
+          { id: 'add_katsu', name: 'Add Pork Katsu', price: 40 }
+        ]
+      }
+    ]
   },
   {
     id: 'buldak',
@@ -130,8 +218,6 @@ export const menuItems: MenuItem[] = [
     category: 'Noodle Bowls',
     price: 134,
     description: 'Spicy Korean fire noodles tossed in signature hot sauce with melted cheese.',
-    isCustomizable: true,
-    hasBrothEggOption: false,
     sortOrder: 5
   },
 
@@ -164,4 +250,21 @@ export const getActivePromoCodes = (): PromoCode[] => {
     if (saved) return JSON.parse(saved);
   } catch (e) {}
   return [];
+};
+
+export const getStoredMenuItems = (): MenuItem[] => {
+  try {
+    const saved = localStorage.getItem('veyns_menu_items');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
+  return menuItems;
+};
+
+export const saveStoredMenuItems = (items: MenuItem[]) => {
+  try {
+    localStorage.setItem('veyns_menu_items', JSON.stringify(items));
+  } catch (e) {}
 };
