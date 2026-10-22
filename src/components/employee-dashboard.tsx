@@ -7,6 +7,7 @@ import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
 import { menuImages } from '@/lib/menu-images';
 import { supabase } from '@/lib/supabase';
 
+// --- Menu image display helper: renders an image or the VEYNS fallback ---
 function Photo({ src, alt, className }: { src?: string; alt: string; className: string }) {
   if (!src) {
     return (
@@ -18,6 +19,7 @@ function Photo({ src, alt, className }: { src?: string; alt: string; className: 
   return <img src={src} alt={alt} width={512} height={512} className={className} />;
 }
 
+// --- Main employee/admin dashboard component ---
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
   const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots'>('sales');
   const [menuItems, setMenuItems] = useState<any[]>([]);
@@ -81,6 +83,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     { label:  "Multiple Offense : Severe or repeated false stamps ", sixthReward:  "Invalidated ", ninthReward:  "Invalidated ", twelfthReward:  "Cancelled (No Promos Left) ", desc:  "Multiple Offense : Severe or repeated false stamps. All remaining loyalty rewards cancelled. " }
   ];
 
+  // --- Initial cloud data load and Supabase Realtime subscriptions ---
   useEffect(() => {
     fetchCloudData();
     const orderChannel = supabase.channel('public:orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCloudData).subscribe();
@@ -95,6 +98,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     };
   }, []);
 
+  // --- Load menu, orders, customer profiles, slot capacities, and promos from Supabase ---
   const fetchCloudData = async () => {
     try {
       const { data: cloudMenu } = await supabase.from('menu_items').select('*');
@@ -193,6 +197,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
+  // --- Save configured capacity and booking status for a date/time slot ---
   const handleUpdateSlotCapacity = async (dateKey: string, slotTime: string, maxSlots: number, isFullyBooked: boolean) => {
     try {
       const existing = slotCapacities.find(s => s.date_key === dateKey && s.slot_time === slotTime);
@@ -212,6 +217,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
+  // --- Upload menu photos to Supabase Storage ---
   const uploadImageToSupabase = async (file: File) => {
     try {
       const fileExt = file.name.split('.').pop();
@@ -226,6 +232,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
+  // --- Create or update a menu item and its dynamic option groups ---
   const handleSaveNewOrEditedItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!itemName || !itemPrice) return;
@@ -272,6 +279,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     fetchCloudData();
   };
 
+  // --- Show or hide a menu item ---
   const handleToggleAvailability = async (id: string, currentStatus: boolean) => {
     try {
       await supabase.from('menu_items').update({ is_available: !currentStatus }).eq('id', id);
@@ -279,6 +287,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     } catch (e) {}
   };
 
+  // --- Delete a menu item after confirmation ---
   const handleDeleteMenuItem = async (id: string) => {
     if (!confirm('Are you sure you want to delete this menu item from the database?')) return;
     try {
@@ -382,6 +391,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }));
   };
 
+  // --- Create a voucher/promo with scope, eligibility, visibility, expiry, and usage limit ---
   const handleAddPromo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPromoCode || !newPromoDiscount) return;
@@ -432,6 +442,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
+  // --- Delete a voucher/promo ---
   const handleDeletePromo = async (code: string) => {
     if (!confirm(`Are you sure you want to delete promo ${code}?`)) return;
     try {
@@ -442,6 +453,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
+  // --- Clear order records from the sales log ---
   const handleClearSalesLog = async () => {
     if (!confirm('Are you sure you want to clear all sales logs from Supabase?')) return;
     try {
@@ -452,12 +464,14 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
+  // --- Password hashing helper used by the dashboard reset flow ---
   const hashPassword = async (password: string) => {
     const msgUint8 = new TextEncoder().encode(password);
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
     return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
   };
 
+  // --- Reset a customer's password hash ---
   const handleResetPasswordSubmit = async () => {
     if (!resetTargetUser || !newTempPassword) return;
     const identifierKey = resetTargetUser.identifier.toLowerCase().trim();
@@ -473,6 +487,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     fetchCloudData();
   };
 
+  // --- Update a customer's display name and identifier ---
   const handleSaveCustomerEdits = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCustomer) return;
@@ -528,6 +543,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
+  // --- Delete a customer profile and related local cached data ---
   const handleDeleteCustomer = async (identifier: string) => {
     if (!confirm('Are you sure you want to delete this customer account?')) return;
     try {
@@ -542,6 +558,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     } catch (e) {}
   };
 
+  // --- Load a customer's loyalty stamps and penalty state into the stamp editor ---
   const openStampManager = (cust: any) => {
     setStampTargetUser(cust);
     try {
@@ -577,6 +594,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
      }
   };
 
+  // --- Save loyalty stamp statuses and applicable penalty/reward settings ---
   const handleSaveStamps = async () => {
     if (!stampTargetUser) return;
     try {
@@ -606,6 +624,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
      setStampTargetUser(null);
   };
 
+  // --- Return from the dashboard to the customer-facing store ---
   const handleExitStore = () => {
     if (onBackToStore) {
       onBackToStore();
@@ -615,6 +634,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
+  // --- Derived customer search results and sales metrics ---
   const filteredCustomers = customers.filter(c =>
     !customerSearch ||
     c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
@@ -625,6 +645,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const totalOrdersCount = orders.length;
   const averageOrderValue = totalOrdersCount > 0 ? totalGrossSales / totalOrdersCount : 0;
 
+  // --- Derived option dependencies and live customization preview pricing ---
   // Gather all options across groups for conditional parent dependency selection
   const allAvailableOptions = itemOptionGroups.flatMap(g =>
     (g.options || []).map((o: any) => ({
@@ -645,6 +666,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     return acc + groupAddons;
   }, 0);
 
+  // --- Dashboard page layout and tabbed sections ---
   return (
     <div className="min-h-screen bg-[#020b08] text-white p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -684,6 +706,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </button>
         </div>
 
+                {/* Sales analytics and order transaction log */}
         {activeTab === 'sales' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -793,6 +816,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </div>
         )}
 
+                {/* Scheduling slot capacity controls */}
         {activeTab === 'slots' && (
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-emerald-900/60 pb-3 gap-3">
@@ -835,6 +859,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </div>
         )}
 
+                {/* Customer account search and management */}
         {activeTab === 'customers' && (
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-emerald-900/60 pb-3 gap-3">
@@ -913,6 +938,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </div>
         )}
 
+                {/* Menu item list and menu management actions */}
         {activeTab === 'menu' && (
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
             <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
@@ -1534,6 +1560,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </DialogContent>
         </Dialog>
 
+                {/* Temporary password reset modal */}
         <Dialog open={!!resetTargetUser} onOpenChange={(open) => !open && setResetTargetUser(null)}>
           {resetTargetUser && (
             <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
@@ -1550,6 +1577,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           )}
         </Dialog>
 
+                {/* Loyalty stamp and penalty management modal */}
         <Dialog open={!!stampTargetUser} onOpenChange={(open) => !open && setStampTargetUser(null)}>
           {stampTargetUser && (
             <DialogContent className="max-w-xl w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
@@ -1602,6 +1630,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   );
 }
 
+// --- Reusable editor card for an individual date/time slot's capacity ---
 function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialFullyBooked, onSave }: any) {
   const [maxSlots, setMaxSlots] = useState(initialMax);
   const [isFullyBooked, setIsFullyBooked] = useState(initialFullyBooked);
@@ -1657,4 +1686,5 @@ function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialF
   );
 }
 
+// --- Default export for the employee dashboard ---
 export default EmployeeDashboard;
