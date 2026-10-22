@@ -163,7 +163,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           sortOrder: Number(m.sort_order || 100),
           isCustomizable: m.is_customizable,
           hasBrothEggOption: m.has_broth_egg_option,
-          image: m.image_url
+          image: m.image_url,
+          optionGroups: m.option_groups || []
         }));
         
         const cloudIds = new Set(formatted.map(item => item.id));
@@ -232,9 +233,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const [selected, setSelected] = useState(null);
   const [qty, setQty] = useState(1);
-  const [brothEgg, setBrothEgg] = useState(false);
-  const [hardboiledEgg, setHardboiledEgg] = useState(false);
-  const [porkKatsu, setPorkKatsu] = useState(false);
+  
+  // Dynamic Option Selections State for Customers
+  const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
+  const [validationError, setValidationError] = useState('');
 
   const [showUpsell, setShowUpsell] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
@@ -581,9 +583,23 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const handleOpenModal = (item) => {
     setSelected(item);
     setQty(1);
-    setBrothEgg(false);
-    setHardboiledEgg(false);
-    setPorkKatsu(false);
+    setValidationError('');
+
+    const initialSelections: { [groupId: string]: string[] } = {};
+    if (item.optionGroups && Array.isArray(item.optionGroups)) {
+      item.optionGroups.forEach((group: any) => {
+        // Pre-select default option if specified, or first option if single-select required
+        const defaultOpt = (group.options || []).find((o: any) => o.is_default || o.isDefault);
+        if (defaultOpt) {
+          initialSelections[group.id] = [defaultOpt.id];
+        } else if (group.type === 'single' && group.required && group.options && group.options.length > 0) {
+          initialSelections[group.id] = [group.options[0].id];
+        } else {
+          initialSelections[group.id] = [];
+        }
+      });
+    }
+    setSelectedOptions(initialSelections);
   };
 
   const getEffectiveItemPrice = (item) => {
@@ -595,40 +611,112 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     return base;
   };
 
+  // Dynamic Customization Calculation & Dependency Rules Engine
+  const calculateCustomizationTotal = () => {
+    if (!selected || !selected.optionGroups) return 0;
+    let totalAddons = 0;
+
+    selected.optionGroups.forEach((group: any) => {
+      // Conditional Visibility Check: group is visible ONLY if no parent required OR parent is currently selected
+      if (group.parentOptionIds && group.parentOptionIds.length > 0) {
+        const isTriggered = group.parentOptionIds.some((parentId: string) =>
+          Object.values(selectedOptions).some((selectedList) => selectedList.includes(parentId))
+        );
+        if (!isTriggered) return; // Skip hidden group
+      }
+
+      const groupSelections = selectedOptions[group.id] || [];
+      (group.options || []).forEach((opt: any) => {
+        if (groupSelections.includes(opt.id)) {
+          totalAddons += Number(opt.price || 0);
+        }
+      });
+    });
+
+    return totalAddons;
+  };
+
   const calculateUnitPrice = () => {
     if (!selected) return 0;
-    let price = getEffectiveItemPrice(selected);
-    if (selected.isCustomizable) {
-      if (selected.hasBrothEggOption && brothEgg) price += 6;
-      if (hardboiledEgg) price += 15;
-      if (porkKatsu) price += 40;
-    }
-    return price;
+    return getEffectiveItemPrice(selected) + calculateCustomizationTotal();
+  };
+
+  const buildCustomizationPayload = () => {
+    if (!selected || !selected.optionGroups) return { snapshots: [], summary: '', extraCharge: 0 };
+    const snapshots: any[] = [];
+    const summaryParts: string[] = [];
+    let extraCharge = 0;
+
+    selected.optionGroups.forEach((group: any) => {
+      // Evaluate visibility
+      if (group.parentOptionIds && group.parentOptionIds.length > 0) {
+        const isTriggered = group.parentOptionIds.some((parentId: string) =>
+          Object.values(selectedOptions).some((selectedList) => selectedList.includes(parentId))
+        );
+        if (!isTriggered) return;
+      }
+
+      const groupSelections = selectedOptions[group.id] || [];
+      const selectedOpts = (group.options || []).filter((opt: any) => groupSelections.includes(opt.id));
+
+      if (selectedOpts.length > 0) {
+        selectedOpts.forEach((opt: any) => {
+          const optPrice = Number(opt.price || 0);
+          extraCharge += optPrice;
+          snapshots.push({
+            groupId: group.id,
+            groupName: group.name,
+            optionId: opt.id,
+            optionName: opt.name,
+            additionalPrice: optPrice
+          });
+          summaryParts.push(optPrice > 0 ? `${opt.name} (+₱${optPrice})` : opt.name);
+        });
+      }
+    });
+
+    return {
+      snapshots,
+      summary: summaryParts.join(', '),
+      extraCharge
+    };
   };
 
   const handleAddCustomToCart = () => {
     if (!selected) return;
+    setValidationError('');
 
-    let customTitle = selected.name;
-    const toppings = [];
-    if (selected.hasBrothEggOption && brothEgg) toppings.push('Egg in Broth');
-    if (hardboiledEgg) toppings.push('Hardboiled Egg');
-    if (porkKatsu) toppings.push('Pork Katsu');
+    // Validate visible option groups against requirement & selection limits
+    if (selected.optionGroups && selected.optionGroups.length > 0) {
+      for (const group of selected.optionGroups) {
+        if (group.parentOptionIds && group.parentOptionIds.length > 0) {
+          const isTriggered = group.parentOptionIds.some((parentId: string) =>
+            Object.values(selectedOptions).some((selectedList) => selectedList.includes(parentId))
+          );
+          if (!isTriggered) continue; // Skip hidden group validation
+        }
 
-    if (toppings.length > 0) {
-      customTitle += ` (${toppings.join(', ')})`;
+        const selections = selectedOptions[group.id] || [];
+        const minReq = group.required ? Math.max(1, group.minSelections || 0) : (group.minSelections || 0);
+        
+        if (selections.length < minReq) {
+          setValidationError(`Please make a selection for required group: "${group.name}".`);
+          return;
+        }
+
+        if (group.maxSelections && selections.length > group.maxSelections) {
+          setValidationError(`You can choose at most ${group.maxSelections} options for "${group.name}".`);
+          return;
+        }
+      }
     }
 
-    const itemToAdd = {
-      id: `${selected.id}-${brothEgg ? 'be' : 'no'}-${hardboiledEgg ? 'he' : 'no'}-${porkKatsu ? 'pk' : 'no'}`,
-      name: customTitle,
-      category: selected.category,
-      price: calculateUnitPrice(),
-      description: selected.description,
-    };
+    const { snapshots, summary, extraCharge } = buildCustomizationPayload();
 
-    add(itemToAdd, qty);
-    setAddedItemName(`${qty} × ${customTitle}`);
+    // Add to cart with full immutable customization snapshots and extra charges
+    add(selected, qty, snapshots, extraCharge, summary);
+
+    setAddedItemName(`${qty} × ${selected.name}${summary ? ` (${summary})` : ''}`);
     setSelected(null);
     setShowUpsell(true);
   };
@@ -1118,9 +1206,14 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     <span className="text-[10px] text-emerald-400/70 uppercase block font-bold mb-1">Item Summary</span>
                     <div className="space-y-1">
                       {order.items.map((it: any, i: number) => (
-                        <div key={i} className="flex justify-between text-white">
-                          <span>{it.qty}x {it.item.name}</span>
-                          <span className="font-bold text-lime-400">{formatPeso((it.item.price || 0) * it.qty)}</span>
+                        <div key={i} className="flex flex-col text-white text-[11px]">
+                          <div className="flex justify-between">
+                            <span>{it.qty}x {it.item?.name || it.name}</span>
+                            <span className="font-bold text-lime-400">{formatPeso((it.unitPrice ?? it.item?.price ?? it.price ?? 0) * it.qty)}</span>
+                          </div>
+                          {it.customizationsSummary && (
+                            <p className="text-[10px] text-lime-300 font-mono pl-2">↳ {it.customizationsSummary}</p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1154,6 +1247,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         </DialogContent>
       </Dialog>
 
+      {/* DYNAMIC MENU ITEM CUSTOMIZATION MODAL */}
       <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
         {selected && (
           <DialogContent className="max-w-md w-full bg-[#04140f] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
@@ -1175,74 +1269,95 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
               </div>
             </div>
 
-            {selected.isCustomizable && (
+            {/* Dynamic Option Groups Rendering */}
+            {selected.optionGroups && selected.optionGroups.length > 0 && (
               <div className="space-y-4 my-2 border-t border-emerald-900/60 pt-3">
-                {selected.hasBrothEggOption && (
-                  <div className="space-y-2">
-                    <h4 className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">Step 1: Egg in Broth?</h4>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setBrothEgg(false)}
-                        className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
-                          !brothEgg
-                            ? 'bg-[#082d22] border-lime-400 text-lime-400'
-                            : 'bg-[#061c16] border-emerald-800/60 text-emerald-200 hover:border-emerald-600'
-                        }`}
-                      >
-                        <span>No Egg in Broth</span>
-                        <span className="font-extrabold text-[10px]">+₱0</span>
-                      </button>
+                {selected.optionGroups.map((group: any) => {
+                  // Evaluate conditional dependency trigger rules
+                  if (group.parentOptionIds && group.parentOptionIds.length > 0) {
+                    const isTriggered = group.parentOptionIds.some((parentId: string) =>
+                      Object.values(selectedOptions).some((selectedList) => selectedList.includes(parentId))
+                    );
+                    if (!isTriggered) return null; // Conditionally hide dependent group
+                  }
 
-                      <button
-                        type="button"
-                        onClick={() => setBrothEgg(true)}
-                        className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
-                          brothEgg
-                            ? 'bg-[#082d22] border-lime-400 text-lime-400'
-                            : 'bg-[#061c16] border-emerald-800/60 text-emerald-200 hover:border-emerald-600'
-                        }`}
-                      >
-                        <span>Mix Egg in Broth</span>
-                        <span className="font-extrabold text-[10px]">+₱6</span>
-                      </button>
+                  const currentSelections = selectedOptions[group.id] || [];
+
+                  return (
+                    <div key={group.id} className="space-y-2 bg-[#061c16] border border-emerald-800/60 rounded-2xl p-3.5">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-[11px] font-bold text-lime-400 uppercase tracking-wider flex items-center gap-1">
+                          {group.name} {group.required && <span className="text-red-400">*</span>}
+                        </h4>
+                        <span className="text-[9px] text-emerald-300 font-semibold">
+                          {group.type === 'single' ? 'Pick 1' : group.maxSelections ? `Up to ${group.maxSelections}` : 'Multi-select'}
+                        </span>
+                      </div>
+
+                      {group.description && (
+                        <p className="text-[10px] text-emerald-300/80 mb-1">{group.description}</p>
+                      )}
+
+                      <div className="space-y-1.5">
+                        {(group.options || []).map((opt: any) => {
+                          const isSelected = currentSelections.includes(opt.id);
+                          const addPrice = Number(opt.price || 0);
+
+                          return (
+                            <button
+                              type="button"
+                              key={opt.id}
+                              onClick={() => {
+                                if (group.type === 'single') {
+                                  setSelectedOptions((prev) => ({ ...prev, [group.id]: [opt.id] }));
+                                } else {
+                                  const existing = selectedOptions[group.id] || [];
+                                  if (isSelected) {
+                                    setSelectedOptions((prev) => ({
+                                      ...prev,
+                                      [group.id]: existing.filter((id) => id !== opt.id)
+                                    }));
+                                  } else {
+                                    if (group.maxSelections && existing.length >= group.maxSelections) {
+                                      alert(`Maximum ${group.maxSelections} options allowed for ${group.name}.`);
+                                      return;
+                                    }
+                                    setSelectedOptions((prev) => ({
+                                      ...prev,
+                                      [group.id]: [...existing, opt.id]
+                                    }));
+                                  }
+                                }
+                              }}
+                              className={`w-full p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-[#082d22] border-lime-400 text-lime-400 shadow-md'
+                                  : 'bg-[#041913] border-emerald-800/60 text-emerald-200 hover:border-emerald-600'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <div className={`h-4 w-4 rounded-${group.type === 'single' ? 'full' : 'md'} border flex items-center justify-center ${isSelected ? 'border-lime-400 bg-lime-400 text-black' : 'border-emerald-700 bg-black/40'}`}>
+                                  {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                                </div>
+                                <span>{opt.name}</span>
+                              </div>
+                              <span className="font-extrabold text-[11px] text-lime-400">
+                                {addPrice > 0 ? `+${formatPeso(addPrice)}` : '₱0'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <h4 className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">
-                    {selected.hasBrothEggOption ? 'Step 2: Toppings & Add-ons' : 'Toppings & Add-ons'}
-                  </h4>
-                  <div className="space-y-2">
-                    <label className="flex items-center justify-between p-2.5 rounded-xl border border-emerald-800/60 bg-[#061c16] cursor-pointer hover:border-emerald-600 transition-colors">
-                      <div className="flex items-center gap-2.5">
-                        <input
-                          type="checkbox"
-                          checked={hardboiledEgg}
-                          onChange={(e) => setHardboiledEgg(e.target.checked)}
-                          className="rounded border-emerald-700 text-lime-400 focus:ring-lime-400 bg-black/40 h-4 w-4"
-                        />
-                        <span className="text-xs font-semibold text-emerald-100">Hardboiled Egg</span>
-                      </div>
-                      <span className="text-xs font-extrabold text-lime-400">+₱15.00</span>
-                    </label>
-
-                    <label className="flex items-center justify-between p-2.5 rounded-xl border border-emerald-800/60 bg-[#061c16] cursor-pointer hover:border-emerald-600 transition-colors">
-                      <div className="flex items-center gap-2.5">
-                        <input
-                          type="checkbox"
-                          checked={porkKatsu}
-                          onChange={(e) => setPorkKatsu(e.target.checked)}
-                          className="rounded border-emerald-700 text-lime-400 focus:ring-lime-400 bg-black/40 h-4 w-4"
-                        />
-                        <span className="text-xs font-semibold text-emerald-100">Extra Pork Katsu Piece</span>
-                      </div>
-                      <span className="text-xs font-extrabold text-lime-400">+₱40.00</span>
-                    </label>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
+            )}
+
+            {validationError && (
+              <p className="text-[11px] text-red-400 font-bold text-center bg-red-950/60 border border-red-800 rounded-xl p-2 my-2">
+                ⚠️ {validationError}
+              </p>
             )}
 
             <div className="flex items-center justify-between mt-4 border-t border-emerald-900/60 pt-3">
@@ -1271,7 +1386,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
               <Button
                 onClick={handleAddCustomToCart}
-                className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold px-5 py-2.5 text-xs rounded-xl transition-all shadow-lg"
+                className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold px-5 py-2.5 text-xs rounded-xl transition-all shadow-lg cursor-pointer"
               >
                 Add · {formatPeso(calculateUnitPrice() * qty)}
               </Button>
@@ -1361,7 +1476,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           <div className="space-y-2 pt-2 border-t border-emerald-900/60">
             <Button
               onClick={handleReviewOrder}
-              className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs"
+              className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs cursor-pointer"
             >
               Review my order <ArrowRight className="h-3.5 w-3.5" />
             </Button>
@@ -1429,9 +1544,14 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   <p className="font-bold text-lime-400 text-[11px] uppercase tracking-wider mb-1.5">Ordered Items:</p>
                   <div className="space-y-1">
                     {placedOrderDetails.items.map((itemLine, idx) => (
-                      <div key={idx} className="flex justify-between text-white text-[11px]">
-                        <span>{itemLine.qty}x {itemLine.item.name}</span>
-                        <span className="font-bold text-lime-400">{formatPeso((itemLine.item.price || 0) * itemLine.qty)}</span>
+                      <div key={idx} className="flex flex-col text-white text-[11px]">
+                        <div className="flex justify-between">
+                          <span>{itemLine.qty}x {itemLine.item?.name || itemLine.name}</span>
+                          <span className="font-bold text-lime-400">{formatPeso((itemLine.unitPrice ?? itemLine.item?.price ?? itemLine.price ?? 0) * itemLine.qty)}</span>
+                        </div>
+                        {itemLine.customizationsSummary && (
+                          <p className="text-[10px] text-lime-300 font-mono pl-2">↳ {itemLine.customizationsSummary}</p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1498,7 +1618,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
               <Button
                 onClick={handleCloseConfirmation}
-                className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg mt-2"
+                className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg mt-2 cursor-pointer"
               >
                 Back to Menu
               </Button>
@@ -1518,39 +1638,48 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 {lines.length === 0 ? (
                   <p className="text-xs text-emerald-400/60 text-center py-6">Your cart is currently empty.</p>
                 ) : (
-                  lines.map((line) => (
-                    <div key={line.item.id} className="flex items-center justify-between p-2.5 rounded-xl bg-[#061d16] border border-emerald-800/50 text-xs">
-                      <div className="space-y-0.5 flex-1 pr-2">
-                        <h4 className="font-bold text-white">{line.item.name}</h4>
-                        <p className="text-[11px] text-lime-400 font-extrabold">{formatPeso((line.item.price || 0) * line.qty)}</p>
-                      </div>
+                  lines.map((line) => {
+                    const lineKey = line.lineId || line.id || line.item.id;
 
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-2 bg-[#041913] border border-emerald-800/60 rounded-lg px-2 py-1">
-                          <button
-                            onClick={() => {
-                              if (line.qty <= 1) {
-                                remove(line.item.id);
-                                if (lines.length <= 1) setShowCheckout(false);
-                              } else {
-                                setLineQty(line.item.id, line.qty - 1);
-                              }
-                            }}
-                            className="text-emerald-300 hover:text-white cursor-pointer"
-                          >
-                            <Minus className="h-3 w-3" />
-                          </button>
-                          <span className="font-bold text-white w-4 text-center">{line.qty}</span>
-                          <button onClick={() => setLineQty(line.item.id, line.qty + 1)} className="text-emerald-300 hover:text-white cursor-pointer">
-                            <Plus className="h-3 w-3" />
+                    return (
+                      <div key={lineKey} className="flex items-center justify-between p-2.5 rounded-xl bg-[#061d16] border border-emerald-800/50 text-xs">
+                        <div className="space-y-0.5 flex-1 pr-2">
+                          <h4 className="font-bold text-white">{line.item.name}</h4>
+                          {line.customizationsSummary && (
+                            <p className="text-[10px] text-lime-300 font-mono">↳ {line.customizationsSummary}</p>
+                          )}
+                          <p className="text-[11px] text-lime-400 font-extrabold">
+                            {formatPeso((line.unitPrice ?? line.item.price) * line.qty)}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 bg-[#041913] border border-emerald-800/60 rounded-lg px-2 py-1">
+                            <button
+                              onClick={() => {
+                                if (line.qty <= 1) {
+                                  remove(lineKey);
+                                  if (lines.length <= 1) setShowCheckout(false);
+                                } else {
+                                  setLineQty(lineKey, line.qty - 1);
+                                }
+                              }}
+                              className="text-emerald-300 hover:text-white cursor-pointer"
+                            >
+                              <Minus className="h-3 w-3" />
+                            </button>
+                            <span className="font-bold text-white w-4 text-center">{line.qty}</span>
+                            <button onClick={() => setLineQty(lineKey, line.qty + 1)} className="text-emerald-300 hover:text-white cursor-pointer">
+                              <Plus className="h-3 w-3" />
+                            </button>
+                          </div>
+                          <button onClick={() => remove(lineKey)} className="text-red-400 hover:text-red-300 p-1 cursor-pointer">
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
-                        <button onClick={() => remove(line.item.id)} className="text-red-400 hover:text-red-300 p-1 cursor-pointer">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
