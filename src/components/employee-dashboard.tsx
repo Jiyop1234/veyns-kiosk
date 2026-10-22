@@ -20,11 +20,9 @@ function Photo({ src, alt, className }: { src?: string; alt: string; className: 
 
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
   const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots'>('sales');
-
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isAddingNewItem, setIsAddingNewItem] = useState(false);
-
   const [itemName, setItemName] = useState('');
   const [itemCategory, setItemCategory] = useState('Rice Bowls');
   const [itemDescription, setItemDescription] = useState('');
@@ -42,19 +40,21 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [newPromoCode, setNewPromoCode] = useState('');
   const [newPromoDiscount, setNewPromoDiscount] = useState('');
   const [newPromoType, setNewPromoType] = useState<'percentage' | 'peso'>('percentage');
+  const [newPromoTargetType, setNewPromoTargetType] = useState<'subtotal' | 'delivery'>('subtotal');
+  const [newPromoEligibility, setNewPromoEligibility] = useState<'all' | 'registered'>('all');
   const [newVoucherVisibility, setNewVoucherVisibility] = useState<'public' | 'hidden'>('public');
-  const [newVoucherExpiryVal, setNewVoucherExpiryVal] = useState('60'); 
+  const [newVoucherExpiryVal, setNewVoucherExpiryVal] = useState('60');
   const [newVoucherExpiryUnit, setNewVoucherExpiryUnit] = useState<'minutes' | 'hours' | 'never'>('minutes');
   const [newVoucherUsageLimit, setNewVoucherUsageLimit] = useState('');
 
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+
   const [customers, setCustomers] = useState<any[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [resetTargetUser, setResetTargetUser] = useState<any>(null);
   const [newTempPassword, setNewTempPassword] = useState('');
-  const [visiblePasswords, setVisiblePasswords] = useState<{ [key: string]: boolean }>({});
-
+  
   // Customer Edit State
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [editCustName, setEditCustName] = useState('');
@@ -63,34 +63,30 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
   const [selectedSlotDate, setSelectedSlotDate] = useState(new Date().toISOString().split('T')[0]);
-
   const timeSlotsList = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'];
 
   const [stampTargetUser, setStampTargetUser] = useState<any>(null);
   const [customerStampsDetailed, setCustomerStampsDetailed] = useState<{ status: 'valid' | 'invalid' | 'to_clear' | 'empty'; date: string; penaltyReason?: string }[]>([]);
   const [selectedInfractionPreset, setSelectedInfractionPreset] = useState('Active Account');
-
   const infractionPresets = [
-    { label: "Active Account", sixthReward: "25% OFF", ninthReward: "50% OFF", twelfthReward: "FREE", desc: "Active Account: Normal standing." },
-    { label: "Penalties Waived", sixthReward: "25% OFF", ninthReward: "50% OFF", twelfthReward: "FREE", desc: "Penalties Waived: All penalties cleared and notices removed." },
-    { label: "No Violation till card clears", sixthReward: "25% OFF", ninthReward: "50% OFF", twelfthReward: "FREE", desc: "No Violation till card clears: Card successfully cleared without violations; reset back to start." },
-    { label: "1st offense False Stamping (At/Near Milestones)", sixthReward: "Invalidated", ninthReward: "25% OFF", twelfthReward: "50% OFF", desc: "1st offense False Stamping (At/Near Milestones): 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%." },
-    { label: "1st offense Early False Stamping (Early Stage Padding)", sixthReward: "Invalidated", ninthReward: "25% OFF", twelfthReward: "50% OFF", desc: "1st offense Early False Stamping (Early Stage Padding): 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%." },
-    { label: "1st offense False Claims:", sixthReward: "Invalidated", ninthReward: "25% OFF", twelfthReward: "50% OFF", desc: "1st offense False Claims: 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%." },
-    { label: "2nd offense False Stamping (At/Near Milestones)", sixthReward: "Invalidated", ninthReward: "Invalidated", twelfthReward: "25% OFF", desc: "2nd offense False Stamping (At/Near Milestones): 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF." },
-    { label: "2nd offense Early False Stamping (Early Stage Padding)", sixthReward: "Invalidated", ninthReward: "Invalidated", twelfthReward: "25% OFF", desc: "2nd offense Early False Stamping (Early Stage Padding): 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF." },
-    { label: "2nd offense False Claims:", sixthReward: "Invalidated", ninthReward: "Invalidated", twelfthReward: "25% OFF", desc: "2nd offense False Claims: 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF." },
-    { label: "Multiple Offense : Severe or repeated false stamps", sixthReward: "Invalidated", ninthReward: "Invalidated", twelfthReward: "Cancelled (No Promos Left)", desc: "Multiple Offense : Severe or repeated false stamps. All remaining loyalty rewards cancelled." }
+    { label:  "Active Account ", sixthReward:  "25% OFF ", ninthReward:  "50% OFF ", twelfthReward:  "FREE ", desc:  "Active Account: Normal standing. " },
+    { label:  "Penalties Waived ", sixthReward:  "25% OFF ", ninthReward:  "50% OFF ", twelfthReward:  "FREE ", desc:  "Penalties Waived: All penalties cleared and notices removed. " },
+    { label:  "No Violation till card clears ", sixthReward:  "25% OFF ", ninthReward:  "50% OFF ", twelfthReward:  "FREE ", desc:  "No Violation till card clears: Card successfully cleared without violations; reset back to start. " },
+    { label:  "1st offense False Stamping (At/Near Milestones) ", sixthReward:  "Invalidated ", ninthReward:  "25% OFF ", twelfthReward:  "50% OFF ", desc:  "1st offense False Stamping (At/Near Milestones): 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%. " },
+    { label:  "1st offense Early False Stamping (Early Stage Padding) ", sixthReward:  "Invalidated ", ninthReward:  "25% OFF ", twelfthReward:  "50% OFF ", desc:  "1st offense Early False Stamping (Early Stage Padding): 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%. " },
+    { label:  "1st offense False Claims: ", sixthReward:  "Invalidated ", ninthReward:  "25% OFF ", twelfthReward:  "50% OFF ", desc:  "1st offense False Claims: 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%. " },
+    { label:  "2nd offense False Stamping (At/Near Milestones) ", sixthReward:  "Invalidated ", ninthReward:  "Invalidated ", twelfthReward:  "25% OFF ", desc:  "2nd offense False Stamping (At/Near Milestones): 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF. " },
+    { label:  "2nd offense Early False Stamping (Early Stage Padding) ", sixthReward:  "Invalidated ", ninthReward:  "Invalidated ", twelfthReward:  "25% OFF ", desc:  "2nd offense Early False Stamping (Early Stage Padding): 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF. " },
+    { label:  "2nd offense False Claims: ", sixthReward:  "Invalidated ", ninthReward:  "Invalidated ", twelfthReward:  "25% OFF ", desc:  "2nd offense False Claims: 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF. " },
+    { label:  "Multiple Offense : Severe or repeated false stamps ", sixthReward:  "Invalidated ", ninthReward:  "Invalidated ", twelfthReward:  "Cancelled (No Promos Left) ", desc:  "Multiple Offense : Severe or repeated false stamps. All remaining loyalty rewards cancelled. " }
   ];
 
   useEffect(() => {
     fetchCloudData();
-
     const orderChannel = supabase.channel('public:orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCloudData).subscribe();
     const menuChannel = supabase.channel('public:menu_items').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, fetchCloudData).subscribe();
     const slotsChannel = supabase.channel('public:slot_capacities').on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, fetchCloudData).subscribe();
     const promosChannel = supabase.channel('public:promos_dashboard').on('postgres_changes', { event: '*', schema: 'public', table: 'promos' }, fetchCloudData).subscribe();
-
     return () => {
       supabase.removeChannel(orderChannel);
       supabase.removeChannel(menuChannel);
@@ -177,6 +173,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           code: p.code,
           type: p.type,
           discountValue: Number(p.discount_value),
+          target_type: p.target_type || 'subtotal',
+          eligibility: p.eligibility || 'all',
           visibility: p.visibility,
           expiryDurationMs: Number(p.expiry_duration_ms),
           usageLimit: p.usage_limit ? Number(p.usage_limit) : null,
@@ -199,7 +197,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     try {
       const existing = slotCapacities.find(s => s.date_key === dateKey && s.slot_time === slotTime);
       const bookedCount = existing ? existing.booked_count : 0;
-
       const payload = {
         date_key: dateKey,
         slot_time: slotTime,
@@ -207,7 +204,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         booked_count: bookedCount,
         is_fully_booked: isFullyBooked
       };
-
       await supabase.from('slot_capacities').upsert(payload, { onConflict: 'date_key,slot_time' });
       alert(`Slot capacity updated successfully for ${slotTime} on ${dateKey}!`);
       fetchCloudData();
@@ -389,11 +385,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const handleAddPromo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPromoCode || !newPromoDiscount) return;
-    
+
     const expiryNum = parseFloat(newVoucherExpiryVal) || 60;
     let expiryMs = 0;
     let expiryUnitText = 'Never expires';
-
     if (newVoucherExpiryUnit === 'minutes') {
       expiryMs = expiryNum * 60 * 1000;
       expiryUnitText = `${expiryNum} minutes`;
@@ -412,6 +407,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       code: cleanCode,
       type: newPromoType,
       discount_value: parseFloat(newPromoDiscount),
+      target_type: newPromoTargetType, // FEATURE B: Scope
+      eligibility: newPromoEligibility, // FEATURE C: Guest vs Registered
       visibility: newVoucherVisibility,
       expiry_duration_ms: expiryMs,
       usage_limit: usageLimitNum,
@@ -425,7 +422,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         alert("Failed to save promo to database: " + error.message);
         return;
       }
-
       alert(`Voucher / Promo "${cleanCode}" successfully created and synced to cloud!`);
       setNewPromoCode('');
       setNewPromoDiscount('');
@@ -466,14 +462,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     if (!resetTargetUser || !newTempPassword) return;
     const identifierKey = resetTargetUser.identifier.toLowerCase().trim();
     const hashedNewPass = await hashPassword(newTempPassword);
-    
     try {
       await supabase.from('profiles').update({ password_hash: hashedNewPass }).eq('identifier', identifierKey);
-      localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, newTempPassword);
+      // SECURITY FIX: Removed plaintext password storage
       localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, hashedNewPass);
-      alert(`Password successfully reset for ${resetTargetUser.name}! New password: "${newTempPassword}"`);
+      alert(`Password successfully reset for ${resetTargetUser.name}!`);
     } catch (e) {}
-
     setResetTargetUser(null);
     setNewTempPassword('');
     fetchCloudData();
@@ -482,19 +476,15 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const handleSaveCustomerEdits = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCustomer) return;
-
     const oldIdentifierKey = editingCustomer.identifier.toLowerCase().trim();
     const newName = editCustName.trim();
     let finalValue = editCustValue.trim();
-
     if (editCustType === 'phone') {
       if (!finalValue.startsWith('+')) {
         finalValue = '+63' + finalValue.replace(/^0+/, '');
       }
     }
-
     const newIdentifierKey = finalValue.toLowerCase();
-
     if (!newIdentifierKey || !newName) {
       alert('Nickname and identifier cannot be blank.');
       return;
@@ -508,32 +498,28 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           identifier: newIdentifierKey
         })
         .eq('identifier', oldIdentifierKey);
-
       if (error) {
         alert('Error updating customer profile: ' + error.message);
         return;
       }
 
       if (oldIdentifierKey !== newIdentifierKey) {
-        const plainPass = localStorage.getItem(`veyns_pwd_plain_${oldIdentifierKey}`);
+        // SECURITY FIX: Removed plaintext password migration
         const hashPass = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
         const stamps = localStorage.getItem(`veyns_stamps_${oldIdentifierKey}`);
         const detailedStamps = localStorage.getItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
         const penalty = localStorage.getItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
-
-        if (plainPass) localStorage.setItem(`veyns_pwd_plain_${newIdentifierKey}`, plainPass);
+        
         if (hashPass) localStorage.setItem(`veyns_pwd_hash_${newIdentifierKey}`, hashPass);
         if (stamps) localStorage.setItem(`veyns_stamps_${newIdentifierKey}`, stamps);
         if (detailedStamps) localStorage.setItem(`veyns_detailed_stamps_${newIdentifierKey}`, detailedStamps);
         if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newIdentifierKey}`, penalty);
-
-        localStorage.removeItem(`veyns_pwd_plain_${oldIdentifierKey}`);
+        
         localStorage.removeItem(`veyns_pwd_hash_${oldIdentifierKey}`);
         localStorage.removeItem(`veyns_stamps_${oldIdentifierKey}`);
         localStorage.removeItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
         localStorage.removeItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
       }
-
       alert('Customer account successfully updated!');
       setEditingCustomer(null);
       fetchCloudData();
@@ -548,7 +534,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       const identifierKey = identifier.toLowerCase().trim();
       await supabase.from('profiles').delete().eq('identifier', identifierKey);
       setCustomers(customers.filter((c) => c.identifier.toLowerCase().trim() !== identifierKey));
-      localStorage.removeItem(`veyns_pwd_plain_${identifierKey}`);
+      // SECURITY FIX: Removed plaintext password cleanup
       localStorage.removeItem(`veyns_pwd_hash_${identifierKey}`);
       localStorage.removeItem(`veyns_stamps_${identifierKey}`);
       localStorage.removeItem(`veyns_detailed_stamps_${identifierKey}`);
@@ -562,35 +548,33 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       const identifierKey = cust.identifier.toLowerCase().trim();
       const detailedSaved = localStorage.getItem(`veyns_detailed_stamps_${identifierKey}`);
       const penaltySaved = localStorage.getItem(`veyns_fair_play_penalty_${identifierKey}`);
-
       if (penaltySaved) {
-        try {
-          const parsedPenalty = JSON.parse(penaltySaved);
-          if (parsedPenalty?.appliedPenalties?.length > 0) {
-            setSelectedInfractionPreset(parsedPenalty.appliedPenalties[0]);
-          } else {
-            setSelectedInfractionPreset('Active Account');
-          }
-        } catch (e) {
-          setSelectedInfractionPreset('Active Account');
-        }
-      } else {
-        setSelectedInfractionPreset('Active Account');
-      }
-
-      if (detailedSaved) {
-        setCustomerStampsDetailed(JSON.parse(detailedSaved));
-      } else if (cust.stamps_data && Array.isArray(cust.stamps_data)) {
-        setCustomerStampsDetailed(cust.stamps_data);
-      } else {
-        const userStamps = localStorage.getItem(`veyns_stamps_${identifierKey}`);
-        const parsedStamps: string[] = userStamps ? JSON.parse(userStamps) : [];
-        setCustomerStampsDetailed(Array.from({ length: 12 }).map((_, idx) => (parsedStamps[idx] ? { status: 'valid', date: parsedStamps[idx] } : { status: 'empty', date: '' })));
-      }
-    } catch (e) {
-      setCustomerStampsDetailed(Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })));
-      setSelectedInfractionPreset('Active Account');
-    }
+         try {
+           const parsedPenalty = JSON.parse(penaltySaved);
+           if (parsedPenalty?.appliedPenalties?.length > 0) {
+             setSelectedInfractionPreset(parsedPenalty.appliedPenalties[0]);
+           } else {
+             setSelectedInfractionPreset('Active Account');
+           }
+         } catch (e) {
+           setSelectedInfractionPreset('Active Account');
+         }
+       } else {
+         setSelectedInfractionPreset('Active Account');
+       }
+       if (detailedSaved) {
+         setCustomerStampsDetailed(JSON.parse(detailedSaved));
+       } else if (cust.stamps_data && Array.isArray(cust.stamps_data)) {
+         setCustomerStampsDetailed(cust.stamps_data);
+       } else {
+         const userStamps = localStorage.getItem(`veyns_stamps_${identifierKey}`);
+         const parsedStamps: string[] = userStamps ? JSON.parse(userStamps) : [];
+         setCustomerStampsDetailed(Array.from({ length: 12 }).map((_, idx) => (parsedStamps[idx] ? { status: 'valid', date: parsedStamps[idx] } : { status: 'empty', date: '' })));
+       }
+     } catch (e) {
+       setCustomerStampsDetailed(Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })));
+       setSelectedInfractionPreset('Active Account');
+     }
   };
 
   const handleSaveStamps = async () => {
@@ -598,39 +582,28 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     try {
       const identifierKey = stampTargetUser.identifier.toLowerCase().trim();
       const isCleanPreset = ['Active Account', 'Penalties Waived', 'No Violation till card clears'].includes(selectedInfractionPreset);
-
       let slotsToSave = selectedInfractionPreset === 'No Violation till card clears' 
-        ? Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })) 
-        : customerStampsDetailed;
-
-      const matchedPreset = !isCleanPreset ? infractionPresets.find(p => p.label === selectedInfractionPreset) : null;
-      const penaltyStatus = matchedPreset ? { sixthReward: matchedPreset.sixthReward, ninthReward: matchedPreset.ninthReward, twelfthReward: matchedPreset.twelfthReward, appliedPenalties: [matchedPreset.label] } : null;
-
-      if (isCleanPreset) {
-        slotsToSave = slotsToSave.map(s => (s.status === 'invalid' || s.status === 'to_clear' ? { status: 'empty', date: '' } : s));
-      }
-
-      localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(slotsToSave));
-      if (penaltyStatus) {
-        localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(penaltyStatus));
-      } else {
-        localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
-      }
-
-      const validStamps = slotsToSave.filter(s => s.status === 'valid').map(s => s.date);
-      localStorage.setItem(`veyns_stamps_${identifierKey}`, JSON.stringify(validStamps));
-
-      await supabase.from('profiles').update({ stamps_data: slotsToSave, penalty_data: penaltyStatus }).eq('identifier', identifierKey);
-
-      window.dispatchEvent(new Event('storage'));
-      alert(`Stamp card & penalties successfully synced for ${stampTargetUser.name}!`);
-      fetchCloudData();
-    } catch (e) {}
-    setStampTargetUser(null);
-  };
-
-  const togglePasswordVisibility = (identifier: string) => {
-    setVisiblePasswords((prev) => ({ ...prev, [identifier]: !prev[identifier] }));
+         ? Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })) 
+         : customerStampsDetailed;
+       const matchedPreset = !isCleanPreset ? infractionPresets.find(p => p.label === selectedInfractionPreset) : null;
+       const penaltyStatus = matchedPreset ? { sixthReward: matchedPreset.sixthReward, ninthReward: matchedPreset.ninthReward, twelfthReward: matchedPreset.twelfthReward, appliedPenalties: [matchedPreset.label] } : null;
+       if (isCleanPreset) {
+         slotsToSave = slotsToSave.map(s => (s.status === 'invalid' || s.status === 'to_clear' ? { status: 'empty', date: '' } : s));
+       }
+       localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(slotsToSave));
+       if (penaltyStatus) {
+         localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(penaltyStatus));
+       } else {
+         localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
+       }
+       const validStamps = slotsToSave.filter(s => s.status === 'valid').map(s => s.date);
+       localStorage.setItem(`veyns_stamps_${identifierKey}`, JSON.stringify(validStamps));
+       await supabase.from('profiles').update({ stamps_data: slotsToSave, penalty_data: penaltyStatus }).eq('identifier', identifierKey);
+       window.dispatchEvent(new Event('storage'));
+       alert(`Stamp card & penalties successfully synced for ${stampTargetUser.name}!`);
+       fetchCloudData();
+     } catch (e) {}
+     setStampTargetUser(null);
   };
 
   const handleExitStore = () => {
@@ -642,9 +615,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
-  const filteredCustomers = customers.filter(c => 
-    !customerSearch || 
-    c.name.toLowerCase().includes(customerSearch.toLowerCase()) || 
+  const filteredCustomers = customers.filter(c =>
+    !customerSearch ||
+    c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
     c.identifier.toLowerCase().includes(customerSearch.toLowerCase())
   );
 
@@ -653,7 +626,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const averageOrderValue = totalOrdersCount > 0 ? totalGrossSales / totalOrdersCount : 0;
 
   // Gather all options across groups for conditional parent dependency selection
-  const allAvailableOptions = itemOptionGroups.flatMap(g => 
+  const allAvailableOptions = itemOptionGroups.flatMap(g =>
     (g.options || []).map((o: any) => ({
       groupId: g.id,
       groupName: g.name || 'Unnamed Group',
@@ -684,7 +657,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               Employee Control & Sales Dashboard
             </h1>
           </div>
-
           <Button
             type="button"
             onClick={handleExitStore}
@@ -728,7 +700,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <p className="text-3xl font-extrabold text-amber-400 font-display">{formatPeso(averageOrderValue)}</p>
               </div>
             </div>
-
             <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-4 shadow-xl">
               <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
                 <div className="flex items-center gap-2">
@@ -741,7 +712,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </Button>
                 )}
               </div>
-
               {orders.length === 0 ? (
                 <div className="text-center py-16 space-y-3">
                   <ShoppingBag className="h-12 w-12 text-emerald-700 mx-auto opacity-50" />
@@ -840,18 +810,15 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 />
               </div>
             </div>
-
             <p className="text-xs text-emerald-300">
               Configure maximum order slots per time window or mark a time slot as <strong>Fully Booked</strong>. This syncs live with customer checkout.
             </p>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {timeSlotsList.map((slotTime) => {
                 const existing = slotCapacities.find(s => s.date_key === selectedSlotDate && s.slot_time === slotTime);
                 const maxSlots = existing ? existing.max_slots : 10;
                 const bookedCount = existing ? existing.booked_count : 0;
                 const isFullyBooked = existing ? existing.is_fully_booked : false;
-
                 return (
                   <SlotCapacityCard
                     key={slotTime}
@@ -873,9 +840,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-emerald-900/60 pb-3 gap-3">
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5 text-lime-400" />
-                <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Registered Customer Accounts & Passwords</h3>
+                <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Registered Customer Accounts</h3>
               </div>
-              
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-300/70" />
                 <input
@@ -887,14 +853,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 />
               </div>
             </div>
-
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-emerald-100">
                 <thead className="bg-[#071F19] text-emerald-300 uppercase text-[10px] tracking-wider border-b border-emerald-800/60">
                   <tr>
                     <th className="p-3">Customer Nickname</th>
                     <th className="p-3">Gmail / Phone Identifier</th>
-                    <th className="p-3">Password</th>
                     <th className="p-3">Account Type</th>
                     <th className="p-3 text-right">Actions</th>
                   </tr>
@@ -902,28 +866,16 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <tbody className="divide-y divide-emerald-950">
                   {filteredCustomers.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="text-center py-8 text-emerald-400/70">
+                      <td colSpan={4} className="text-center py-8 text-emerald-400/70">
                         No customer accounts match your search.
                       </td>
                     </tr>
                   ) : (
                     filteredCustomers.map((cust, idx) => {
-                      const identifierKey = cust.identifier.toLowerCase().trim();
-                      const plainPassword = localStorage.getItem(`veyns_pwd_plain_${identifierKey}`) || (identifierKey === 'admin' ? 'admin' : 'Not recorded');
-                      const isVisible = visiblePasswords[cust.identifier];
-
                       return (
                         <tr key={idx} className="hover:bg-[#071F19]/50 transition-colors">
                           <td className="p-3 font-bold text-white">{cust.name}</td>
                           <td className="p-3 text-lime-400 font-mono"><span>{cust.identifier}</span></td>
-                          <td className="p-3 font-mono">
-                            <div className="flex items-center gap-2">
-                              <span>{isVisible ? plainPassword : '••••••••'}</span>
-                              <button type="button" onClick={() => togglePasswordVisibility(cust.identifier)} className="text-emerald-400 hover:text-white cursor-pointer p-1">
-                                {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                              </button>
-                            </div>
-                          </td>
                           <td className="p-3">
                             <span className="inline-block bg-[#082d22] text-lime-400 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-extrabold text-[10px] uppercase">{cust.type || 'Regular'}</span>
                           </td>
@@ -969,14 +921,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <Plus className="h-4 w-4" /> Add New Menu Item
               </Button>
             </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {menuItems.map((item) => {
                 const discountPct = item.discountPercent || 0;
                 const effectivePrice = discountPct > 0 ? item.price * (1 - discountPct / 100) : item.price;
                 const isAvailable = item.isAvailable !== false;
                 const displayImage = item.image || menuImages[item.id];
-
                 return (
                   <div key={item.id} className={`bg-[#061d16] border rounded-2xl p-4 flex flex-col justify-between transition-all ${isAvailable ? 'border-emerald-800/80' : 'border-red-900/60 opacity-60'}`}>
                     <div className="space-y-3">
@@ -997,9 +947,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                           {isAvailable ? 'Available' : 'Hidden'}
                         </span>
                       </div>
-
                       <p className="text-xs text-emerald-300/80 line-clamp-2">{item.description}</p>
-
                       <div className="flex items-center justify-between bg-[#04140f] border border-emerald-900/80 rounded-xl p-2.5 text-xs">
                         <div>
                           <span className="text-[10px] text-emerald-400/70 uppercase block font-bold">Base Price</span>
@@ -1014,7 +962,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                           <span className="font-extrabold text-lime-400">{formatPeso(effectivePrice)}</span>
                         </div>
                       </div>
-
                       {item.optionGroups && item.optionGroups.length > 0 && (
                         <div className="bg-[#04140f] border border-emerald-900/60 rounded-xl p-2 text-[10px] text-emerald-300">
                           <span className="font-bold text-lime-400 block mb-0.5">Customizations ({item.optionGroups.length} groups):</span>
@@ -1022,7 +969,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         </div>
                       )}
                     </div>
-
                     <div className="flex items-center justify-between border-t border-emerald-900/60 pt-3 mt-4">
                       <div className="flex gap-1.5">
                         <Button onClick={() => handleToggleAvailability(item.id, isAvailable)} size="sm" className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl cursor-pointer ${isAvailable ? 'bg-red-950/60 text-red-300 border border-red-800/60' : 'bg-emerald-950 text-lime-400 border border-emerald-800'}`}>
@@ -1032,7 +978,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
-
                       <Button onClick={() => { setEditingItem(item); setItemName(item.name); setItemCategory(item.category || 'Rice Bowls'); setItemDescription(item.description || ''); setItemPrice(item.price.toString()); setItemDiscount((item.discountPercent || 0).toString()); setItemBestSeller(item.bestSeller || false); setImagePreviewUrl(displayImage || ''); setItemOptionGroups(item.optionGroups || []); setPreviewSelections({}); setIsAddingNewItem(true); }} size="sm" className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1">
                         <Edit2 className="h-3.5 w-3.5" /> Edit Item
                       </Button>
@@ -1051,7 +996,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               <Ticket className="h-5 w-5 text-lime-400" />
               <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Create Vouchers & Promo Codes Manager</h3>
             </div>
-
             <form onSubmit={handleAddPromo} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Voucher Code Name</label>
@@ -1066,6 +1010,20 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </select>
                   <input type="number" placeholder={newPromoType === 'peso' ? "e.g. 50" : "e.g. 10"} value={newPromoDiscount} onChange={(e) => setNewPromoDiscount(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
                 </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Discount Scope (Feature B)</label>
+                <select value={newPromoTargetType} onChange={(e) => setNewPromoTargetType(e.target.value as any)} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none">
+                  <option value="subtotal">Food Subtotal Only</option>
+                  <option value="delivery">Delivery Fee Only</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Customer Eligibility (Feature C)</label>
+                <select value={newPromoEligibility} onChange={(e) => setNewPromoEligibility(e.target.value as any)} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none">
+                  <option value="all">All Customers (Guests & Registered)</option>
+                  <option value="registered">Registered Customers Only</option>
+                </select>
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Visibility in Checkout</label>
@@ -1097,7 +1055,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 </Button>
               </div>
             </form>
-
             <div className="space-y-2">
               <h4 className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Active Vouchers & Promos ({promos.length})</h4>
               {promos.length === 0 ? (
@@ -1118,6 +1075,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         </p>
                         <p className="text-[10px] text-amber-300">⏱️ Expiry: {p.expiryUnitText || 'Never'}</p>
                         <p className="text-[10px] text-emerald-300">🔢 Usage: {p.usageCount || 0} / {p.usageLimit ? `${p.usageLimit} limit` : 'Unlimited'}</p>
+                        <p className="text-[10px] text-lime-300"> Scope: {p.target_type === 'delivery' ? 'Delivery Fee' : 'Food Subtotal'}</p>
+                        <p className="text-[10px] text-blue-300"> Eligibility: {p.eligibility === 'registered' ? 'Registered Only' : 'All Customers'}</p>
                       </div>
                       <button onClick={() => handleDeletePromo(p.code)} className="text-red-400 hover:text-red-300 p-2 rounded-lg bg-red-950/40 border border-red-900/60 cursor-pointer">
                         <Trash2 className="h-4 w-4" />
@@ -1142,7 +1101,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   <p className="text-xs text-emerald-300">Reference: <strong>{selectedInvoice.orderNumber}</strong></p>
                   <p className="text-[10px] text-emerald-400">{selectedInvoice.date}</p>
                 </div>
-
                 <div className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-3 text-xs space-y-1.5">
                   <p className="font-bold text-lime-400 uppercase text-[10px] tracking-wider">Customer & Contact Info:</p>
                   <p className="font-bold text-white text-sm">Account: {selectedInvoice.accountNickname}</p>
@@ -1150,14 +1108,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   <p className="text-emerald-200">Phone: <strong>{selectedInvoice.phone || 'N/A'}</strong></p>
                   <p className="text-emerald-200">Email: <strong>{selectedInvoice.email || 'N/A'}</strong></p>
                 </div>
-
                 <div className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-3 text-xs space-y-1.5">
                   <p className="font-bold text-lime-400 uppercase text-[10px] tracking-wider">Fulfillment & Delivery:</p>
                   <p className="text-white uppercase font-bold">Method: {selectedInvoice.fulfillment}</p>
                   <p className="text-emerald-200">Address: <strong>{selectedInvoice.location || 'N/A'}</strong></p>
                   <p className="text-emerald-200">Landmark: <strong>{selectedInvoice.landmark || 'N/A'}</strong></p>
                 </div>
-
                 <div className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-3 text-xs space-y-1.5">
                   <p className="font-bold text-lime-400 uppercase text-[10px] tracking-wider">Order Schedule & Type:</p>
                   <p className="text-amber-300 uppercase font-bold">
@@ -1165,7 +1121,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </p>
                   <p className="text-white font-medium">{selectedInvoice.scheduleInfo || 'Immediate / Today'}</p>
                 </div>
-
                 <div className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-3 text-xs space-y-2">
                   <p className="font-bold text-lime-400 uppercase text-[10px] tracking-wider">Order Summary:</p>
                   <div className="space-y-1 border-b border-emerald-900/60 pb-2">
@@ -1181,21 +1136,18 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                       </div>
                     ))}
                   </div>
-
                   {selectedInvoice.promoCode && (
                     <div className="flex justify-between text-amber-400 text-xs font-semibold">
                       <span>Promo Applied ({selectedInvoice.promoCode}):</span>
                       <span>Applied</span>
                     </div>
                   )}
-
                   <div className="flex justify-between text-sm font-extrabold text-white pt-1">
                     <span>Total Amount Due:</span>
                     <span className="text-lime-400 text-base">{formatPeso(selectedInvoice.total)}</span>
                   </div>
                 </div>
               </div>
-
               <div className="flex gap-2 pt-3 border-t border-emerald-900/60">
                 <Button
                   onClick={() => {
@@ -1235,7 +1187,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   Update customer nickname or switch between email and phone identifier.
                 </DialogDescription>
               </div>
-
               <form onSubmit={handleSaveCustomerEdits} className="space-y-4 my-3 text-xs">
                 <div className="space-y-1">
                   <label className="font-bold text-lime-400 uppercase tracking-wider block">Customer Nickname</label>
@@ -1247,7 +1198,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
                   />
                 </div>
-
                 <div className="space-y-1">
                   <label className="font-bold text-lime-400 uppercase tracking-wider block">Identifier Type</label>
                   <select
@@ -1262,7 +1212,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     <option value="phone">Phone Number</option>
                   </select>
                 </div>
-
                 <div className="space-y-1">
                   <label className="font-bold text-lime-400 uppercase tracking-wider block">
                     {editCustType === 'email' ? 'Email Address' : 'Phone Number (+63...)'}
@@ -1276,7 +1225,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-white font-mono font-bold focus:outline-none focus:border-lime-400"
                   />
                 </div>
-
                 <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
                   <Button
                     type="button"
@@ -1306,14 +1254,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               </DialogTitle>
               <DialogDescription className="text-xs text-emerald-300">Upload photo, configure pricing, description, and dynamic option groups.</DialogDescription>
             </div>
-
             <form onSubmit={handleSaveNewOrEditedItem} className="space-y-5 my-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="font-bold text-lime-400 uppercase tracking-wider block">Item Name</label>
                   <input type="text" required value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="e.g. Pork Sisig Rice Bowl" className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400" />
                 </div>
-
                 <div className="space-y-1.5">
                   <label className="font-bold text-lime-400 uppercase tracking-wider block">Category</label>
                   <select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400">
@@ -1324,7 +1270,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </select>
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="font-bold text-lime-400 uppercase tracking-wider block">Base Price (₱)</label>
@@ -1335,7 +1280,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   <input type="number" value={itemDiscount} onChange={(e) => setItemDiscount(e.target.value)} placeholder="0" className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400" />
                 </div>
               </div>
-
               <div className="space-y-1.5">
                 <label className="flex items-center gap-2.5 p-3 rounded-xl border border-emerald-800/80 bg-[#041913] cursor-pointer hover:border-lime-400/60 transition-colors">
                   <input type="checkbox" checked={itemBestSeller} onChange={(e) => setItemBestSeller(e.target.checked)} className="rounded border-emerald-700 text-lime-400 focus:ring-lime-400 bg-black/40 h-4 w-4" />
@@ -1345,12 +1289,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </div>
                 </label>
               </div>
-
               <div className="space-y-1.5">
                 <label className="font-bold text-lime-400 uppercase tracking-wider block">Description</label>
                 <textarea rows={2} value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} placeholder="Crispy pork sisig served over warm garlic rice..." className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white focus:outline-none focus:border-lime-400" />
               </div>
-
               <div className="space-y-2">
                 <label className="font-bold text-lime-400 uppercase tracking-wider block">Menu Item Photo Upload</label>
                 <div className="flex items-center gap-3 bg-[#041913] border border-emerald-800/80 rounded-xl p-3">
@@ -1362,7 +1304,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </div>
                 </div>
               </div>
-
               {/* ENHANCED DYNAMIC OPTION GROUPS BUILDER SECTION */}
               <div className="space-y-3 pt-3 border-t border-emerald-900/60">
                 <div className="flex items-center justify-between">
@@ -1376,7 +1317,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     + Add Option Group
                   </Button>
                 </div>
-
                 {itemOptionGroups.length === 0 ? (
                   <div className="bg-[#041913] border border-emerald-800/60 rounded-xl p-4 text-center text-emerald-400/70 text-[11px]">
                     No custom option groups configured for this item yet. Click "+ Add Option Group" to add add-ons (e.g. Add Egg, Ramen Style, Egg Preparation).
@@ -1396,7 +1336,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                               className="flex-1 bg-[#061d16] border border-emerald-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-lime-400"
                             />
                           </div>
-
                           <div className="flex items-center gap-1">
                             <button type="button" onClick={() => handleReorderGroup(gIdx, 'up')} disabled={gIdx === 0} className="p-1 rounded bg-[#061d16] border border-emerald-800 text-emerald-300 hover:text-lime-400 disabled:opacity-30 cursor-pointer">
                               <ChevronUp className="size-3.5" />
@@ -1409,7 +1348,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             </button>
                           </div>
                         </div>
-
                         {/* Optional Group Description */}
                         <div>
                           <input
@@ -1420,7 +1358,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             className="w-full bg-[#061d16] border border-emerald-800/60 rounded-lg px-2.5 py-1 text-[11px] text-emerald-200 focus:outline-none focus:border-lime-400"
                           />
                         </div>
-
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           <div>
                             <label className="text-[9px] text-emerald-300 block mb-1 uppercase font-bold">Selection Type</label>
@@ -1463,7 +1400,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             />
                           </div>
                         </div>
-
                         {/* Conditional Visibility Trigger Rule */}
                         <div className="bg-[#061d16] border border-emerald-800/60 rounded-xl p-2.5 space-y-1">
                           <label className="text-[10px] font-bold text-amber-300 uppercase tracking-wider block">
@@ -1490,7 +1426,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                               ))}
                           </select>
                         </div>
-
                         {/* Options List Inside Group */}
                         <div className="space-y-2 pt-2 border-t border-emerald-900/40">
                           <div className="flex items-center justify-between">
@@ -1499,7 +1434,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                               + Add Option
                             </button>
                           </div>
-
                           <div className="space-y-1.5">
                             {group.options.map((opt: any, oIdx: number) => (
                               <div key={opt.id} className="flex items-center gap-2">
@@ -1538,7 +1472,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </div>
                 )}
               </div>
-
               {/* LIVE CUSTOMIZATION PREVIEW BOX */}
               {itemOptionGroups.length > 0 && (
                 <div className="bg-[#041913] border border-lime-400/40 rounded-2xl p-4 space-y-3">
@@ -1554,9 +1487,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         );
                         if (!isTriggered) return null;
                       }
-
                       const currentSelected = previewSelections[group.id] || [];
-
                       return (
                         <div key={group.id} className="space-y-1.5">
                           <label className="text-xs font-bold text-white block">
@@ -1588,7 +1519,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         </div>
                       );
                     })}
-
                     <div className="pt-2 border-t border-emerald-900/60 flex items-center justify-between text-xs">
                       <span className="text-emerald-300 font-bold">Simulated Item Total:</span>
                       <span className="text-lime-400 font-extrabold text-sm">{formatPeso(basePreviewPrice + previewAddonsTotal)}</span>
@@ -1596,7 +1526,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </div>
                 </div>
               )}
-
               <div className="flex gap-2 pt-3 border-t border-emerald-900/60">
                 <Button type="button" onClick={() => setIsAddingNewItem(false)} className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-3 rounded-xl text-xs cursor-pointer">Cancel</Button>
                 <Button type="submit" className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs cursor-pointer shadow-lg">Save to Database</Button>
@@ -1629,7 +1558,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   <Award className="h-5 w-5 text-lime-400" /> Fair Play Stamp Manager: {stampTargetUser.name}
                 </DialogTitle>
               </div>
-
               <div className="my-4 space-y-4 text-xs">
                 <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
                   <label className="font-bold text-lime-400 uppercase tracking-wider block text-[11px]">📋 Select Status / Infraction Rule:</label>
@@ -1637,12 +1565,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     {infractionPresets.map((preset, pIdx) => <option key={pIdx} value={preset.label}>{preset.label}</option>)}
                   </select>
                 </div>
-
                 <div className="grid grid-cols-4 gap-2.5">
                   {Array.from({ length: 12 }).map((_, idx) => {
                     const stampEntry = customerStampsDetailed[idx];
                     const status = stampEntry ? stampEntry.status : 'empty';
-
                     return (
                       <div key={idx} className={`relative aspect-square rounded-xl border flex flex-col items-center justify-between p-1.5 text-center transition-all ${status === 'valid' ? 'bg-[#082d22] border-lime-400 text-lime-400 shadow-md' : status === 'to_clear' ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-md' : status === 'invalid' ? 'bg-red-950/90 border-red-500 text-red-300 shadow-md' : 'bg-[#041913] border-emerald-800/60 text-emerald-600'}`}>
                         <span className="text-[9px] font-mono opacity-80">#{idx + 1}</span>
@@ -1664,7 +1590,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   })}
                 </div>
               </div>
-
               <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
                 <Button onClick={() => setStampTargetUser(null)} className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2.5 rounded-xl text-xs cursor-pointer">Cancel</Button>
                 <Button onClick={handleSaveStamps} className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg">Save & Sync Account Views</Button>
@@ -1696,7 +1621,6 @@ function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialF
           {isFullyBooked ? 'Fully Booked' : `${Math.max(0, maxSlots - bookedCount)} Slots Left`}
         </span>
       </div>
-
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="text-[10px] text-emerald-300 block mb-1">Max Capacity Limit:</label>
@@ -1719,7 +1643,6 @@ function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialF
           </label>
         </div>
       </div>
-
       <div className="flex justify-between items-center pt-1 text-[11px] text-emerald-300">
         <span>Booked Orders: <strong>{bookedCount}</strong></span>
         <Button

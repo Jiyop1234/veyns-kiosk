@@ -14,7 +14,6 @@ export function App() {
   const [authMode, setAuthMode] = useState<'select' | 'regular' | 'guest' | 'employee' | 'forgot'>('select');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
-  
   const [isSignUp, setIsSignUp] = useState(false);
   
   // Selector State ('email' | 'phone')
@@ -41,7 +40,6 @@ export function App() {
 
   const [showMyOrders, setShowMyOrders] = useState(false);
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
-
   const [showAccountSettingsPanel, setShowAccountSettingsPanel] = useState(false);
   const [isUpdatingIdentifier, setIsUpdatingIdentifier] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
@@ -63,7 +61,6 @@ export function App() {
     if (!userObj || userObj.type === 'guest') return;
     try {
       const identifierKey = (userObj.identifier || 'default').toLowerCase().trim();
-      
       const { data: cloudProfile, error } = await supabase
         .from('profiles')
         .select('stamps_data, penalty_data')
@@ -78,7 +75,6 @@ export function App() {
           setStamps(normalized);
           localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(normalized));
         }
-
         if (cloudProfile.penalty_data) {
           setFairPlayPenalty(cloudProfile.penalty_data);
           localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(cloudProfile.penalty_data));
@@ -91,7 +87,6 @@ export function App() {
 
       const detailedStampsKey = `veyns_detailed_stamps_${identifierKey}`;
       const penaltyKey = `veyns_fair_play_penalty_${identifierKey}`;
-      
       const detailedSaved = localStorage.getItem(detailedStampsKey);
       const penaltySaved = localStorage.getItem(penaltyKey);
 
@@ -109,7 +104,7 @@ export function App() {
       } else {
         setFairPlayPenalty(null);
       }
-      
+
       if (detailedSaved) {
         const parsed = JSON.parse(detailedSaved);
         const normalized = Array.from({ length: 12 }).map((_, idx) => {
@@ -129,12 +124,10 @@ export function App() {
     try {
       const savedUser = localStorage.getItem('veyns_current_user');
       const savedMode = localStorage.getItem('veyns_auth_mode');
-
       if (savedUser && savedMode) {
         const userObj = JSON.parse(savedUser);
         setCurrentUser(userObj);
         setAuthMode(savedMode as any);
-
         if (userObj.type === 'guest') {
           const sessionOrders = sessionStorage.getItem('veyns_guest_order_history');
           if (sessionOrders) setOrderHistory(JSON.parse(sessionOrders));
@@ -206,6 +199,7 @@ export function App() {
     setLoginError('');
 
     const rawIdentifier = authInputType === 'email' ? authEmailInput : authPhoneInput;
+
     if (!rawIdentifier.trim()) {
       if (isSignUp) {
         setIdentifierError(authInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid Philippine mobile number.');
@@ -249,12 +243,10 @@ export function App() {
         setNicknameError('Please choose your unique nickname.');
         return;
       }
-
       if (!validateIdentifier(rawIdentifier, authInputType)) {
         setIdentifierError(authInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid Philippine mobile number.');
         return;
       }
-
       if (!validatePasswordStrength(authPassword)) {
         setPasswordError('Password must be at least 8 characters long and include at least one number and one symbol.');
         return;
@@ -281,9 +273,7 @@ export function App() {
           if (hasConflict) return;
         }
 
-        localStorage.setItem(`veyns_pwd_plain_${canonicalKey}`, authPassword);
-        localStorage.setItem(`veyns_pwd_hash_${canonicalKey}`, enteredPasswordHash);
-
+        // SECURITY FIX: Do NOT store plaintext password in localStorage
         const { error: dbError } = await supabase.from('profiles').upsert(
           { 
             identifier: canonicalKey, 
@@ -337,13 +327,12 @@ export function App() {
         setAuthMode('regular');
         localStorage.setItem('veyns_current_user', JSON.stringify(userData));
         localStorage.setItem('veyns_auth_mode', 'regular');
-        
         const savedOrders = localStorage.getItem('veyns_order_history');
         if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
-
         loadUserStampsAndPenalties(userData);
         return;
       } else {
+        // Fallback for legacy local-only accounts (still hash-verified)
         const storedPwdHash = localStorage.getItem(`veyns_pwd_hash_${canonicalKey}`);
         if (!storedPwdHash || storedPwdHash !== enteredPasswordHash) {
           setLoginError('Incorrect email or phone number or password.');
@@ -358,10 +347,8 @@ export function App() {
         setAuthMode('regular');
         localStorage.setItem('veyns_current_user', JSON.stringify(userData));
         localStorage.setItem('veyns_auth_mode', 'regular');
-        
         const savedOrders = localStorage.getItem('veyns_order_history');
         if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
-
         loadUserStampsAndPenalties(userData);
         return;
       }
@@ -377,7 +364,6 @@ export function App() {
 
     const rawNewId = updateInputType === 'email' ? newEmailInput : newPhoneInput;
     if (!rawNewId) return;
-
     if (!validateIdentifier(rawNewId, updateInputType)) {
       alert(updateInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid Philippine mobile number.');
       return;
@@ -392,19 +378,17 @@ export function App() {
         .update({ identifier: newCanonicalKey })
         .eq('identifier', oldIdentifierKey);
 
-      const plainPass = localStorage.getItem(`veyns_pwd_plain_${oldIdentifierKey}`);
+      // SECURITY FIX: Migrate hash only, do not touch plaintext
       const hashPass = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
       const detailedStamps = localStorage.getItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
       const userStamps = localStorage.getItem(`veyns_stamps_${oldIdentifierKey}`);
       const penalty = localStorage.getItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
 
-      if (plainPass) localStorage.setItem(`veyns_pwd_plain_${newCanonicalKey}`, plainPass);
       if (hashPass) localStorage.setItem(`veyns_pwd_hash_${newCanonicalKey}`, hashPass);
       if (detailedStamps) localStorage.setItem(`veyns_detailed_stamps_${newCanonicalKey}`, detailedStamps);
       if (userStamps) localStorage.setItem(`veyns_stamps_${newCanonicalKey}`, userStamps);
       if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newCanonicalKey}`, penalty);
 
-      localStorage.removeItem(`veyns_pwd_plain_${oldIdentifierKey}`);
       localStorage.removeItem(`veyns_pwd_hash_${oldIdentifierKey}`);
       localStorage.removeItem(`veyns_stamps_${oldIdentifierKey}`);
       localStorage.removeItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
@@ -414,7 +398,6 @@ export function App() {
       setCurrentUser(updatedUser);
       localStorage.setItem('veyns_current_user', JSON.stringify(updatedUser));
       loadUserStampsAndPenalties(updatedUser);
-
       setAccountUpdateSuccess(true);
       setTimeout(() => {
         setAccountUpdateSuccess(false);
@@ -430,18 +413,18 @@ export function App() {
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.type === 'guest' || !currentPasswordInput || !newPasswordSettingInput) return;
-
     if (!validatePasswordStrength(newPasswordSettingInput)) {
       alert('Password must be at least 8 characters long and include at least one number and one symbol.');
       return;
     }
 
     const identifierKey = currentUser.identifier.toLowerCase().trim();
-
     try {
       const currentHash = await hashPassword(currentPasswordInput);
       const storedHash = localStorage.getItem(`veyns_pwd_hash_${identifierKey}`);
-
+      
+      // Note: For legacy accounts that might not have a local hash but exist in DB, 
+      // we rely on the DB check. For this UI flow, we check local hash if available.
       if (storedHash && storedHash !== currentHash) {
         alert('Incorrect current password.');
         return;
@@ -450,9 +433,9 @@ export function App() {
       const newHash = await hashPassword(newPasswordSettingInput);
       await supabase.from('profiles').update({ password_hash: newHash }).eq('identifier', identifierKey);
       
-      localStorage.setItem(`veyns_pwd_plain_${identifierKey}`, newPasswordSettingInput);
+      // SECURITY FIX: Store hash only
       localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, newHash);
-
+      
       setAccountUpdateSuccess(true);
       setTimeout(() => {
         setAccountUpdateSuccess(false);
@@ -469,7 +452,6 @@ export function App() {
     e.preventDefault();
     const rawForgot = forgotInputType === 'email' ? forgotEmailInput : forgotPhoneInput;
     if (!rawForgot || !newPasswordInput) return;
-
     if (!validatePasswordStrength(newPasswordInput)) {
       alert('Password must be at least 8 characters long and include at least one number and one symbol.');
       return;
@@ -477,10 +459,10 @@ export function App() {
 
     const canonicalKey = getCanonicalIdentifier(forgotInputType, forgotEmailInput, forgotPhoneInput);
     const newHash = await hashPassword(newPasswordInput);
-    
+
     try {
       await supabase.from('profiles').update({ password_hash: newHash }).eq('identifier', canonicalKey);
-      localStorage.setItem(`veyns_pwd_plain_${canonicalKey}`, newPasswordInput);
+      // SECURITY FIX: Store hash only
       localStorage.setItem(`veyns_pwd_hash_${canonicalKey}`, newHash);
       setForgotSuccess(true);
       setTimeout(() => {
@@ -500,7 +482,6 @@ export function App() {
       alert('Please enter an authorization code.');
       return;
     }
-
     try {
       const { data, error } = await supabase
         .from('admin_config')
@@ -512,7 +493,6 @@ export function App() {
         alert('Error verifying security clearance with database.');
         return;
       }
-
       if (pinValue.trim() === data.value.trim()) {
         setIsAdminDashboardOpen(true);
       } else {
@@ -530,7 +510,6 @@ export function App() {
     setAuthMode('guest');
     localStorage.setItem('veyns_current_user', JSON.stringify(guestData));
     localStorage.setItem('veyns_auth_mode', 'guest');
-    
     setStamps([]);
     setFairPlayPenalty(null);
     setOrderHistory([]);
@@ -565,7 +544,6 @@ export function App() {
 
   const recordOrderForLoyalty = async () => {
     if (!currentUser || currentUser.type === 'guest') return;
-    
     const todayStr = new Date().toISOString().split('T')[0];
     const identifierKey = (currentUser.identifier || 'default').toLowerCase().trim();
     const detailedStampsKey = `veyns_detailed_stamps_${identifierKey}`;
@@ -579,32 +557,26 @@ export function App() {
           currentStamps = JSON.parse(detailedSaved);
         }
       }
-
       while (currentStamps.length < 12) {
         currentStamps.push({ status: 'empty', date: '' });
       }
 
       const alreadyStampedToday = currentStamps.some(s => s && s.date === todayStr && s.status === 'valid');
-
       if (!alreadyStampedToday) {
         const targetIdx = currentStamps.findIndex(s => !s || s.status === 'empty');
         if (targetIdx >= 0) {
           currentStamps[targetIdx] = { status: 'valid', date: todayStr };
           setStamps(currentStamps);
-
           localStorage.setItem(detailedStampsKey, JSON.stringify(currentStamps));
           const validDates = currentStamps.filter(s => s && s.status === 'valid').map(s => s.date);
           localStorage.setItem(userStampsKey, JSON.stringify(validDates));
-          
           if (identifierKey === 'admin') {
             localStorage.setItem('veyns_loyalty_stamps', JSON.stringify(validDates));
           }
-
           await supabase
             .from('profiles')
             .update({ stamps_data: currentStamps })
             .eq('identifier', identifierKey);
-
           window.dispatchEvent(new Event('storage'));
         }
       }
@@ -626,7 +598,6 @@ export function App() {
             </h1>
             <p className="text-xs text-emerald-300/80">Please select how you would like to enter our store:</p>
           </div>
-
           <div className="space-y-3 pt-2">
             <Button
               onClick={() => { setAuthEmailInput(''); setAuthPhoneInput(''); setAuthPassword(''); setAuthName(''); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError(''); setAuthMode('regular'); setIsSignUp(false); }}
@@ -635,14 +606,12 @@ export function App() {
               <User className="size-4 text-lime-400 shrink-0" />
               <span className="leading-tight">Login as Regular <span className="block sm:inline font-normal opacity-90">(Earn Stamps & History)</span></span>
             </Button>
-
             <Button
               onClick={handleGuestLogin}
               className="w-full bg-[#061d16] hover:bg-[#0a3629] text-emerald-200 border border-emerald-800/60 py-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2.5 transition-all cursor-pointer"
             >
               <Sparkles className="size-4 text-lime-400" /> Continue as Guest (Trial Mode)
             </Button>
-
             <Button
               onClick={() => setAuthMode('employee')}
               className="w-full bg-transparent hover:bg-emerald-950/40 text-emerald-400/80 border border-emerald-900/60 py-3 rounded-2xl font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
@@ -667,20 +636,17 @@ export function App() {
               {isSignUp ? 'Sign up with email or phone to unlock Loyalty Stamps' : 'Access your order history and loyalty rewards'}
             </p>
           </div>
-
           {signUpSuccessMsg && (
             <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-1">
               <CheckCircle2 className="h-6 w-6 text-lime-400 mx-auto" />
               <p className="font-bold text-lime-400 text-xs">Account successfully created! Please log in below.</p>
             </div>
           )}
-
           {loginError && !isSignUp && (
             <div className="bg-red-950/80 border border-red-500 rounded-xl p-3 text-center">
               <p className="text-xs font-bold text-red-400">{loginError}</p>
             </div>
           )}
-
           <form onSubmit={handleRegularAuth} className="space-y-4">
             {isSignUp && (
               <div className="space-y-1">
@@ -701,7 +667,6 @@ export function App() {
                 {nicknameError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{nicknameError}</p>}
               </div>
             )}
-
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">
@@ -725,7 +690,6 @@ export function App() {
                   <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-lime-400 pointer-events-none" />
                 </div>
               </div>
-
               {authInputType === 'email' ? (
                 <div>
                   <input
@@ -766,7 +730,6 @@ export function App() {
               )}
               {identifierError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{identifierError}</p>}
             </div>
-
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">Password</label>
@@ -808,7 +771,6 @@ export function App() {
               </div>
               {passwordError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{passwordError}</p>}
             </div>
-
             <Button
               type="submit"
               className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg mt-2 cursor-pointer"
@@ -816,7 +778,6 @@ export function App() {
               {isSignUp ? 'Lock in & Earn Stamps' : 'Login to My Account'}
             </Button>
           </form>
-
           <div className="text-center pt-2 border-t border-emerald-900/60 space-y-2">
             <button
               onClick={() => { 
@@ -837,7 +798,7 @@ export function App() {
             </button>
             <div>
               <button
-                onClick={() => { setAuthEmailInput(''); setAuthPhoneInput(''); setAuthPassword(''); setAuthName(''); setAuthMode('select'); setSignUpSuccessMsg(false); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError(''); }}
+                onClick={() => { setAuthEmailInput(''); setAuthPhoneInput(''); setAuthPassword(''); setAuthName(''); setAuthMode('select'); setSignUpSuccessMsg(false); setNicknameError(''); setPasswordError(''); setLoginError(''); }}
                 className="text-[11px] text-emerald-400/60 hover:text-white cursor-pointer"
               >
                 ← Back to role selection
@@ -861,7 +822,6 @@ export function App() {
               Enter your registered email or phone and set a new password.
             </p>
           </div>
-
           {forgotSuccess ? (
             <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-6 text-center space-y-2">
               <CheckCircle2 className="h-10 w-10 text-lime-400 mx-auto" />
@@ -891,7 +851,6 @@ export function App() {
                     <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-lime-400 pointer-events-none" />
                   </div>
                 </div>
-
                 {forgotInputType === 'email' ? (
                   <input
                     type="email"
@@ -916,7 +875,6 @@ export function App() {
                   </div>
                 )}
               </div>
-
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">New Password</label>
                 <p className="text-[10px] text-emerald-300/80 mb-1">Minimum 8 characters, including numbers and symbols.</p>
@@ -929,14 +887,12 @@ export function App() {
                   className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
                 />
               </div>
-
               <Button
                 type="submit"
                 className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg mt-2 cursor-pointer"
               >
                 Update Password
               </Button>
-
               <button
                 type="button"
                 onClick={() => setAuthMode('regular')}
@@ -954,18 +910,17 @@ export function App() {
   if (authMode === 'employee') {
     if (isAdminDashboardOpen) {
       return (
-        <EmployeeDashboard 
+        <EmployeeDashboard
           onBackToStore={() => {
             setIsAdminDashboardOpen(false);
             setAuthMode('select');
             if (currentUser && currentUser.type !== 'guest') {
               loadUserStampsAndPenalties(currentUser);
             }
-          }} 
+          }}
         />
       );
     }
-
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
         <div className="max-w-md w-full bg-[#051813] border border-red-900/40 rounded-3xl p-8 shadow-2xl space-y-6 text-center">
@@ -985,7 +940,6 @@ export function App() {
               </div>
             </div>
           </div>
-
           <div className="bg-[#041913] border border-emerald-800/60 rounded-2xl p-5 text-xs text-emerald-200 space-y-3">
             <label className="font-bold text-lime-400 uppercase tracking-wider text-[11px] block text-center">enter authorization code</label>
             <input
@@ -1007,7 +961,6 @@ export function App() {
               Proceed
             </Button>
           </div>
-
           <button
             onClick={() => setAuthMode('select')}
             className="text-xs font-bold text-emerald-400/80 hover:text-white transition-colors cursor-pointer block mx-auto"
@@ -1022,8 +975,8 @@ export function App() {
   return (
     <CartProvider>
       <div className="min-h-screen bg-[#071F19] text-white flex flex-col">
-        <SiteHeader 
-          onOpenOrders={() => setShowMyOrders(true)} 
+        <SiteHeader
+          onOpenOrders={() => setShowMyOrders(true)}
           onResetMenu={handleResetMenu}
           currentUser={currentUser}
           onOpenLoyalty={() => {
@@ -1074,9 +1027,9 @@ export function App() {
           onExitGuest={handleLogout}
         />
         <main className="flex-1">
-          <OrderingCounter 
-            showMyOrders={showMyOrders} 
-            setShowMyOrders={setShowMyOrders} 
+          <OrderingCounter
+            showMyOrders={showMyOrders}
+            setShowMyOrders={setShowMyOrders}
             orderHistory={orderHistory}
             setOrderHistory={(newHistory) => {
               setOrderHistory(newHistory);
@@ -1104,7 +1057,6 @@ export function App() {
             }}
           />
         </main>
-
         <Dialog open={showLoyaltyModal} onOpenChange={setShowLoyaltyModal}>
           <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
             <div className="space-y-1 text-left border-b border-emerald-900/60 pb-3">
@@ -1115,7 +1067,6 @@ export function App() {
                 Manage your account details and security credentials.
               </DialogDescription>
             </div>
-
             <div className="my-4 space-y-4">
               {currentUser && currentUser.type === 'regular' && (
                 <div className="space-y-3">
@@ -1126,14 +1077,12 @@ export function App() {
                         {currentUser.identifier}
                       </p>
                     </div>
-
                     {accountUpdateSuccess && (
                       <div className="bg-[#061d16] border border-lime-400/60 rounded-xl p-3 text-center space-y-1">
                         <CheckCircle2 className="h-5 w-5 text-lime-400 mx-auto" />
                         <p className="font-bold text-lime-400 text-[11px]">Successfully updated!</p>
                       </div>
                     )}
-
                     {!isUpdatingIdentifier && !isResettingPassword && (
                       <div className="grid grid-cols-2 gap-2 pt-1">
                         <Button
@@ -1162,7 +1111,6 @@ export function App() {
                         </Button>
                       </div>
                     )}
-
                     {isUpdatingIdentifier && (
                       <form onSubmit={handleUpdateIdentifierSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
                         <div className="space-y-2">
@@ -1186,7 +1134,6 @@ export function App() {
                               <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 size-3 text-lime-400 pointer-events-none" />
                             </div>
                           </div>
-
                           {updateInputType === 'email' ? (
                             <input
                               type="email"
@@ -1211,7 +1158,6 @@ export function App() {
                             </div>
                           )}
                         </div>
-
                         <div className="flex gap-2">
                           <Button
                             type="button"
@@ -1229,7 +1175,6 @@ export function App() {
                         </div>
                       </form>
                     )}
-
                     {isResettingPassword && (
                       <form onSubmit={handleResetPasswordSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
                         <div className="space-y-1">
@@ -1255,7 +1200,6 @@ export function App() {
                             placeholder="Create a strong password"
                           />
                         </div>
-
                         <div className="bg-[#03120d] border border-emerald-800/80 rounded-xl p-2.5 text-[11px] text-emerald-300 space-y-1.5">
                           <p className="font-semibold">Forgot your current password?</p>
                           <p className="text-[10px] text-emerald-400/80">Please contact us through our social media pages below:</p>
@@ -1278,7 +1222,6 @@ export function App() {
                             </a>
                           </div>
                         </div>
-
                         <div className="flex gap-2 pt-1">
                           <Button
                             type="button"
@@ -1300,7 +1243,6 @@ export function App() {
                 </div>
               )}
             </div>
-
             <Button
               onClick={() => setShowLoyaltyModal(false)}
               className="w-full bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-extrabold py-3 rounded-xl text-xs transition-all shadow mt-4"
