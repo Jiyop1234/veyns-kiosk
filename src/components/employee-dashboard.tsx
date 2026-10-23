@@ -125,8 +125,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       const { data: cloudOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
       if (cloudOrders) {
         setOrders(cloudOrders.map((o: any) => ({
+          id: o.id,
           orderNumber: o.order_number,
           accountNickname: o.account_nickname || 'Guest',
+          slotDate: o.slot_date || '',
+          slotTime: o.slot_time || '',
+          bowlCount: Number(o.bowl_count || 0),
           name: o.customer_name,
           email: o.email || '',
           phone: o.phone || '',
@@ -198,7 +202,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   };
 
   // --- Save configured capacity and booking status for a date/time slot ---
-  const handleUpdateSlotCapacity = async (dateKey: string, slotTime: string, maxSlots: number, isFullyBooked: boolean) => {
+  const handleUpdateSlotCapacity = async (dateKey: string, slotTime: string, maxSlots: number, isManuallyFullyBooked: boolean) => {
     try {
       const existing = slotCapacities.find(s => s.date_key === dateKey && s.slot_time === slotTime);
       const bookedCount = existing ? existing.booked_count : 0;
@@ -209,14 +213,30 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         max_slots: maxSlots,
         booked_count: bookedCount,
         booked_bowls: bookedBowls,
-        is_fully_booked: isFullyBooked
+        is_manually_fully_booked: isManuallyFullyBooked,
+        is_fully_booked: isManuallyFullyBooked || bookedBowls >= maxSlots
       };
-      await supabase.from('slot_capacities').upsert(payload, { onConflict: 'date_key,slot_time' });
+      const { error } = await supabase.from('slot_capacities').upsert(payload, { onConflict: 'date_key,slot_time' });
+      if (error) throw error;
       alert(`Slot capacity updated successfully for ${slotTime} on ${dateKey}!`);
       fetchCloudData();
     } catch (e) {
-      alert('Error updating slot capacity.');
+      alert(e?.message || 'Error updating slot capacity.');
     }
+  };
+
+  const handleMoveOrder = async (orderId: string, targetDate: string, targetSlot: string) => {
+    const { error } = await supabase.rpc('move_order_time_slot_admin', {
+      p_order_id: orderId,
+      p_target_date: targetDate,
+      p_target_slot: targetSlot
+    });
+    if (error) {
+      alert(error.message || 'Could not move this order.');
+      return;
+    }
+    alert(`Order moved to ${targetSlot} on ${targetDate}.`);
+    await fetchCloudData();
   };
 
   // --- Upload menu photos to Supabase Storage ---
@@ -752,7 +772,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 const maxSlots = existing ? existing.max_slots : 20;
                 const bookedCount = existing ? existing.booked_count : 0;
                 const bookedBowls = existing ? (existing.booked_bowls || 0) : 0;
-                const isFullyBooked = existing ? existing.is_fully_booked : false;
+                const isFullyBooked = existing ? (existing.is_manually_fully_booked ?? existing.is_fully_booked) : false;
+                const slotOrders = orders.filter(order => order.slotDate === selectedSlotDate && order.slotTime === slotTime);
                 return (
                   <SlotCapacityCard
                     key={slotTime}
@@ -761,8 +782,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     initialMax={maxSlots}
                     bookedCount={bookedCount}
                     bookedBowls={bookedBowls}
+                    orders={slotOrders}
+                    timeSlotsList={timeSlotsList}
                     initialFullyBooked={isFullyBooked}
                     onSave={handleUpdateSlotCapacity}
+                    onMoveOrder={handleMoveOrder}
                   />
                 );
               })}
@@ -1492,7 +1516,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 }
 
 // --- Reusable editor card for an individual date/time slot's capacity ---
-function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, bookedBowls, initialFullyBooked, onSave }: any) {
+function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, bookedBowls, orders, timeSlotsList, initialFullyBooked, onSave, onMoveOrder }: any) {
   const [maxSlots, setMaxSlots] = useState(initialMax);
   const [isFullyBooked, setIsFullyBooked] = useState(initialFullyBooked);
 
@@ -1507,8 +1531,8 @@ function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, bookedBo
         <span className="font-extrabold text-lime-400 text-sm flex items-center gap-1.5">
           <Clock className="size-4" /> {slotTime}
         </span>
-        <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] uppercase ${isFullyBooked ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'}`}>
-          {isFullyBooked || bookedBowls >= maxSlots ? 'Fully Booked' : `${Math.max(0, maxSlots - bookedBowls)} Bowls Left`}
+        <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] uppercase ${(isFullyBooked || bookedBowls >= maxSlots) ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'}`}>
+          {(isFullyBooked || bookedBowls >= maxSlots) ? 'Fully Booked' : `${Math.max(0, maxSlots - bookedBowls)} Bowls Left`}
         </span>
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -1541,6 +1565,54 @@ function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, bookedBo
           className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-[10px] px-3 py-1.5 rounded-lg cursor-pointer"
         >
           Save Slot
+        </Button>
+      </div>
+      <div className="border-t border-emerald-900/60 pt-2 space-y-2">
+        <p className="text-[10px] uppercase font-extrabold tracking-wide text-emerald-300">Orders in this window ({orders.length})</p>
+        {orders.length ? orders.map((order: any) => (
+          <SlotOrderRow key={order.id} order={order} slotTime={slotTime} dateKey={dateKey} timeSlotsList={timeSlotsList} onMoveOrder={onMoveOrder} />
+        )) : <p className="text-[11px] text-emerald-500">No orders assigned to this time window.</p>}
+      </div>
+    </div>
+  );
+}
+
+function SlotOrderRow({ order, slotTime, dateKey, timeSlotsList, onMoveOrder }: any) {
+  const destinations = timeSlotsList.filter((time: string) => time !== slotTime);
+  const [targetSlot, setTargetSlot] = useState(destinations[0] || '');
+  const itemSummary = (order.items || []).map((line: any) =>
+    `${line.item?.name || line.name || 'Item'} × ${line.qty ?? line.quantity ?? 1}`
+  ).join(', ');
+
+  useEffect(() => {
+    setTargetSlot(destinations[0] || '');
+  }, [slotTime, dateKey]);
+
+  return (
+    <div className="rounded-lg border border-emerald-900 bg-[#041913] p-2.5 space-y-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-extrabold text-lime-300">{order.orderNumber} · {order.name || order.accountNickname}</p>
+          <p className="text-[10px] text-emerald-300">{order.email || order.phone || 'No contact recorded'}</p>
+        </div>
+        <span className="text-[10px] font-bold text-cyan-300">{order.bowlCount} bowls</span>
+      </div>
+      <p className="text-[10px] text-white/90 break-words">{itemSummary || 'Order details unavailable'}</p>
+      <div className="flex gap-2">
+        <select
+          value={targetSlot}
+          onChange={(event) => setTargetSlot(event.target.value)}
+          className="min-w-0 flex-1 rounded-md border border-emerald-800 bg-[#061d16] px-2 py-1.5 text-[10px] text-white"
+        >
+          {destinations.map((time: string) => <option key={time} value={time}>{time}</option>)}
+        </select>
+        <Button
+          size="sm"
+          disabled={!targetSlot}
+          onClick={() => onMoveOrder(order.id, dateKey, targetSlot)}
+          className="bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white font-bold text-[10px] px-2 py-1.5 rounded-md"
+        >
+          Move here
         </Button>
       </div>
     </div>
