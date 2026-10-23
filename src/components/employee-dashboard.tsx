@@ -518,11 +518,19 @@ export function EmployeeDashboard({ onBackToStore, isAdmin = false }: { onBackTo
 
   const handleClearSalesLog = async () => {
     if (!isAdmin) return;
-    if (!confirm('Clear all sales log summaries? Customer order history and orders will stay unchanged.')) return;
-    const { error } = await supabase.rpc('clear_veyns_sales_log_admin');
+    if (!confirm(`Clear the sales log for ${selectedSalesDate}? Customer order history and orders will stay unchanged.`)) return;
+    const { error } = await supabase.rpc('clear_veyns_sales_log_admin', { p_sales_date: selectedSalesDate });
     if (error) { alert(error.message); return; }
-    setSalesLogEntries([]);
+    setSalesLogEntries((current) => current.filter((entry: any) => entry.sales_date !== selectedSalesDate));
     await fetchCloudData();
+  };
+
+  const handleDeleteSalesLogEntry = async (orderId: string, orderNumber: string) => {
+    if (!isAdmin) return;
+    if (!confirm(`Remove order ${orderNumber} from this sales log? Customer order history will stay unchanged.`)) return;
+    const { error } = await supabase.rpc('delete_veyns_sales_log_entry_admin', { p_order_id: orderId });
+    if (error) { alert(error.message); return; }
+    setSalesLogEntries((current) => current.filter((entry: any) => entry.order_id !== orderId));
   };
 
   // Auth password resets are handled by Supabase recovery flows, never by dashboard password creation.
@@ -712,6 +720,10 @@ export function EmployeeDashboard({ onBackToStore, isAdmin = false }: { onBackTo
                 <p className="text-3xl font-extrabold text-white font-display">{totalOrdersCount} Orders</p>
               </div>
               <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-2 shadow-xl">
+                <span className="text-[10px] font-extrabold text-emerald-300/80 uppercase tracking-widest block">Bowls Ordered</span>
+                <p className="text-3xl font-extrabold text-white font-display">{totalBowlsOrdered} Bowls</p>
+              </div>
+              <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-2 shadow-xl">
                 <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Average Order Value</span>
                 <p className="text-3xl font-extrabold text-amber-400 font-display">{formatPeso(averageOrderValue)}</p>
               </div>
@@ -741,7 +753,7 @@ export function EmployeeDashboard({ onBackToStore, isAdmin = false }: { onBackTo
                         <th className="p-3">Items Summary</th>
                         <th className="p-3">Promo</th>
                         <th className="p-3">Total (₱)</th>
-                        <th className="p-3 text-right">Invoice</th>
+                        <th className="p-3 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-emerald-950">
@@ -787,6 +799,7 @@ export function EmployeeDashboard({ onBackToStore, isAdmin = false }: { onBackTo
                           <td className="p-3 font-semibold text-amber-400">{order.promoCode || '—'}</td>
                           <td className="p-3 font-extrabold text-lime-400 text-sm">{formatPeso(order.total)}</td>
                           <td className="p-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
                             <Button
                               size="sm"
                               onClick={() => setSelectedInvoice(order)}
@@ -794,6 +807,8 @@ export function EmployeeDashboard({ onBackToStore, isAdmin = false }: { onBackTo
                             >
                               See Invoice
                             </Button>
+                              {isAdmin && <button type="button" title="Remove from sales log" aria-label={`Remove order ${order.orderNumber} from sales log`} onClick={() => handleDeleteSalesLogEntry(order.id, order.orderNumber)} className="rounded-lg border border-red-900/60 bg-red-950/40 p-2 text-red-400 hover:text-red-300"><Trash2 className="h-4 w-4" /></button>}
+                            </div>
                           </td>
                         </tr>
                       ))}
