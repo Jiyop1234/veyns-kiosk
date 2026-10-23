@@ -199,12 +199,11 @@ export function App() {
     setForgotSuccess(true);
   };
 
-  // SECTION 9: Employees use Auth credentials and a server-checked profile role.
+  // SECTION 9: Employees use email Auth credentials and a server-checked profile role.
   const handleEmployeeAuth = async () => {
-    const raw = authInputType === 'email' ? authEmailInput : authPhoneInput;
-    if (!raw || !authPassword) { setLoginError('Enter your staff email or phone and password.'); return; }
-    const identifier = getCanonicalIdentifier(authInputType, authEmailInput, authPhoneInput);
-    const credentials = authInputType === 'email' ? { email: identifier, password: authPassword } : { phone: identifier, password: authPassword };
+    const email = authEmailInput.trim().toLowerCase();
+    if (!email || !authPassword) { setLoginError('Enter your staff email and password.'); return; }
+    const credentials = { email, password: authPassword };
     const { data, error } = await supabase.auth.signInWithPassword(credentials);
     if (error || !data.user) { setLoginError('Staff sign-in failed. Check your credentials.'); return; }
     const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
@@ -582,10 +581,7 @@ export function App() {
           </div>
           <div className="bg-[#041913] border border-emerald-800/60 rounded-2xl p-5 text-xs text-emerald-200 space-y-3">
             <label className="font-bold text-lime-400 uppercase tracking-wider text-[11px] block text-center">staff Supabase Auth sign-in</label>
-            <select value={authInputType} onChange={(e) => setAuthInputType(e.target.value as 'email' | 'phone')} className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white">
-              <option value="email">Email</option><option value="phone">Phone</option>
-            </select>
-            {authInputType === 'email' ? <input type="email" autoComplete="username" value={authEmailInput} onChange={(e) => setAuthEmailInput(e.target.value)} placeholder="Staff email" className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" /> : <input type="tel" autoComplete="username" value={authPhoneInput} onChange={(e) => setAuthPhoneInput(e.target.value)} placeholder="9XXXXXXXXX" className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" />}
+            <input type="email" autoComplete="username" value={authEmailInput} onChange={(e) => setAuthEmailInput(e.target.value)} placeholder="Staff email" className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" />
             <input type="password" autoComplete="current-password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void handleEmployeeAuth(); }} placeholder="Password" className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" />
             {loginError && <p className="text-red-400">{loginError}</p>}
             <Button onClick={() => void handleEmployeeAuth()} className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg cursor-pointer mt-1">Sign in</Button>
