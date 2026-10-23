@@ -677,7 +677,7 @@ export function EmployeeDashboard({ onBackToStore, isAdmin = false }: { onBackTo
 
         <div className="flex flex-wrap gap-2 border-b border-emerald-900/60 pb-3">
           <button onClick={() => setActiveTab('sales')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'sales' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
-            <BarChart2 className="h-4 w-4" /> Sales Analytics ({orders.length})
+            <BarChart2 className="h-4 w-4" /> Sales Analytics ({totalOrdersCount})
           </button>
           <button onClick={() => setActiveTab('slots')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'slots' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
             <Clock className="h-4 w-4" /> Slot Capacity & Fully Booked
