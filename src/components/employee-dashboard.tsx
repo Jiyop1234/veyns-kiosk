@@ -142,7 +142,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         })));
       }
 
-      const { data: cloudProfiles } = await supabase.from('profiles').select('*');
+      const { data: cloudProfiles } = await supabase.from('profiles').select('id,name,identifier,role,created_at,stamps_data,penalty_data,auth_user_id');
       if (cloudProfiles && cloudProfiles.length > 0) {
         const formattedProfiles = cloudProfiles.map((p: any) => {
           const identifierKey = (p.identifier || '').toLowerCase().trim();
@@ -453,109 +453,19 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
-  // --- Clear order records from the sales log ---
-  const handleClearSalesLog = async () => {
-    if (!confirm('Are you sure you want to clear all sales logs from Supabase?')) return;
-    try {
-      await supabase.from('orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      setOrders([]);
-    } catch (e) {
-      setOrders([]);
-    }
-  };
+  // Auth password resets are handled by Supabase recovery flows, never by dashboard password creation.
 
-  // --- Password hashing helper used by the dashboard reset flow ---
-  const hashPassword = async (password: string) => {
-    const msgUint8 = new TextEncoder().encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-    return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
-  };
-
-  // --- Reset a customer's password hash ---
-  const handleResetPasswordSubmit = async () => {
-    if (!resetTargetUser || !newTempPassword) return;
-    const identifierKey = resetTargetUser.identifier.toLowerCase().trim();
-    const hashedNewPass = await hashPassword(newTempPassword);
-    try {
-      await supabase.from('profiles').update({ password_hash: hashedNewPass }).eq('identifier', identifierKey);
-      // SECURITY FIX: Removed plaintext password storage
-      localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, hashedNewPass);
-      alert(`Password successfully reset for ${resetTargetUser.name}!`);
-    } catch (e) {}
-    setResetTargetUser(null);
-    setNewTempPassword('');
-    fetchCloudData();
-  };
-
-  // --- Update a customer's display name and identifier ---
+  // Staff can update a nickname. Contact identifiers remain controlled by the customer's verified Auth account.
   const handleSaveCustomerEdits = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCustomer) return;
-    const oldIdentifierKey = editingCustomer.identifier.toLowerCase().trim();
     const newName = editCustName.trim();
-    let finalValue = editCustValue.trim();
-    if (editCustType === 'phone') {
-      if (!finalValue.startsWith('+')) {
-        finalValue = '+63' + finalValue.replace(/^0+/, '');
-      }
-    }
-    const newIdentifierKey = finalValue.toLowerCase();
-    if (!newIdentifierKey || !newName) {
-      alert('Nickname and identifier cannot be blank.');
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          name: newName,
-          identifier: newIdentifierKey
-        })
-        .eq('identifier', oldIdentifierKey);
-      if (error) {
-        alert('Error updating customer profile: ' + error.message);
-        return;
-      }
-
-      if (oldIdentifierKey !== newIdentifierKey) {
-        // SECURITY FIX: Removed plaintext password migration
-        const hashPass = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
-        const stamps = localStorage.getItem(`veyns_stamps_${oldIdentifierKey}`);
-        const detailedStamps = localStorage.getItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
-        const penalty = localStorage.getItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
-        
-        if (hashPass) localStorage.setItem(`veyns_pwd_hash_${newIdentifierKey}`, hashPass);
-        if (stamps) localStorage.setItem(`veyns_stamps_${newIdentifierKey}`, stamps);
-        if (detailedStamps) localStorage.setItem(`veyns_detailed_stamps_${newIdentifierKey}`, detailedStamps);
-        if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newIdentifierKey}`, penalty);
-        
-        localStorage.removeItem(`veyns_pwd_hash_${oldIdentifierKey}`);
-        localStorage.removeItem(`veyns_stamps_${oldIdentifierKey}`);
-        localStorage.removeItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
-        localStorage.removeItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
-      }
-      alert('Customer account successfully updated!');
-      setEditingCustomer(null);
-      fetchCloudData();
-    } catch (err) {
-      alert('Error updating customer.');
-    }
-  };
-
-  // --- Delete a customer profile and related local cached data ---
-  const handleDeleteCustomer = async (identifier: string) => {
-    if (!confirm('Are you sure you want to delete this customer account?')) return;
-    try {
-      const identifierKey = identifier.toLowerCase().trim();
-      await supabase.from('profiles').delete().eq('identifier', identifierKey);
-      setCustomers(customers.filter((c) => c.identifier.toLowerCase().trim() !== identifierKey));
-      // SECURITY FIX: Removed plaintext password cleanup
-      localStorage.removeItem(`veyns_pwd_hash_${identifierKey}`);
-      localStorage.removeItem(`veyns_stamps_${identifierKey}`);
-      localStorage.removeItem(`veyns_detailed_stamps_${identifierKey}`);
-      localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
-    } catch (e) {}
+    if (!newName) { alert('Nickname cannot be blank.'); return; }
+    const { error } = await supabase.from('profiles').update({ name: newName }).eq('id', editingCustomer.id);
+    if (error) { alert('Error updating customer profile: ' + error.message); return; }
+    alert('Customer nickname updated.');
+    setEditingCustomer(null);
+    fetchCloudData();
   };
 
   // --- Load a customer's loyalty stamps and penalty state into the stamp editor ---
@@ -729,11 +639,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   <ShoppingBag className="h-5 w-5 text-lime-400" />
                   <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Completed Order Transactions Log</h3>
                 </div>
-                {orders.length > 0 && (
-                  <Button onClick={handleClearSalesLog} size="sm" className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer">
-                    Clear Sales Log
-                  </Button>
-                )}
+
               </div>
               {orders.length === 0 ? (
                 <div className="text-center py-16 space-y-3">
@@ -921,12 +827,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             <Button onClick={() => openStampManager(cust)} size="sm" className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
                               <Award className="h-3.5 w-3.5 mr-1" /> Stamps
                             </Button>
-                            <Button onClick={() => { setResetTargetUser(cust); setNewTempPassword('Veyns' + Math.floor(1000 + Math.random() * 9000)); }} size="sm" className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
-                              <KeyRound className="h-3.5 w-3.5 mr-1" /> Reset Password
-                            </Button>
-                            <Button onClick={() => handleDeleteCustomer(cust.identifier)} size="sm" className="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+
                           </td>
                         </tr>
                       );
@@ -1210,7 +1111,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   Edit Account: {editingCustomer.name}
                 </DialogTitle>
                 <DialogDescription className="text-xs text-emerald-300">
-                  Update customer nickname or switch between email and phone identifier.
+                  Update the display nickname. Verified sign-in details are changed by the customer.
                 </DialogDescription>
               </div>
               <form onSubmit={handleSaveCustomerEdits} className="space-y-4 my-3 text-xs">
@@ -1224,33 +1125,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Identifier Type</label>
-                  <select
-                    value={editCustType}
-                    onChange={(e) => {
-                      setEditCustType(e.target.value as any);
-                      setEditCustValue('');
-                    }}
-                    className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-xs text-lime-300 font-bold focus:outline-none focus:border-lime-400"
-                  >
-                    <option value="email">Gmail / Email</option>
-                    <option value="phone">Phone Number</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-lime-400 uppercase tracking-wider block">
-                    {editCustType === 'email' ? 'Email Address' : 'Phone Number (+63...)'}
-                  </label>
-                  <input
-                    type={editCustType === 'email' ? 'email' : 'text'}
-                    required
-                    placeholder={editCustType === 'email' ? 'e.g. user@gmail.com' : 'e.g. 94949685430'}
-                    value={editCustValue}
-                    onChange={(e) => setEditCustValue(e.target.value)}
-                    className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-white font-mono font-bold focus:outline-none focus:border-lime-400"
-                  />
-                </div>
+                <div className="space-y-1"><span className="font-bold text-lime-400 uppercase tracking-wider block">Verified sign-in</span><p className="rounded-xl border border-emerald-800 p-3 font-mono text-emerald-200">{editingCustomer.identifier}</p><p className="text-[10px] text-emerald-400/80">Customers change their email or phone in account settings and verify it through Supabase Auth.</p></div>
                 <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
                   <Button
                     type="button"
@@ -1558,23 +1433,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               </div>
             </form>
           </DialogContent>
-        </Dialog>
-
-                {/* Temporary password reset modal */}
-        <Dialog open={!!resetTargetUser} onOpenChange={(open) => !open && setResetTargetUser(null)}>
-          {resetTargetUser && (
-            <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
-              <DialogTitle className="font-display text-lg font-extrabold text-white">Reset Password for {resetTargetUser.name}</DialogTitle>
-              <div className="space-y-3 my-3 text-xs">
-                <label className="font-bold text-lime-400 uppercase tracking-wider block">New Temporary Password</label>
-                <input type="text" value={newTempPassword} onChange={(e) => setNewTempPassword(e.target.value)} className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400" />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <Button onClick={() => setResetTargetUser(null)} className="flex-1 bg-emerald-950 text-emerald-200 font-bold py-2.5 rounded-xl text-xs">Cancel</Button>
-                <Button onClick={handleResetPasswordSubmit} className="flex-1 bg-lime-400 text-black font-extrabold py-2.5 rounded-xl text-xs">Confirm Reset</Button>
-              </div>
-            </DialogContent>
-          )}
         </Dialog>
 
                 {/* Loyalty stamp and penalty management modal */}

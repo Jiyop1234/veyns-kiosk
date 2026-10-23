@@ -99,57 +99,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   };
 
-  const loadUserStampsAndPenalties = () => {
-    if (!currentUser || isGuest) return;
-    try {
-      const identifierKey = (currentUser.identifier || 'default').toLowerCase().trim();
-      const detailedStampsKey = `veyns_detailed_stamps_${identifierKey}`;
-      const penaltyKey = `veyns_fair_play_penalty_${identifierKey}`;
-      
-      const detailedSaved = localStorage.getItem(detailedStampsKey);
-      const penaltySaved = localStorage.getItem(penaltyKey);
-
-      if (penaltySaved) {
-        try {
-          const parsedPenalty = JSON.parse(penaltySaved);
-          if (parsedPenalty && parsedPenalty.appliedPenalties && parsedPenalty.appliedPenalties.length > 0) {
-            setFairPlayPenalty(parsedPenalty);
-          } else {
-            setFairPlayPenalty(null);
-          }
-        } catch (e) {
-          setFairPlayPenalty(null);
-        }
-      } else {
-        setFairPlayPenalty(null);
-      }
-      
-      if (detailedSaved) {
-        const parsed = JSON.parse(detailedSaved);
-        const normalized = Array.from({ length: 12 }).map((_, idx) => {
-          return parsed[idx] || { status: 'empty', date: '' };
-        });
-        setStamps(normalized);
-      } else {
-        const userStampsKey = `veyns_stamps_${identifierKey}`;
-        const userSavedStamps = localStorage.getItem(userStampsKey);
-        if (userSavedStamps) {
-          const parsedDates = JSON.parse(userSavedStamps);
-          const fullSlots = Array.from({ length: 12 }).map((_, idx) => {
-            if (parsedDates[idx]) {
-              return { status: 'valid' as const, date: parsedDates[idx] };
-            }
-            return { status: 'empty' as const, date: '' };
-          });
-          setStamps(fullSlots);
-        } else {
-          setStamps(Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })));
-        }
-      }
-    } catch (e) {
-      setStamps(Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })));
-      setFairPlayPenalty(null);
-    }
+  const loadUserStampsAndPenalties = async () => {
+    if (!currentUser || isGuest || !currentUser.authUserId) { setStamps([]); setFairPlayPenalty(null); return; }
+    const { data: profile, error } = await supabase.from('profiles')
+      .select('stamps_data,penalty_data').eq('auth_user_id', currentUser.authUserId).single();
+    if (error || !profile) { setStamps(Array.from({ length: 12 }, () => ({ status: 'empty', date: '' }))); setFairPlayPenalty(null); return; }
+    setStamps(Array.from({ length: 12 }).map((_, idx) => profile.stamps_data?.[idx] || { status: 'empty', date: '' }));
+    setFairPlayPenalty(profile.penalty_data || null);
   };
 
   // SECTION 7: Merge Supabase menu records with the existing local menu data and sort the result.
@@ -278,6 +234,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // Distance & Delivery Fee states
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null);
+  const [deliveryCoordinates, setDeliveryCoordinates] = useState<{ lat: number; lng: number } | null>(null);
   const [calculatedDeliveryFee, setCalculatedDeliveryFee] = useState<number>(0);
   const [isPinning, setIsPinning] = useState(false);
 
@@ -368,6 +325,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // SECTION 12: Process selected coordinates, calculate delivery costs, and look up a readable address.
   const processSelectedCoordinates = async (lat: number, lng: number) => {
+    setDeliveryCoordinates({ lat, lng });
     const dist = calculateDistanceKm(STORE_LAT, STORE_LNG, lat, lng);
     const roundedDist = Number(dist.toFixed(2));
     setDeliveryDistanceKm(roundedDist);
@@ -438,6 +396,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         const { data: cloudOrders, error } = await supabase
           .from('orders')
           .select('*')
+          .eq('user_id', currentUser.authUserId)
           .order('created_at', { ascending: false });
 
         if (cloudOrders && cloudOrders.length > 0) {
@@ -510,80 +469,42 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   }, [resetKey]);
 
-  // SECTION 15: Save a newly created order to the available history stores.
+  // SECTION 15: Create orders only through the server-validated Supabase RPC.
   const saveOrderToHistory = async (newOrder: any) => {
+    const payload = {
+      name: newOrder.name,
+      email: newOrder.email,
+      phone: newOrder.phone,
+      fulfillment: newOrder.fulfillment,
+      location: newOrder.location,
+      landmark: newOrder.landmark,
+      orderType: newOrder.orderType,
+      scheduleInfo: newOrder.scheduleInfo,
+      dateKey: newOrder.orderType === 'reservation' ? reservationDate : null,
+      slotTime: newOrder.orderType === 'reservation' ? reservationTime : todayTimeSlot,
+      deliveryLat: deliveryCoordinates?.lat ?? null,
+      deliveryLng: deliveryCoordinates?.lng ?? null,
+      promoCodesList: isGuest ? [] : newOrder.promoCodesList,
+      items: lines.map((line: any) => ({
+        menuItemId: line.item.id,
+        quantity: line.qty,
+        options: (line.customizations || []).map((option: any) => ({ groupId: option.groupId, optionId: option.optionId })),
+        customizationsSummary: line.customizationsSummary || '',
+      })),
+    };
+    const { data, error } = await supabase.rpc('place_order_secure_v2', { p_order: payload });
+    if (error || !data) throw new Error(error?.message || 'Order could not be saved.');
+    const savedOrder = { ...newOrder, ...data, orderNumber: data.orderNumber, items: data.items, subtotal: Number(data.subtotal), promoDiscount: Number(data.promoDiscount), deliveryFee: Number(data.deliveryFee), total: Number(data.total), promoCode: newOrder.promoCode };
+    const prior = isGuest ? sessionStorage.getItem(userHistoryStorageKey) : localStorage.getItem(userHistoryStorageKey);
+    let previous: any[] = [];
+    try { previous = prior ? JSON.parse(prior) : []; } catch { previous = []; }
+    const updated = [savedOrder, ...previous];
+    setHistoryList(updated);
     try {
-      const { error: orderError } = await supabase.from('orders').insert([
-        {
-          order_number: newOrder.orderNumber,
-          account_nickname: newOrder.accountNickname,
-          customer_name: newOrder.name,
-          email: newOrder.email,
-          phone: newOrder.phone,
-          fulfillment: newOrder.fulfillment,
-          location: newOrder.location,
-          landmark: newOrder.landmark,
-          promo_code: newOrder.promoCode,
-          promo_discount: newOrder.promoDiscount,
-          delivery_fee: newOrder.deliveryFee,
-          items: newOrder.items,
-          total: newOrder.total,
-          order_type: newOrder.orderType,
-          schedule_info: newOrder.scheduleInfo,
-          status: 'completed'
-        }
-      ]);
-
-      if (orderError) {
-        console.error('Supabase order insert error:', orderError.message);
-      }
-
-      if (newOrder.promoCodesList && newOrder.promoCodesList.length > 0) {
-        const promos = availablePromos;
-        for (const code of newOrder.promoCodesList) {
-          const matched = promos.find(p => p.code.toUpperCase() === code.toUpperCase());
-          if (matched) {
-            const newCount = (matched.usageCount || 0) + 1;
-            await supabase.from('promos').update({ usage_count: newCount }).eq('code', matched.code);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Supabase order exception:', err);
-    }
-
-    let userSaved = [];
-    try {
-      if (isGuest) {
-        const existing = sessionStorage.getItem(userHistoryStorageKey);
-        if (existing) userSaved = JSON.parse(existing);
-      } else {
-        const existing = localStorage.getItem(userHistoryStorageKey);
-        if (existing) userSaved = JSON.parse(existing);
-      }
-    } catch (e) {}
-
-    const updatedUserOrders = [newOrder, ...userSaved];
-    setHistoryList(updatedUserOrders);
-
-    try {
-      if (isGuest) {
-        sessionStorage.setItem(userHistoryStorageKey, JSON.stringify(updatedUserOrders));
-      } else {
-        localStorage.setItem(userHistoryStorageKey, JSON.stringify(updatedUserOrders));
-      }
-    } catch (e) {}
-
-    let globalSaved = [];
-    try {
-      const existingGlobal = localStorage.getItem('veyns_order_history');
-      if (existingGlobal) globalSaved = JSON.parse(existingGlobal);
-    } catch (e) {}
-
-    const updatedGlobalOrders = [newOrder, ...globalSaved];
-    try {
-      localStorage.setItem('veyns_order_history', JSON.stringify(updatedGlobalOrders));
-    } catch (e) {}
+      if (isGuest) sessionStorage.setItem(userHistoryStorageKey, JSON.stringify(updated));
+      else localStorage.setItem(userHistoryStorageKey, JSON.stringify(updated));
+    } catch (e) { console.error('Unable to cache order history:', e); }
+    return savedOrder;
   };
 
   // SECTION 16: Filter visible menu items by availability, category, and search text.
@@ -874,60 +795,44 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const deliveryFeeTotal = fulfillment === 'delivery' ? calculatedDeliveryFee : 0;
   const finalCartTotal = Math.max(0, total - promoDiscountAmount + deliveryFeeTotal);
 
-  // SECTION 21: Checkout review, order confirmation, and post-confirmation reset handlers.
+  // SECTION 21: Confirm only after the database accepts and prices the order.
   const handleReviewOrder = () => {
     setShowUpsell(false);
     setOrderPlaced(false);
     setShowCheckout(true);
   };
 
-  const handleConfirmOrder = () => {
+  const handleConfirmOrder = async () => {
     if (orderType === 'today' && !isOrderTodayAllowed()) {
-      alert('⚠️ Store is closed! Will be back later at 12 NOON. Please select "Reservation" for a future schedule instead.');
-      return;
+      alert('Store is closed until 12 noon. Select a reservation time instead.'); return;
     }
-
-    const scheduleInfoText =
-      orderType === 'today'
-        ? fulfillment === 'delivery' && deliveryOption === 'our'
-          ? `Today (${todayTimeSlot}) - Personal Delivery`
-          : `Today - Maxim Delivery (Anytime)`
-        : `Reservation on ${reservationDate || 'Upcoming Date'} (${reservationTime})`;
-
-    if (appliedPromos.length > 0) {
-      appliedPromos.forEach(p => recordUserVoucherUse(p.code));
+    if (fulfillment === 'delivery' && !deliveryCoordinates) {
+      alert('Choose a delivery location on the map before placing the order.'); return;
     }
-
-    const promoCodesList = appliedPromos.map(p => p.code);
-    const promoCodeString = promoCodesList.length > 0 ? promoCodesList.join(', ') : null;
-
+    const scheduleInfoText = orderType === 'today'
+      ? fulfillment === 'delivery' && deliveryOption === 'our' ? 'Today (' + todayTimeSlot + ') - Personal Delivery' : 'Today - Maxim Delivery (Anytime)'
+      : 'Reservation on ' + (reservationDate || 'Upcoming Date') + ' (' + reservationTime + ')';
+    const promoCodesList = isGuest ? [] : appliedPromos.map(p => p.code);
     const orderData = {
-      orderNumber: `#${Math.floor(1000 + Math.random() * 9000)}`,
-      accountNickname: currentUser ? (currentUser.name || currentUser.identifier || 'User') : 'Guest User',
+      orderNumber: 'Pending', accountNickname: isGuest ? 'Guest User' : (currentUser?.name || 'User'),
       name: customerName || (currentUser ? currentUser.name : 'Valued Customer'),
-      email: fulfillment === 'delivery' ? customerEmail : '',
-      phone: fulfillment === 'delivery' ? customerPhone : '',
+      email: fulfillment === 'delivery' ? customerEmail : '', phone: fulfillment === 'delivery' ? customerPhone : '',
       location: fulfillment === 'delivery' ? customerLocation : 'Pick Up at Store',
-      landmark: fulfillment === 'delivery' ? nearestLandmark : 'N/A',
-      fulfillment,
-      deliveryOption,
-      orderType,
-      scheduleInfo: scheduleInfoText,
-      deliveryDistanceKm: fulfillment === 'delivery' ? deliveryDistanceKm : 0,
-      deliveryFee: deliveryFeeTotal,
-      paymentOption: 'Cash on Pickup / Delivery',
-      items: [...lines],
-      subtotal: total,
-      promoCode: promoCodeString,
-      promoCodesList,
-      promoDiscount: promoDiscountAmount,
-      total: finalCartTotal,
-      date: new Date().toLocaleString(),
+      landmark: fulfillment === 'delivery' ? nearestLandmark : 'N/A', fulfillment, deliveryOption,
+      orderType, scheduleInfo: scheduleInfoText, deliveryDistanceKm, deliveryFee: deliveryFeeTotal,
+      paymentOption: 'Cash on Pickup / Delivery', items: [...lines], subtotal: total,
+      promoCode: promoCodesList.length ? promoCodesList.join(', ') : null,
+      promoCodesList, promoDiscount: promoDiscountAmount, total: finalCartTotal, date: new Date().toLocaleString(),
     };
-    saveOrderToHistory(orderData);
-    setPlacedOrderDetails(orderData);
-    setOrderPlaced(true);
-    if (onOrderPlacedSuccess) onOrderPlacedSuccess();
+    try {
+      const savedOrder = await saveOrderToHistory(orderData);
+      setPlacedOrderDetails(savedOrder);
+      setOrderPlaced(true);
+      if (onOrderPlacedSuccess) await onOrderPlacedSuccess();
+    } catch (error: any) {
+      console.error('Order submission failed:', error);
+      alert(error?.message || 'Unable to place this order. Please try again.');
+    }
   };
 
   const handleCloseConfirmation = () => {
@@ -942,6 +847,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setAppliedPromos([]);
     setPromoInput('');
     setDeliveryDistanceKm(null);
+    setDeliveryCoordinates(null);
     setCalculatedDeliveryFee(0);
     setIsPinning(false);
   };
@@ -1713,7 +1619,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 )}
               </div>
 
-              <div className="space-y-2 pt-2 border-t border-emerald-900/60">
+              {!isGuest && <div className="space-y-2 pt-2 border-t border-emerald-900/60">
                 <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Have a Promo Code?</label>
                 <div className="flex gap-2">
                   <input
@@ -1783,7 +1689,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     </div>
                   </div>
                 )}
-              </div>
+              </div>}
 
               {/* ORDER TYPE SELECTION (Order Today vs Reservation) */}
               <div className="space-y-2 border-t border-emerald-900/60 pt-3">

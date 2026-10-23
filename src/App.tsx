@@ -58,459 +58,162 @@ export function App() {
   const [stamps, setStamps] = useState<any[]>([]);
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
 
-  // SECTION 2: Load the signed-in customer's loyalty stamps and penalties.
+  // SECTION 2: Load loyalty data only from the authenticated profile row.
   const loadUserStampsAndPenalties = async (userObj: any) => {
-    if (!userObj || userObj.type === 'guest') return;
-    try {
-      const identifierKey = (userObj.identifier || 'default').toLowerCase().trim();
-      const { data: cloudProfile, error } = await supabase
-        .from('profiles')
-        .select('stamps_data, penalty_data')
-        .eq('identifier', identifierKey)
-        .single();
-
-      if (cloudProfile) {
-        if (cloudProfile.stamps_data && Array.isArray(cloudProfile.stamps_data)) {
-          const normalized = Array.from({ length: 12 }).map((_, idx) => {
-            return cloudProfile.stamps_data[idx] || { status: 'empty', date: '' };
-          });
-          setStamps(normalized);
-          localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(normalized));
-        }
-        if (cloudProfile.penalty_data) {
-          setFairPlayPenalty(cloudProfile.penalty_data);
-          localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(cloudProfile.penalty_data));
-        } else {
-          setFairPlayPenalty(null);
-          localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
-        }
-        return;
-      }
-
-      const detailedStampsKey = `veyns_detailed_stamps_${identifierKey}`;
-      const penaltyKey = `veyns_fair_play_penalty_${identifierKey}`;
-      const detailedSaved = localStorage.getItem(detailedStampsKey);
-      const penaltySaved = localStorage.getItem(penaltyKey);
-
-      if (penaltySaved) {
-        try {
-          const parsedPenalty = JSON.parse(penaltySaved);
-          if (parsedPenalty && parsedPenalty.appliedPenalties && parsedPenalty.appliedPenalties.length > 0) {
-            setFairPlayPenalty(parsedPenalty);
-          } else {
-            setFairPlayPenalty(null);
-          }
-        } catch (e) {
-          setFairPlayPenalty(null);
-        }
-      } else {
-        setFairPlayPenalty(null);
-      }
-
-      if (detailedSaved) {
-        const parsed = JSON.parse(detailedSaved);
-        const normalized = Array.from({ length: 12 }).map((_, idx) => {
-          return parsed[idx] || { status: 'empty', date: '' };
-        });
-        setStamps(normalized);
-      } else {
-        setStamps(Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })));
-      }
-    } catch (e) {
-      setStamps(Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })));
-      setFairPlayPenalty(null);
+    if (!userObj || userObj.type === 'guest' || !userObj.authUserId) { setStamps([]); setFairPlayPenalty(null); return; }
+    const { data: profile, error } = await supabase.from('profiles')
+      .select('stamps_data,penalty_data').eq('auth_user_id', userObj.authUserId).single();
+    if (error || !profile) { setStamps(Array.from({ length: 12 }, () => ({ status: 'empty', date: '' }))); setFairPlayPenalty(null); return; }
+    const normalized = Array.from({ length: 12 }).map((_, idx) => profile.stamps_data?.[idx] || { status: 'empty', date: '' });
+    setStamps(normalized);
+    setFairPlayPenalty(profile.penalty_data || null);
+    const key = (userObj.identifier || '').toLowerCase().trim();
+    if (key) {
+      localStorage.setItem('veyns_detailed_stamps_' + key, JSON.stringify(normalized));
+      if (profile.penalty_data) localStorage.setItem('veyns_fair_play_penalty_' + key, JSON.stringify(profile.penalty_data));
+      else localStorage.removeItem('veyns_fair_play_penalty_' + key);
     }
   };
 
-  // SECTION 3: Restore locally cached session data and listen for storage changes.
+  // SECTION 3: Restore Supabase Auth sessions; guests remain a non-privileged local choice.
   useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem('veyns_current_user');
-      const savedMode = localStorage.getItem('veyns_auth_mode');
-      if (savedUser && savedMode) {
-        const userObj = JSON.parse(savedUser);
-        setCurrentUser(userObj);
-        setAuthMode(savedMode as any);
-        if (userObj.type === 'guest') {
-          const sessionOrders = sessionStorage.getItem('veyns_guest_order_history');
-          if (sessionOrders) setOrderHistory(JSON.parse(sessionOrders));
-          setStamps([]);
-          setFairPlayPenalty(null);
-        } else {
-          const savedOrders = localStorage.getItem('veyns_order_history');
-          if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
-          loadUserStampsAndPenalties(userObj);
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-
-    const handleStorageChange = () => {
-      const savedUser = localStorage.getItem('veyns_current_user');
-      if (savedUser) {
-        const userObj = JSON.parse(savedUser);
-        if (userObj.type !== 'guest') {
-          loadUserStampsAndPenalties(userObj);
-        }
-      }
+    let alive = true;
+    const restoreAuthUser = async (session: any) => {
+      if (!session?.user) return;
+      const { data, error } = await supabase.rpc('claim_veyns_profile');
+      if (!alive || error) { if (error) console.error('Unable to load profile:', error.message); return; }
+      const profile = Array.isArray(data) ? data[0] : data;
+      if (!profile) return;
+      const userObj = { id: profile.id, authUserId: session.user.id, name: profile.name || 'Valued Customer', identifier: profile.identifier, role: profile.role, type: 'regular' };
+      setCurrentUser(userObj);
+      setAuthMode(['employee', 'admin'].includes(profile.role) ? 'employee' : 'regular');
+      setIsAdminDashboardOpen(['employee', 'admin'].includes(profile.role));
+      loadUserStampsAndPenalties(userObj);
     };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    void supabase.auth.getSession().then(({ data }) => restoreAuthUser(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) setTimeout(() => {
+        void restoreAuthUser(session);
+        if (event === 'PASSWORD_RECOVERY') { setShowLoyaltyModal(true); setShowAccountSettingsPanel(true); setIsResettingPassword(true); }
+      }, 0);
+    });
+    try {
+      for (const key of Object.keys(localStorage)) if (key.startsWith('veyns_pwd_hash_')) localStorage.removeItem(key);
+      if (localStorage.getItem('veyns_auth_mode') !== 'guest') { localStorage.removeItem('veyns_current_user'); localStorage.removeItem('veyns_auth_mode'); }
+      if (localStorage.getItem('veyns_auth_mode') === 'guest') {
+        setCurrentUser({ name: 'Guest Diner', identifier: 'guest_trial', role: 'guest', type: 'guest' });
+        setAuthMode('guest');
+        const sessionOrders = sessionStorage.getItem('veyns_guest_order_history');
+        if (sessionOrders) setOrderHistory(JSON.parse(sessionOrders));
+      }
+    } catch (e) { console.error(e); }
+    return () => { alive = false; listener.subscription.unsubscribe(); };
   }, []);
 
-  // SECTION 4: Password hashing and input normalization/validation helpers.
-  const hashPassword = async (password: string) => {
-    const msgUint8 = new TextEncoder().encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-  };
+  // SECTION 4: Input normalization and password-strength validation helpers.
+  const validateIdentifier = (val: string, type: 'email' | 'phone') => type === 'email'
+    ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)
+    : /^9\d{9}$/.test(val.replace(/\D/g, ''));
+  const validatePasswordStrength = (pass: string) => pass.length >= 8 && /\d/.test(pass) && /[\W_]/.test(pass);
+  const getCanonicalIdentifier = (type: 'email' | 'phone', emailVal: string, phoneVal: string) => type === 'email'
+    ? emailVal.trim().toLowerCase()
+    : '+63' + phoneVal.replace(/\D/g, '');
 
-  // Validation helpers
-  const validateIdentifier = (val: string, type: 'email' | 'phone') => {
-    if (type === 'email') {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      return emailRegex.test(val);
-    } else {
-      const phPhoneRegex = /^9\d{9}$/;
-      return phPhoneRegex.test(val);
-    }
-  };
-
-  const validatePasswordStrength = (pass: string) => {
-    const minLength = pass.length >= 8;
-    const hasNumber = /\d/.test(pass);
-    const hasSymbol = /[\W_]/.test(pass);
-    return minLength && hasNumber && hasSymbol;
-  };
-
-  // Canonical normalization for phone numbers: +639494685430
-  const getCanonicalIdentifier = (type: 'email' | 'phone', emailVal: string, phoneVal: string) => {
-    if (type === 'email') {
-      return emailVal.trim().toLowerCase();
-    } else {
-      const cleanDigits = phoneVal.replace(/\D/g, '');
-      return `+63${cleanDigits}`;
-    }
-  };
-
-  // SECTION 5: Handle regular customer sign-up and login.
+  // SECTION 5: Handle customer registration and login with Supabase Auth.
   const handleRegularAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setNicknameError('');
-    setIdentifierError('');
-    setPasswordError('');
-    setLoginError('');
-
+    e.preventDefault(); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError('');
     const rawIdentifier = authInputType === 'email' ? authEmailInput : authPhoneInput;
-
-    if (!rawIdentifier.trim()) {
-      if (isSignUp) {
-        setIdentifierError(authInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid Philippine mobile number.');
-      } else {
-        setLoginError('Incorrect email or phone number or password.');
-      }
-      return;
-    }
-
-    if (!authPassword) {
-      if (isSignUp) {
-        setPasswordError('Password must be at least 8 characters long and include at least one number and one symbol.');
-      } else {
-        setLoginError('Incorrect email or phone number or password.');
-      }
-      return;
-    }
-
-    const ADMIN_HASH = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
-    const enteredPasswordHash = await hashPassword(authPassword);
     const canonicalKey = getCanonicalIdentifier(authInputType, authEmailInput, authPhoneInput);
-
-    if (!isSignUp && canonicalKey === 'admin') {
-      if (enteredPasswordHash === ADMIN_HASH) {
-        const adminUserData = { name: 'Admin Regular', identifier: 'admin', type: 'regular' };
-        setCurrentUser(adminUserData);
-        setAuthMode('regular');
-        localStorage.setItem('veyns_current_user', JSON.stringify(adminUserData));
-        localStorage.setItem('veyns_auth_mode', 'regular');
-        loadUserStampsAndPenalties(adminUserData);
-        return;
-      } else {
-        setLoginError('Incorrect email or phone number or password.');
-        return;
-      }
+    if (!rawIdentifier.trim() || (isSignUp && !validateIdentifier(rawIdentifier, authInputType))) {
+      setIdentifierError(authInputType === 'email' ? 'Enter a valid email address.' : 'Enter a valid Philippine mobile number.'); return;
     }
-
+    if (!authPassword || (isSignUp && !validatePasswordStrength(authPassword))) {
+      setPasswordError('Use at least 8 characters, including a number and a symbol.'); return;
+    }
+    const credentials = authInputType === 'email' ? { email: canonicalKey, password: authPassword } : { phone: canonicalKey, password: authPassword };
     if (isSignUp) {
-      const nicknameToSave = authName.trim();
-      if (!nicknameToSave) {
-        setNicknameError('Please choose your unique nickname.');
+      const nickname = authName.trim();
+      if (!nickname) { setNicknameError('Choose a nickname.'); return; }
+      const { data, error } = await supabase.auth.signUp({ ...credentials, options: { data: { name: nickname }, ...(authInputType === 'phone' ? { channel: 'sms' as const } : {}) } });
+      if (error) { setIdentifierError(error.message); return; }
+      if (!data.session) {
+        setSignUpSuccessMsg(true); setIsSignUp(false); setAuthPassword(''); setAuthName('');
         return;
       }
-      if (!validateIdentifier(rawIdentifier, authInputType)) {
-        setIdentifierError(authInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid Philippine mobile number.');
-        return;
-      }
-      if (!validatePasswordStrength(authPassword)) {
-        setPasswordError('Password must be at least 8 characters long and include at least one number and one symbol.');
-        return;
-      }
-
-      try {
-        const { data: existingProfiles, error: checkError } = await supabase
-          .from('profiles')
-          .select('*')
-          .or(`identifier.eq.${canonicalKey},name.eq.${nicknameToSave}`);
-
-        if (existingProfiles && existingProfiles.length > 0) {
-          let hasConflict = false;
-          existingProfiles.forEach((match: any) => {
-            if (match.identifier.toLowerCase() === canonicalKey) {
-              setIdentifierError(authInputType === 'email' ? 'This email address is already registered.' : 'Please enter a valid Philippine mobile number.');
-              hasConflict = true;
-            }
-            if (match.name.toLowerCase() === nicknameToSave.toLowerCase()) {
-              setNicknameError('This nickname is already taken. Please choose another.');
-              hasConflict = true;
-            }
-          });
-          if (hasConflict) return;
-        }
-
-        // SECURITY FIX: Do NOT store plaintext password in localStorage
-        const { error: dbError } = await supabase.from('profiles').upsert(
-          { 
-            identifier: canonicalKey, 
-            name: nicknameToSave, 
-            password_hash: enteredPasswordHash, 
-            role: 'regular' 
-          },
-          { onConflict: 'identifier' }
-        );
-
-        if (dbError) {
-          console.error("Supabase Profile Insert Error:", dbError.message);
-          setIdentifierError('Error registering account. Please try again.');
-          return;
-        }
-      } catch (err) {
-        console.error('Supabase signup exception:', err);
-        setIdentifierError('Database connection error during signup.');
-        return;
-      }
-
-      setSignUpSuccessMsg(true);
-      setIsSignUp(false);
-      setAuthPassword('');
-      setAuthName('');
-      setTimeout(() => {
-        setSignUpSuccessMsg(false);
-      }, 4000);
-      return;
+      const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
+      const profile = Array.isArray(profileData) ? profileData[0] : profileData;
+      if (profileError || !profile) { setIdentifierError(profileError?.message || 'Verify your contact method, then sign in.'); return; }
+      const userObj = { id: profile.id, authUserId: data.user.id, name: profile.name || nickname, identifier: profile.identifier, role: profile.role, type: 'regular' };
+      setCurrentUser(userObj);
+      const isStaff = ['employee', 'admin'].includes(profile.role);
+      setAuthMode(isStaff ? 'employee' : 'regular'); setIsAdminDashboardOpen(isStaff);
+      loadUserStampsAndPenalties(userObj); return;
     }
-
-    // Login flow
-    try {
-      const { data: cloudUser, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('identifier', canonicalKey)
-        .single();
-
-      if (cloudUser) {
-        if (cloudUser.password_hash && cloudUser.password_hash !== enteredPasswordHash) {
-          setLoginError('Incorrect email or phone number or password.');
-          return;
-        }
-        const userData = {
-          name: cloudUser.name || 'Valued Regular',
-          identifier: canonicalKey,
-          type: 'regular',
-        };
-        setCurrentUser(userData);
-        setAuthMode('regular');
-        localStorage.setItem('veyns_current_user', JSON.stringify(userData));
-        localStorage.setItem('veyns_auth_mode', 'regular');
-        const savedOrders = localStorage.getItem('veyns_order_history');
-        if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
-        loadUserStampsAndPenalties(userData);
-        return;
-      } else {
-        // Fallback for legacy local-only accounts (still hash-verified)
-        const storedPwdHash = localStorage.getItem(`veyns_pwd_hash_${canonicalKey}`);
-        if (!storedPwdHash || storedPwdHash !== enteredPasswordHash) {
-          setLoginError('Incorrect email or phone number or password.');
-          return;
-        }
-        const userData = {
-          name: rawIdentifier.split('@')[0] || 'Valued Regular',
-          identifier: canonicalKey,
-          type: 'regular',
-        };
-        setCurrentUser(userData);
-        setAuthMode('regular');
-        localStorage.setItem('veyns_current_user', JSON.stringify(userData));
-        localStorage.setItem('veyns_auth_mode', 'regular');
-        const savedOrders = localStorage.getItem('veyns_order_history');
-        if (savedOrders) setOrderHistory(JSON.parse(savedOrders));
-        loadUserStampsAndPenalties(userData);
-        return;
-      }
-    } catch (e) {
-      setLoginError('Incorrect email or phone number or password.');
-      return;
-    }
+    const { data, error } = await supabase.auth.signInWithPassword(credentials);
+    if (error || !data.user) { setLoginError('Incorrect email or phone number or password.'); return; }
+    const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
+    const profile = Array.isArray(profileData) ? profileData[0] : profileData;
+    if (profileError || !profile) { await supabase.auth.signOut(); setLoginError(profileError?.message || 'Unable to load your account.'); return; }
+    const userObj = { id: profile.id, authUserId: data.user.id, name: profile.name || 'Valued Customer', identifier: profile.identifier, role: profile.role, type: 'regular' };
+    setCurrentUser(userObj);
+    const isStaff = ['employee', 'admin'].includes(profile.role);
+    setAuthMode(isStaff ? 'employee' : 'regular');
+    setIsAdminDashboardOpen(isStaff);
+    await loadUserStampsAndPenalties(userObj);
   };
 
-  // SECTION 6: Update a customer email/phone identifier and related local state.
+  // SECTION 6: Update verified sign-in details using Supabase Auth.
   const handleUpdateIdentifierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.type === 'guest') return;
-
-    const rawNewId = updateInputType === 'email' ? newEmailInput : newPhoneInput;
-    if (!rawNewId) return;
-    if (!validateIdentifier(rawNewId, updateInputType)) {
-      alert(updateInputType === 'email' ? 'Please enter a valid email address.' : 'Please enter a valid Philippine mobile number.');
-      return;
-    }
-
-    const oldIdentifierKey = currentUser.identifier.toLowerCase().trim();
-    const newCanonicalKey = getCanonicalIdentifier(updateInputType, newEmailInput, newPhoneInput);
-
-    try {
-      await supabase
-        .from('profiles')
-        .update({ identifier: newCanonicalKey })
-        .eq('identifier', oldIdentifierKey);
-
-      // SECURITY FIX: Migrate hash only, do not touch plaintext
-      const hashPass = localStorage.getItem(`veyns_pwd_hash_${oldIdentifierKey}`);
-      const detailedStamps = localStorage.getItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
-      const userStamps = localStorage.getItem(`veyns_stamps_${oldIdentifierKey}`);
-      const penalty = localStorage.getItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
-
-      if (hashPass) localStorage.setItem(`veyns_pwd_hash_${newCanonicalKey}`, hashPass);
-      if (detailedStamps) localStorage.setItem(`veyns_detailed_stamps_${newCanonicalKey}`, detailedStamps);
-      if (userStamps) localStorage.setItem(`veyns_stamps_${newCanonicalKey}`, userStamps);
-      if (penalty) localStorage.setItem(`veyns_fair_play_penalty_${newCanonicalKey}`, penalty);
-
-      localStorage.removeItem(`veyns_pwd_hash_${oldIdentifierKey}`);
-      localStorage.removeItem(`veyns_stamps_${oldIdentifierKey}`);
-      localStorage.removeItem(`veyns_detailed_stamps_${oldIdentifierKey}`);
-      localStorage.removeItem(`veyns_fair_play_penalty_${oldIdentifierKey}`);
-
-      const updatedUser = { ...currentUser, identifier: newCanonicalKey };
-      setCurrentUser(updatedUser);
-      localStorage.setItem('veyns_current_user', JSON.stringify(updatedUser));
-      loadUserStampsAndPenalties(updatedUser);
-      setAccountUpdateSuccess(true);
-      setTimeout(() => {
-        setAccountUpdateSuccess(false);
-        setIsUpdatingIdentifier(false);
-        setNewEmailInput('');
-        setNewPhoneInput('');
-      }, 2000);
-    } catch (err) {
-      console.error(err);
-    }
+    const raw = updateInputType === 'email' ? newEmailInput : newPhoneInput;
+    if (!validateIdentifier(raw, updateInputType)) { alert('Enter a valid email address or Philippine mobile number.'); return; }
+    const identifier = getCanonicalIdentifier(updateInputType, newEmailInput, newPhoneInput);
+    const { error } = updateInputType === 'email'
+      ? await supabase.auth.updateUser({ email: identifier })
+      : await supabase.auth.updateUser({ phone: identifier });
+    if (error) { alert(error.message); return; }
+    alert('A verification step was sent to your new contact. Your profile will update after verification and sign-in.');
+    setIsUpdatingIdentifier(false);
   };
 
-  // SECTION 7: Handle password changes from account settings.
+  // SECTION 7: Change passwords through Supabase Auth.
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || currentUser.type === 'guest' || !currentPasswordInput || !newPasswordSettingInput) return;
-    if (!validatePasswordStrength(newPasswordSettingInput)) {
-      alert('Password must be at least 8 characters long and include at least one number and one symbol.');
-      return;
-    }
-
-    const identifierKey = currentUser.identifier.toLowerCase().trim();
-    try {
-      const currentHash = await hashPassword(currentPasswordInput);
-      const storedHash = localStorage.getItem(`veyns_pwd_hash_${identifierKey}`);
-      
-      // Note: For legacy accounts that might not have a local hash but exist in DB, 
-      // we rely on the DB check. For this UI flow, we check local hash if available.
-      if (storedHash && storedHash !== currentHash) {
-        alert('Incorrect current password.');
-        return;
-      }
-
-      const newHash = await hashPassword(newPasswordSettingInput);
-      await supabase.from('profiles').update({ password_hash: newHash }).eq('identifier', identifierKey);
-      
-      // SECURITY FIX: Store hash only
-      localStorage.setItem(`veyns_pwd_hash_${identifierKey}`, newHash);
-      
-      setAccountUpdateSuccess(true);
-      setTimeout(() => {
-        setAccountUpdateSuccess(false);
-        setIsResettingPassword(false);
-        setCurrentPasswordInput('');
-        setNewPasswordSettingInput('');
-      }, 2000);
-    } catch (err) {
-      console.error(err);
-    }
+    if (!currentUser || currentUser.type === 'guest') return;
+    if (!validatePasswordStrength(newPasswordSettingInput)) { alert('Use at least 8 characters, including a number and a symbol.'); return; }
+    const { error } = await supabase.auth.updateUser({ password: newPasswordSettingInput });
+    if (error) { alert(error.message); return; }
+    setAccountUpdateSuccess(true);
+    setTimeout(() => { setAccountUpdateSuccess(false); setIsResettingPassword(false); setCurrentPasswordInput(''); setNewPasswordSettingInput(''); }, 2000);
   };
 
-  // SECTION 8: Handle the forgot-password form submission.
+  // SECTION 8: Send password recovery through Supabase Auth.
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const rawForgot = forgotInputType === 'email' ? forgotEmailInput : forgotPhoneInput;
-    if (!rawForgot || !newPasswordInput) return;
-    if (!validatePasswordStrength(newPasswordInput)) {
-      alert('Password must be at least 8 characters long and include at least one number and one symbol.');
-      return;
-    }
-
-    const canonicalKey = getCanonicalIdentifier(forgotInputType, forgotEmailInput, forgotPhoneInput);
-    const newHash = await hashPassword(newPasswordInput);
-
-    try {
-      await supabase.from('profiles').update({ password_hash: newHash }).eq('identifier', canonicalKey);
-      // SECURITY FIX: Store hash only
-      localStorage.setItem(`veyns_pwd_hash_${canonicalKey}`, newHash);
-      setForgotSuccess(true);
-      setTimeout(() => {
-        setForgotSuccess(false);
-        setForgotEmailInput('');
-        setForgotPhoneInput('');
-        setNewPasswordInput('');
-        setAuthMode('regular');
-      }, 2000);
-    } catch (e) {
-      console.error(e);
-    }
+    if (forgotInputType !== 'email') { alert('Phone recovery is not configured yet. Use your account email for recovery.'); return; }
+    const email = forgotEmailInput.trim().toLowerCase();
+    if (!validateIdentifier(email, 'email')) { alert('Enter a valid email address.'); return; }
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    if (error) { alert(error.message); return; }
+    setForgotSuccess(true);
   };
 
-  // SECTION 9: Verify the employee access code and open the dashboard view.
-  const handleEmployeeAuth = async (pinValue: string) => {
-    if (!pinValue) {
-      alert('Please enter an authorization code.');
-      return;
+  // SECTION 9: Employees use Auth credentials and a server-checked profile role.
+  const handleEmployeeAuth = async () => {
+    const raw = authInputType === 'email' ? authEmailInput : authPhoneInput;
+    if (!raw || !authPassword) { setLoginError('Enter your staff email or phone and password.'); return; }
+    const identifier = getCanonicalIdentifier(authInputType, authEmailInput, authPhoneInput);
+    const credentials = authInputType === 'email' ? { email: identifier, password: authPassword } : { phone: identifier, password: authPassword };
+    const { data, error } = await supabase.auth.signInWithPassword(credentials);
+    if (error || !data.user) { setLoginError('Staff sign-in failed. Check your credentials.'); return; }
+    const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
+    const profile = Array.isArray(profileData) ? profileData[0] : profileData;
+    if (profileError || !profile || !['employee', 'admin'].includes(profile.role)) {
+      await supabase.auth.signOut(); setLoginError('This account does not have staff access.'); return;
     }
-    try {
-      const { data, error } = await supabase
-        .from('admin_config')
-        .select('value')
-        .eq('key', 'employee_auth_code')
-        .single();
-
-      if (error || !data) {
-        alert('Error verifying security clearance with database.');
-        return;
-      }
-      if (pinValue.trim() === data.value.trim()) {
-        setIsAdminDashboardOpen(true);
-      } else {
-        alert('Access Denied. Invalid authorization code.');
-      }
-    } catch (err) {
-      console.error('Auth error:', err);
-      alert('Database connection error during authorization.');
-    }
+    setCurrentUser({ id: profile.id, authUserId: data.user.id, name: profile.name, identifier: profile.identifier, role: profile.role, type: 'regular' });
+    setAuthMode('employee'); setIsAdminDashboardOpen(true);
   };
 
   // SECTION 10: Start a guest session and clear guest-only order history.
@@ -528,6 +231,7 @@ export function App() {
 
   // SECTION 11: Clear the current user view, form state, and cached session keys.
   const handleLogout = () => {
+    void supabase.auth.signOut();
     setCurrentUser(null);
     setAuthMode('select');
     setIsAdminDashboardOpen(false);
@@ -554,48 +258,9 @@ export function App() {
     setResetTrigger((prev) => prev + 1);
   };
 
-  // SECTION 13: Record the daily loyalty stamp after an order callback.
+  // SECTION 13: Reload server-awarded loyalty data after an order.
   const recordOrderForLoyalty = async () => {
-    if (!currentUser || currentUser.type === 'guest') return;
-    const todayStr = new Date().toISOString().split('T')[0];
-    const identifierKey = (currentUser.identifier || 'default').toLowerCase().trim();
-    const detailedStampsKey = `veyns_detailed_stamps_${identifierKey}`;
-    const userStampsKey = `veyns_stamps_${identifierKey}`;
-
-    try {
-      let currentStamps = [...stamps];
-      if (currentStamps.length === 0) {
-        const detailedSaved = localStorage.getItem(detailedStampsKey);
-        if (detailedSaved) {
-          currentStamps = JSON.parse(detailedSaved);
-        }
-      }
-      while (currentStamps.length < 12) {
-        currentStamps.push({ status: 'empty', date: '' });
-      }
-
-      const alreadyStampedToday = currentStamps.some(s => s && s.date === todayStr && s.status === 'valid');
-      if (!alreadyStampedToday) {
-        const targetIdx = currentStamps.findIndex(s => !s || s.status === 'empty');
-        if (targetIdx >= 0) {
-          currentStamps[targetIdx] = { status: 'valid', date: todayStr };
-          setStamps(currentStamps);
-          localStorage.setItem(detailedStampsKey, JSON.stringify(currentStamps));
-          const validDates = currentStamps.filter(s => s && s.status === 'valid').map(s => s.date);
-          localStorage.setItem(userStampsKey, JSON.stringify(validDates));
-          if (identifierKey === 'admin') {
-            localStorage.setItem('veyns_loyalty_stamps', JSON.stringify(validDates));
-          }
-          await supabase
-            .from('profiles')
-            .update({ stamps_data: currentStamps })
-            .eq('identifier', identifierKey);
-          window.dispatchEvent(new Event('storage'));
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
+    if (currentUser && currentUser.type !== 'guest') await loadUserStampsAndPenalties(currentUser);
   };
 
   // SECTION 14: Render the entry screen for customer, guest, or employee access.
@@ -835,79 +500,28 @@ export function App() {
               <KeyRound className="h-6 w-6 text-lime-400" /> Password Recovery
             </h2>
             <p className="text-xs text-emerald-300/80">
-              Enter your registered email or phone and set a new password.
+              Enter your account email. Supabase will send a recovery link.
             </p>
           </div>
           {forgotSuccess ? (
             <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-6 text-center space-y-2">
               <CheckCircle2 className="h-10 w-10 text-lime-400 mx-auto" />
-              <p className="font-bold text-lime-400 text-sm">Password successfully updated!</p>
-              <p className="text-xs text-emerald-300">Redirecting you to login...</p>
+              <p className="font-bold text-lime-400 text-sm">Check your email for the recovery link.</p>
+              <p className="text-xs text-emerald-300">Use that link to choose a new password securely.</p>
             </div>
           ) : (
             <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">
-                    {forgotInputType === 'email' ? 'Email Address' : 'Phone Number'}
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={forgotInputType}
-                      onChange={(e) => {
-                        setForgotInputType(e.target.value as 'email' | 'phone');
-                        setForgotEmailInput('');
-                        setForgotPhoneInput('');
-                      }}
-                      className="bg-[#041913] text-lime-400 border border-emerald-800/80 rounded-xl px-3 py-1 text-[11px] font-bold focus:outline-none focus:border-lime-400 cursor-pointer appearance-none pr-7 shadow-sm"
-                    >
-                      <option value="email">Email</option>
-                      <option value="phone">Phone Number</option>
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-lime-400 pointer-events-none" />
-                  </div>
-                </div>
-                {forgotInputType === 'email' ? (
-                  <input
-                    type="email"
-                    required
-                    placeholder="Enter your email address"
-                    value={forgotEmailInput}
-                    onChange={(e) => setForgotEmailInput(e.target.value)}
-                    className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
-                  />
-                ) : (
-                  <div className="flex items-center w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 focus-within:border-lime-400">
-                    <span className="text-xs font-mono font-bold text-lime-400 mr-1 select-none cursor-default">+63</span>
-                    <input
-                      type="tel"
-                      required
-                      maxLength={10}
-                      placeholder="Enter your mobile number"
-                      value={forgotPhoneInput}
-                      onChange={(e) => setForgotPhoneInput(e.target.value.replace(/\D/g, ''))}
-                      className="w-full bg-transparent text-xs text-white placeholder:text-emerald-700 font-mono focus:outline-none"
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">New Password</label>
-                <p className="text-[10px] text-emerald-300/80 mb-1">Minimum 8 characters, including numbers and symbols.</p>
-                <input
-                  type="password"
-                  required
-                  placeholder="Create a strong password"
-                  value={newPasswordInput}
-                  onChange={(e) => setNewPasswordInput(e.target.value)}
-                  className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
-                />
+                <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">Account email</label>
+                <input type="email" required placeholder="Enter your email address" value={forgotEmailInput}
+                  onChange={(e) => setForgotEmailInput(e.target.value)}
+                  className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400" />
               </div>
               <Button
                 type="submit"
                 className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg mt-2 cursor-pointer"
               >
-                Update Password
+                Send Recovery Link
               </Button>
               <button
                 type="button"
@@ -958,25 +572,14 @@ export function App() {
             </div>
           </div>
           <div className="bg-[#041913] border border-emerald-800/60 rounded-2xl p-5 text-xs text-emerald-200 space-y-3">
-            <label className="font-bold text-lime-400 uppercase tracking-wider text-[11px] block text-center">enter authorization code</label>
-            <input
-              type="password"
-              placeholder="••••"
-              className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-center text-sm font-mono tracking-widest text-white placeholder:text-emerald-700 focus:outline-none focus:border-lime-400 shadow-inner"
-              onKeyDown={async (e) => {
-                if (e.key === 'Enter') await handleEmployeeAuth((e.target as HTMLInputElement).value);
-              }}
-              id="employee-pin-input"
-            />
-            <Button
-              onClick={async () => {
-                const pinInput = (document.getElementById('employee-pin-input') as HTMLInputElement)?.value;
-                await handleEmployeeAuth(pinInput);
-              }}
-              className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg cursor-pointer mt-1"
-            >
-              Proceed
-            </Button>
+            <label className="font-bold text-lime-400 uppercase tracking-wider text-[11px] block text-center">staff Supabase Auth sign-in</label>
+            <select value={authInputType} onChange={(e) => setAuthInputType(e.target.value as 'email' | 'phone')} className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white">
+              <option value="email">Email</option><option value="phone">Phone</option>
+            </select>
+            {authInputType === 'email' ? <input type="email" autoComplete="username" value={authEmailInput} onChange={(e) => setAuthEmailInput(e.target.value)} placeholder="Staff email" className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" /> : <input type="tel" autoComplete="username" value={authPhoneInput} onChange={(e) => setAuthPhoneInput(e.target.value)} placeholder="9XXXXXXXXX" className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" />}
+            <input type="password" autoComplete="current-password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void handleEmployeeAuth(); }} placeholder="Password" className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" />
+            {loginError && <p className="text-red-400">{loginError}</p>}
+            <Button onClick={() => void handleEmployeeAuth()} className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg cursor-pointer mt-1">Sign in</Button>
           </div>
           <button
             onClick={() => setAuthMode('select')}
@@ -1199,7 +802,6 @@ export function App() {
                           <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">Current Password</label>
                           <input
                             type="password"
-                            required
                             value={currentPasswordInput}
                             onChange={(e) => setCurrentPasswordInput(e.target.value)}
                             className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
