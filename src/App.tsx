@@ -10,6 +10,7 @@ import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, 
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
 
+  // SECTION 1: App state for authentication, account settings, orders, and loyalty.
 export function App() {
   const [authMode, setAuthMode] = useState<'select' | 'regular' | 'guest' | 'employee' | 'forgot'>('select');
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -57,6 +58,7 @@ export function App() {
   const [stamps, setStamps] = useState<any[]>([]);
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
 
+  // SECTION 2: Load the signed-in customer's loyalty stamps and penalties.
   const loadUserStampsAndPenalties = async (userObj: any) => {
     if (!userObj || userObj.type === 'guest') return;
     try {
@@ -120,6 +122,7 @@ export function App() {
     }
   };
 
+  // SECTION 3: Restore locally cached session data and listen for storage changes.
   useEffect(() => {
     try {
       const savedUser = localStorage.getItem('veyns_current_user');
@@ -156,6 +159,7 @@ export function App() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  // SECTION 4: Password hashing and input normalization/validation helpers.
   const hashPassword = async (password: string) => {
     const msgUint8 = new TextEncoder().encode(password);
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
@@ -191,6 +195,7 @@ export function App() {
     }
   };
 
+  // SECTION 5: Handle regular customer sign-up and login.
   const handleRegularAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setNicknameError('');
@@ -358,6 +363,7 @@ export function App() {
     }
   };
 
+  // SECTION 6: Update a customer email/phone identifier and related local state.
   const handleUpdateIdentifierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.type === 'guest') return;
@@ -410,6 +416,7 @@ export function App() {
     }
   };
 
+  // SECTION 7: Handle password changes from account settings.
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.type === 'guest' || !currentPasswordInput || !newPasswordSettingInput) return;
@@ -448,6 +455,7 @@ export function App() {
     }
   };
 
+  // SECTION 8: Handle the forgot-password form submission.
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const rawForgot = forgotInputType === 'email' ? forgotEmailInput : forgotPhoneInput;
@@ -477,6 +485,7 @@ export function App() {
     }
   };
 
+  // SECTION 9: Verify the employee access code and open the dashboard view.
   const handleEmployeeAuth = async (pinValue: string) => {
     if (!pinValue) {
       alert('Please enter an authorization code.');
@@ -504,6 +513,7 @@ export function App() {
     }
   };
 
+  // SECTION 10: Start a guest session and clear guest-only order history.
   const handleGuestLogin = () => {
     const guestData = { name: 'Guest Diner', identifier: 'guest_trial', type: 'guest' };
     setCurrentUser(guestData);
@@ -516,6 +526,7 @@ export function App() {
     sessionStorage.removeItem('veyns_guest_order_history');
   };
 
+  // SECTION 11: Clear the current user view, form state, and cached session keys.
   const handleLogout = () => {
     setCurrentUser(null);
     setAuthMode('select');
@@ -536,12 +547,14 @@ export function App() {
     sessionStorage.removeItem('veyns_guest_order_history');
   };
 
+  // SECTION 12: Reset menu-related overlays and refresh the ordering view.
   const handleResetMenu = () => {
     setShowMyOrders(false);
     setShowLoyaltyModal(false);
     setResetTrigger((prev) => prev + 1);
   };
 
+  // SECTION 13: Record the daily loyalty stamp after an order callback.
   const recordOrderForLoyalty = async () => {
     if (!currentUser || currentUser.type === 'guest') return;
     const todayStr = new Date().toISOString().split('T')[0];
@@ -585,6 +598,7 @@ export function App() {
     }
   };
 
+  // SECTION 14: Render the entry screen for customer, guest, or employee access.
   if (authMode === 'select') {
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
@@ -624,6 +638,7 @@ export function App() {
     );
   }
 
+  // SECTION 15: Render the regular customer login and sign-up screens.
   if (authMode === 'regular' && !currentUser) {
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
@@ -810,6 +825,7 @@ export function App() {
     );
   }
 
+  // SECTION 16: Render the forgot-password screen.
   if (authMode === 'forgot') {
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
@@ -907,6 +923,7 @@ export function App() {
     );
   }
 
+  // SECTION 17: Render employee code entry or the employee dashboard.
   if (authMode === 'employee') {
     if (isAdminDashboardOpen) {
       return (
@@ -972,6 +989,7 @@ export function App() {
     );
   }
 
+  // SECTION 18: Render the main store, order counter, and account settings.
   return (
     <CartProvider>
       <div className="min-h-screen bg-[#071F19] text-white flex flex-col">
