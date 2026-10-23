@@ -20,7 +20,12 @@ function Photo({ src, alt, className }: { src?: string; alt: string; className: 
 }
 
 // --- Main employee/admin dashboard component ---
-export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
+const formatVoucherCountdown = (milliseconds: number) => {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
+};
+
+export function EmployeeDashboard({ onBackToStore, isAdmin = false }: { onBackToStore?: () => void; isAdmin?: boolean }) {
   const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots'>('sales');
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -50,6 +55,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [newVoucherUsageLimit, setNewVoucherUsageLimit] = useState('');
 
   const [orders, setOrders] = useState<any[]>([]);
+  const [salesLogEntries, setSalesLogEntries] = useState<any[]>([]);
+  const [selectedSalesDate, setSelectedSalesDate] = useState(getManilaDateKey());
+  const [salesDatePinned, setSalesDatePinned] = useState(false);
+  const [dashboardClockNow, setDashboardClockNow] = useState(Date.now());
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
 
   const [customers, setCustomers] = useState<any[]>([]);
@@ -87,16 +96,41 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   useEffect(() => {
     fetchCloudData();
     const orderChannel = supabase.channel('public:orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCloudData).subscribe();
+    const salesLogChannel = supabase.channel('public:sales_log_entries').on('postgres_changes', { event: '*', schema: 'public', table: 'sales_log_entries' }, fetchCloudData).subscribe();
     const menuChannel = supabase.channel('public:menu_items').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, fetchCloudData).subscribe();
     const slotsChannel = supabase.channel('public:slot_capacities').on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, fetchCloudData).subscribe();
     const promosChannel = supabase.channel('public:promos_dashboard').on('postgres_changes', { event: '*', schema: 'public', table: 'promos' }, fetchCloudData).subscribe();
     return () => {
       supabase.removeChannel(orderChannel);
+      supabase.removeChannel(salesLogChannel);
       supabase.removeChannel(menuChannel);
       supabase.removeChannel(slotsChannel);
       supabase.removeChannel(promosChannel);
     };
   }, []);
+
+  useEffect(() => {
+    const tick = () => {
+      const now = Date.now();
+      setDashboardClockNow(now);
+      if (!salesDatePinned) setSelectedSalesDate(getManilaDateKey(new Date(now)));
+    };
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [salesDatePinned]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let alive = true;
+    const cleanupExpiredPromos = async () => {
+      const { data, error } = await supabase.rpc('cleanup_expired_veyns_promos_admin');
+      if (!error && alive && Number(data || 0) > 0) await fetchCloudData();
+    };
+    void cleanupExpiredPromos();
+    const timer = window.setInterval(cleanupExpiredPromos, 30000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [isAdmin]);
 
   // --- Load menu, orders, customer profiles, slot capacities, and promos from Supabase ---
   const fetchCloudData = async () => {
@@ -146,6 +180,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         })));
       }
 
+      const { data: cloudSalesLog } = await supabase.from('sales_log_entries').select('*').order('logged_at', { ascending: false });
+      if (cloudSalesLog) setSalesLogEntries(cloudSalesLog);
+
       const { data: cloudProfiles } = await supabase.from('profiles').select('id,name,identifier,role,created_at,stamps_data,penalty_data,auth_user_id');
       if (cloudProfiles && cloudProfiles.length > 0) {
         const formattedProfiles = cloudProfiles.map((p: any) => {
@@ -188,9 +225,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           usageLimit: p.usage_limit ? Number(p.usage_limit) : null,
           usageCount: Number(p.usage_count || 0),
           createdAt: Number(p.created_at || Date.now()),
-          expiryUnitText: Number(p.expiry_duration_ms) > 0 ? `${Number(p.expiry_duration_ms) / (60 * 1000)} minutes` : 'Never expires'
+          expiryUnitText: Number(p.expiry_duration_ms) > 0 ? `${Number(p.expiry_duration_ms) / (60 * 1000)} minutes` : 'Never expires',
+          expiresAt: Number(p.expiry_duration_ms) > 0 ? Number(p.created_at || Date.now()) + Number(p.expiry_duration_ms) : null
         }));
-        setPromos(formattedPromos);
+        setPromos(formattedPromos.filter((p: any) => !p.expiresAt || p.expiresAt > Date.now()));
+      } else if (cloudPromos) {
+        setPromos([]);
       } else {
         setPromos(getActivePromoCodes());
       }
@@ -476,6 +516,15 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
+  const handleClearSalesLog = async () => {
+    if (!isAdmin) return;
+    if (!confirm('Clear all sales log summaries? Customer order history and orders will stay unchanged.')) return;
+    const { error } = await supabase.rpc('clear_veyns_sales_log_admin');
+    if (error) { alert(error.message); return; }
+    setSalesLogEntries([]);
+    await fetchCloudData();
+  };
+
   // Auth password resets are handled by Supabase recovery flows, never by dashboard password creation.
 
   // Staff can update a nickname. Contact identifiers remain controlled by the customer's verified Auth account.
@@ -574,9 +623,14 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     c.identifier.toLowerCase().includes(customerSearch.toLowerCase())
   );
 
-  const totalGrossSales = orders.reduce((acc, o) => acc + (o.total || 0), 0);
-  const totalOrdersCount = orders.length;
+  const activePromos = promos.filter((promo: any) => !promo.expiresAt || promo.expiresAt > dashboardClockNow);
+  const daySalesLog = salesLogEntries.filter((entry: any) => entry.sales_date === selectedSalesDate);
+  const totalGrossSales = daySalesLog.reduce((acc: number, entry: any) => acc + Number(entry.total || 0), 0);
+  const totalOrdersCount = daySalesLog.length;
+  const totalBowlsOrdered = daySalesLog.reduce((acc: number, entry: any) => acc + Number(entry.bowl_count || 0), 0);
   const averageOrderValue = totalOrdersCount > 0 ? totalGrossSales / totalOrdersCount : 0;
+  const loggedOrderIds = new Set(daySalesLog.map((entry: any) => entry.order_id));
+  const daySalesOrders = orders.filter((order: any) => loggedOrderIds.has(order.id));
 
   // --- Derived option dependencies and live customization preview pricing ---
   // Gather all options across groups for conditional parent dependency selection
@@ -635,14 +689,20 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             <Tag className="h-4 w-4" /> Menu Manager ({menuItems.length})
           </button>
           <button onClick={() => setActiveTab('promos')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'promos' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
-            <Ticket className="h-4 w-4" /> Vouchers & Promos ({promos.length})
+            <Ticket className="h-4 w-4" /> Vouchers & Promos ({activePromos.length})
           </button>
         </div>
 
                 {/* Sales analytics and order transaction log */}
         {activeTab === 'sales' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-800/60 bg-[#051813] p-4">
+              <label className="flex items-center gap-2 text-xs font-bold text-emerald-200">Sales date
+                <input type="date" value={selectedSalesDate} max={getManilaDateKey()} onChange={(e) => { setSelectedSalesDate(e.target.value); setSalesDatePinned(e.target.value !== getManilaDateKey()); }} className="rounded-lg border border-emerald-800 bg-[#04140f] p-2 text-xs text-white" />
+              </label>
+              {isAdmin && <Button onClick={handleClearSalesLog} className="bg-red-950/50 border border-red-800 text-red-300 hover:bg-red-900 rounded-lg text-xs"><Trash2 className="mr-1 h-3.5 w-3.5" /> Clear Sales Log</Button>}
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-2 shadow-xl">
                 <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Total Gross Sales</span>
                 <p className="text-3xl font-extrabold text-lime-400 font-display">{formatPeso(totalGrossSales)}</p>
@@ -660,14 +720,14 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="h-5 w-5 text-lime-400" />
-                  <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Completed Order Transactions Log</h3>
+                  <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Daily Sales Log · {selectedSalesDate}</h3>
                 </div>
 
               </div>
-              {orders.length === 0 ? (
+              {daySalesOrders.length === 0 ? (
                 <div className="text-center py-16 space-y-3">
                   <ShoppingBag className="h-12 w-12 text-emerald-700 mx-auto opacity-50" />
-                  <p className="text-sm text-emerald-300/70 font-semibold">No sales transactions recorded yet.</p>
+                  <p className="text-sm text-emerald-300/70 font-semibold">No sales log entries for this date.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -685,7 +745,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-emerald-950">
-                      {orders.map((order, idx) => (
+                      {daySalesOrders.map((order, idx) => (
                         <tr key={idx} className="hover:bg-[#071F19]/50 transition-colors">
                           <td className="p-3 font-extrabold text-lime-400">{order.orderNumber}</td>
                           <td className="p-3">
@@ -1010,12 +1070,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               </div>
             </form>
             <div className="space-y-2">
-              <h4 className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Active Vouchers & Promos ({promos.length})</h4>
-              {promos.length === 0 ? (
+              <h4 className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Active Vouchers & Promos ({activePromos.length})</h4>
+              {activePromos.length === 0 ? (
                 <p className="text-xs text-emerald-400/60 py-6 text-center">No active vouchers or promo codes available.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {promos.map((p, idx) => (
+                  {activePromos.map((p, idx) => (
                     <div key={idx} className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-4 flex items-center justify-between text-xs shadow-md">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -1027,7 +1087,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         <p className="text-emerald-200 font-bold">
                           {p.type === 'free' ? 'FREE DELIVERY' : p.type === 'peso' ? formatPeso(p.discountValue) + ' OFF' : `${p.discountValue}% OFF`}
                         </p>
-                        <p className="text-[10px] text-amber-300">⏱️ Expiry: {p.expiryUnitText || 'Never'}</p>
+                        <p className="text-[10px] text-amber-300">⏱️ {p.expiresAt ? `Expires in ${formatVoucherCountdown(p.expiresAt - dashboardClockNow)}` : 'Never expires'}</p>
                         <p className="text-[10px] text-emerald-300">🔢 Usage: {p.usageCount || 0} / {p.usageLimit ? `${p.usageLimit} limit` : 'Unlimited'}</p>
                         <p className="text-[10px] text-lime-300"> Scope: {p.target_type === 'delivery' ? 'Delivery Fee' : 'Food Subtotal'}</p>
                         <p className="text-[10px] text-blue-300"> Eligibility: {p.eligibility === 'registered' ? 'Registered Only' : 'All Customers'}</p>
