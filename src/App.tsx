@@ -317,9 +317,18 @@ export function App() {
             </p>
           </div>
           {signUpSuccessMsg && (
-            <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-1">
+            <div
+              className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-2"
+              role="status"
+              aria-live="polite"
+            >
               <CheckCircle2 className="h-6 w-6 text-lime-400 mx-auto" />
-              <p className="font-bold text-lime-400 text-xs">Account successfully created! Please log in below.</p>
+              <p className="font-bold text-lime-400 text-xs">Account successfully created.</p>
+              <p className="text-xs text-emerald-200">
+                {authInputType === 'email'
+                  ? `We sent a confirmation email to ${authEmailInput.trim()}. Open it and click the verification link before logging in. Check your spam folder if you don't see it.`
+                  : 'A verification code was sent to your phone. Verify your number before logging in.'}
+              </p>
             </div>
           )}
           {loginError && !isSignUp && (
@@ -877,3 +886,4 @@ export function App() {
 }
 
 export default App;
+
