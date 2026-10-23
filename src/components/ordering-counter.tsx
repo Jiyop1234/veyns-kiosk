@@ -229,6 +229,24 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  // Pre-fill the account's verified contact, while leaving the checkout inputs editable.
+  const lastPrefilledIdentifierRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isGuest) {
+      lastPrefilledIdentifierRef.current = null;
+      return;
+    }
+    const identifier = String(currentUser?.identifier || '').trim();
+    if (!identifier || lastPrefilledIdentifierRef.current === identifier) return;
+    lastPrefilledIdentifierRef.current = identifier;
+    if (identifier.includes('@')) {
+      setCustomerEmail(identifier);
+      setCustomerPhone('');
+    } else {
+      setCustomerPhone(identifier);
+      setCustomerEmail('');
+    }
+  }, [currentUser?.identifier, isGuest]);
   const [customerLocation, setCustomerLocation] = useState('');
   const [nearestLandmark, setNearestLandmark] = useState('');
 
@@ -260,7 +278,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const computeFeeFromKm = (km: number) => {
-    if (km <= 2.0) return 40; // Within 2km = ₱40 fixed
+    if (km < 1.0) return 0; // Under 1km is free
+    if (km <= 2.0) return 40; // 1km through 2km = ₱40 fixed
     const succeedingKm = km - 2.0;
     return 40 + Math.ceil(succeedingKm) * 5; // ₱40 base + ₱5 per succeeding km
   };
@@ -327,10 +346,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const processSelectedCoordinates = async (lat: number, lng: number) => {
     setDeliveryCoordinates({ lat, lng });
     const dist = calculateDistanceKm(STORE_LAT, STORE_LNG, lat, lng);
-    const roundedDist = Number(dist.toFixed(2));
+    const roundedDist = Number(dist.toFixed(3));
     setDeliveryDistanceKm(roundedDist);
 
-    const fee = computeFeeFromKm(roundedDist);
+    const fee = computeFeeFromKm(dist);
     setCalculatedDeliveryFee(fee);
 
     setCustomerLocation(`Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
@@ -1928,7 +1947,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       <div className="flex justify-between font-bold text-white">
                         <span>Delivery Fee Rule:</span>
                         <span className="text-lime-400">
-                          {deliveryDistanceKm <= 2 ? '₱40 Fixed (<=2km)' : `₱40 base + ₱5/km succeeding`}
+                          {deliveryDistanceKm < 1 ? 'Free (<1km)' : deliveryDistanceKm <= 2 ? '₱40 Fixed (1-2km)' : `₱40 base + ₱5/km succeeding`}
                         </span>
                       </div>
                       <div className="flex justify-between font-extrabold text-sm pt-1 border-t border-emerald-900/60 text-white">
