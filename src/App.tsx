@@ -17,8 +17,6 @@ export function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   
-  // Selector State ('email' | 'phone')
-  const [authInputType, setAuthInputType] = useState<'email' | 'phone'>('email');
   const [authEmailInput, setAuthEmailInput] = useState('');
   const [authPhoneInput, setAuthPhoneInput] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -119,22 +117,21 @@ export function App() {
     ? emailVal.trim().toLowerCase()
     : '+63' + phoneVal.replace(/\D/g, '');
 
-  // SECTION 5: Handle customer registration and login with Supabase Auth.
+  // SECTION 5: Handle customer registration and login with email-based Supabase Auth.
   const handleRegularAuth = async (e: React.FormEvent) => {
     e.preventDefault(); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError('');
-    const rawIdentifier = authInputType === 'email' ? authEmailInput : authPhoneInput;
-    const canonicalKey = getCanonicalIdentifier(authInputType, authEmailInput, authPhoneInput);
-    if (!rawIdentifier.trim() || (isSignUp && !validateIdentifier(rawIdentifier, authInputType))) {
-      setIdentifierError(authInputType === 'email' ? 'Enter a valid email address.' : 'Enter a valid Philippine mobile number.'); return;
+    const email = authEmailInput.trim().toLowerCase();
+    if (!email || (isSignUp && !validateIdentifier(email, 'email'))) {
+      setIdentifierError('Enter a valid email address.'); return;
     }
     if (!authPassword || (isSignUp && !validatePasswordStrength(authPassword))) {
       setPasswordError('Use at least 8 characters, including a number and a symbol.'); return;
     }
-    const credentials = authInputType === 'email' ? { email: canonicalKey, password: authPassword } : { phone: canonicalKey, password: authPassword };
+    const credentials = { email, password: authPassword };
     if (isSignUp) {
       const nickname = authName.trim();
       if (!nickname) { setNicknameError('Choose a nickname.'); return; }
-      const { data, error } = await supabase.auth.signUp({ ...credentials, options: { data: { name: nickname }, ...(authInputType === 'phone' ? { channel: 'sms' as const } : {}) } });
+      const { data, error } = await supabase.auth.signUp({ ...credentials, options: { data: { name: nickname } } });
       if (error) { setIdentifierError(error.message); return; }
       if (!data.session) {
         setSignUpSuccessMsg(true); setIsSignUp(false); setAuthPassword(''); setAuthName('');
@@ -142,7 +139,7 @@ export function App() {
       }
       const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
       const profile = Array.isArray(profileData) ? profileData[0] : profileData;
-      if (profileError || !profile) { setIdentifierError(profileError?.message || 'Verify your contact method, then sign in.'); return; }
+      if (profileError || !profile) { setIdentifierError(profileError?.message || 'Verify your email, then sign in.'); return; }
       const userObj = { id: profile.id, authUserId: data.user.id, name: profile.name || nickname, identifier: profile.identifier, role: profile.role, type: 'regular' };
       setCurrentUser(userObj);
       const isStaff = ['employee', 'admin'].includes(profile.role);
@@ -150,7 +147,7 @@ export function App() {
       loadUserStampsAndPenalties(userObj); return;
     }
     const { data, error } = await supabase.auth.signInWithPassword(credentials);
-    if (error || !data.user) { setLoginError('Incorrect email or phone number or password.'); return; }
+    if (error || !data.user) { setLoginError('Incorrect email or password.'); return; }
     const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
     const profile = Array.isArray(profileData) ? profileData[0] : profileData;
     if (profileError || !profile) { await supabase.auth.signOut(); setLoginError(profileError?.message || 'Unable to load your account.'); return; }
@@ -312,7 +309,7 @@ export function App() {
               {isSignUp ? 'Be part of us!' : "Look who's back."}
             </h2>
             <p className="text-xs text-emerald-300/80">
-              {isSignUp ? 'Sign up with email or phone to unlock Loyalty Stamps' : 'Access your order history and loyalty rewards'}
+              {isSignUp ? 'Sign up with email to unlock Loyalty Stamps' : 'Access your order history and loyalty rewards'}
             </p>
           </div>
           {signUpSuccessMsg && (
@@ -324,9 +321,7 @@ export function App() {
               <CheckCircle2 className="h-6 w-6 text-lime-400 mx-auto" />
               <p className="font-bold text-lime-400 text-xs">Account successfully created.</p>
               <p className="text-xs text-emerald-200">
-                {authInputType === 'email'
-                  ? `We sent a confirmation email to ${authEmailInput.trim()}. Open it and click the verification link before logging in. Check your spam folder if you don't see it.`
-                  : 'A verification code was sent to your phone. Verify your number before logging in.'}
+`We sent a confirmation email to ${authEmailInput.trim()}. Open it and click the verification link before logging in. Check your spam folder if you don't see it.`
               </p>
             </div>
           )}
@@ -356,66 +351,19 @@ export function App() {
               </div>
             )}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">
-                  {authInputType === 'email' ? 'Email Address' : 'Phone Number'}
-                </label>
-                <div className="relative">
-                  <select
-                    value={authInputType}
-                    onChange={(e) => {
-                      setAuthInputType(e.target.value as 'email' | 'phone');
-                      setAuthEmailInput('');
-                      setAuthPhoneInput('');
-                      setIdentifierError('');
-                      setLoginError('');
-                    }}
-                    className="bg-[#041913] text-lime-400 border border-emerald-800/80 rounded-xl px-3 py-1 text-[11px] font-bold focus:outline-none focus:border-lime-400 cursor-pointer appearance-none pr-7 shadow-sm"
-                  >
-                    <option value="email">Email</option>
-                    <option value="phone">Phone Number</option>
-                  </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-lime-400 pointer-events-none" />
-                </div>
-              </div>
-              {authInputType === 'email' ? (
-                <div>
-                  <input
-                    type="email"
-                    required
-                    placeholder="Enter your email address"
-                    value={authEmailInput}
-                    onChange={(e) => {
-                      setAuthEmailInput(e.target.value);
-                      if (identifierError) setIdentifierError('');
-                      if (loginError) setLoginError('');
-                    }}
-                    className={`w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none ${
-                      identifierError || (loginError && !isSignUp) ? 'border-red-500 focus:border-red-500' : 'border-emerald-800/80 focus:border-lime-400'
-                    }`}
-                  />
-                </div>
-              ) : (
-                <div className={`flex items-center w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 ${
-                  identifierError || (loginError && !isSignUp) ? 'border-red-500' : 'border-emerald-800/80 focus-within:border-lime-400'
-                }`}>
-                  <span className="text-xs font-mono font-bold text-lime-400 mr-1 select-none cursor-default">+63</span>
-                  <input
-                    type="tel"
-                    required
-                    maxLength={10}
-                    placeholder="Enter your mobile number"
-                    value={authPhoneInput}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '');
-                      setAuthPhoneInput(val);
-                      if (identifierError) setIdentifierError('');
-                      if (loginError) setLoginError('');
-                    }}
-                    className="w-full bg-transparent text-xs text-white placeholder:text-emerald-700 font-mono focus:outline-none"
-                  />
-                </div>
-              )}
+              <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">Email Address</label>
+              <input
+                type="email"
+                required
+                placeholder="Enter your email address"
+                value={authEmailInput}
+                onChange={(e) => {
+                  setAuthEmailInput(e.target.value);
+                  if (identifierError) setIdentifierError('');
+                  if (loginError) setLoginError('');
+                }}
+                className={identifierError || (loginError && !isSignUp) ? 'w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none border-red-500 focus:border-red-500' : 'w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none border-emerald-800/80 focus:border-lime-400'}
+              />
               {identifierError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{identifierError}</p>}
             </div>
             <div className="space-y-1">
