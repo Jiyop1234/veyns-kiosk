@@ -1,4 +1,5 @@
 // @ts-nocheck
+// SECTION 1: Types for selectable menu options, option groups, and menu items.
 export interface MenuOption {
   id: string;
   name: string;
@@ -42,15 +43,18 @@ export interface MenuItem {
   optionGroups?: MenuOptionGroup[];
 }
 
+// SECTION 2: Type describing promo codes used by the menu and ordering flow.
 export interface PromoCode {
   code: string;
   discountPercent: number;
 }
 
+// SECTION 3: Currency formatting helper for Philippine peso amounts.
 export const formatPeso = (amount: number) => {
   return `₱${amount.toFixed(2)}`;
 };
 
+// SECTION 4: Category names used to organize and filter the menu.
 export const menuCategories = [
   'All items',
   'Rice Bowls',
@@ -61,6 +65,7 @@ export const menuCategories = [
 
 export const CATEGORIES = menuCategories;
 
+// SECTION 5: Optional add-ons offered alongside the main menu items.
 export const UPSELL_ITEMS: MenuItem[] = [
   {
     id: 'fries',
@@ -113,6 +118,7 @@ export const UPSELL_ITEMS: MenuItem[] = [
   }
 ];
 
+// SECTION 6: Default product catalog, including item options and category groups.
 export const menuItems: MenuItem[] = [
   // --- 1. RICE BOWLS ---
   {
@@ -242,8 +248,10 @@ export const menuItems: MenuItem[] = [
   }
 ];
 
+// SECTION 7: Backward-compatible alias for components that use the menu grid name.
 export const MENU_GRID = menuItems;
 
+// SECTION 8: Read promo codes saved in browser storage; return an empty list if unavailable.
 export const getActivePromoCodes = (): PromoCode[] => {
   try {
     const saved = localStorage.getItem('veyns_promo_codes');
@@ -252,6 +260,7 @@ export const getActivePromoCodes = (): PromoCode[] => {
   return [];
 };
 
+// SECTION 9: Read a saved menu override, falling back to the bundled default catalog.
 export const getStoredMenuItems = (): MenuItem[] => {
   try {
     const saved = localStorage.getItem('veyns_menu_items');
@@ -263,6 +272,7 @@ export const getStoredMenuItems = (): MenuItem[] => {
   return menuItems;
 };
 
+// SECTION 10: Persist menu item data in browser storage for this browser.
 export const saveStoredMenuItems = (items: MenuItem[]) => {
   try {
     localStorage.setItem('veyns_menu_items', JSON.stringify(items));
