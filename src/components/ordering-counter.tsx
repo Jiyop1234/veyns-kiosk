@@ -21,6 +21,11 @@ function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; 
     );
   }
   return <img src={src} alt={alt} width={512} height={512} className={className} />;
+
+const formatVoucherCountdown = (milliseconds: number) => {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
+};
 }
 
 // SECTION 3: Main ordering experience, including menu browsing, checkout, order history, and loyalty UI.
@@ -32,6 +37,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const [currentMenuGrid, setCurrentMenuGrid] = useState<any[]>([]);
   const [availablePromos, setAvailablePromos] = useState<any[]>([]);
+  const [promoClock, setPromoClock] = useState(Date.now());
 
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [stamps, setStamps] = useState<any[]>([]);
@@ -50,21 +56,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     const date = new Date(`${dateKey}T00:00:00Z`);
     date.setUTCDate(date.getUTCDate() + days);
     return date.toISOString().slice(0, 10);
-  };
-  const isSlotStartedForDate = (slot: string, dateKey: string) => {
-    if (dateKey !== getManilaDateKey()) return false;
-    const slotStartHour: Record<string, number> = {
-      '12:00 PM - 1:00 PM': 12,
-      '4:00 PM - 5:00 PM': 16,
-      '7:00 PM - 8:00 PM': 19,
-      '10:00 PM - 11:00 PM': 22,
-    };
-    const hour = Number(new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Asia/Manila',
-      hour: '2-digit',
-      hourCycle: 'h23',
-    }).format(new Date()));
-    return hour >= (slotStartHour[slot] ?? 24);
   };
 
   // SECTION 5: Customer type and ordering-time eligibility checks.
@@ -129,6 +120,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           createdAt: Number(p.created_at || Date.now())
         }));
         setAvailablePromos(formatted);
+      } else if (cloudPromos) {
+        setAvailablePromos([]);
       } else {
         setAvailablePromos(getActivePromoCodes());
       }
@@ -252,6 +245,15 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [promoError, setPromoError] = useState('');
   const [claimedVouchersState, setClaimedVouchersState] = useState<{ [code: string]: number }>({});
 
+  useEffect(() => {
+    setAppliedPromos((current) => {
+      const active = current.filter((promo: any) => !promo.expiryDurationMs || !promo.createdAt || promo.createdAt + promo.expiryDurationMs > Date.now());
+      return active.length === current.length ? current : active;
+    });
+    const timer = window.setInterval(() => setPromoClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const isOrdersOpen = showMyOrders !== undefined ? showMyOrders : internalShowMyOrders;
   const setIsOrdersOpen = setShowMyOrders || setInternalShowMyOrders;
 
@@ -261,7 +263,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   // Order Type & Scheduling States
   const [orderType, setOrderType] = useState<'today' | 'reservation'>(orderTodayOpen ? 'today' : 'reservation');
   const [todayTimeSlot, setTodayTimeSlot] = useState('12:00 PM - 1:00 PM');
-  const [reservationDate, setReservationDate] = useState(manilaTodayKey);
+  const [reservationDate, setReservationDate] = useState('');
   const [reservationTime, setReservationTime] = useState('12:00 PM - 1:00 PM');
 
   const [customerName, setCustomerName] = useState('');
@@ -874,9 +876,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     if (orderType === 'reservation' && !reservationDate) {
       alert('Choose a reservation date and time.'); return;
     }
-    if (orderType === 'reservation' && isSlotStartedForDate(reservationTime, reservationDate)) {
-      alert('That time window has already started. Choose a later time or another date.'); return;
-    }
     if (fulfillment === 'delivery' && !deliveryCoordinates) {
       alert('Choose a delivery location on the map before placing the order.'); return;
     }
@@ -925,7 +924,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // SECTION 22: Derived values used by the rendered menu, loyalty, and checkout interface.
   const validStampsCount = stamps.filter(s => s.status === 'valid').length;
-  const publicVouchersList = isGuest ? [] : availablePromos.filter(p => p.visibility !== 'hidden');
+  const publicVouchersList = isGuest ? [] : availablePromos.filter(p => p.visibility !== 'hidden' && (!p.expiryDurationMs || !p.createdAt || p.createdAt + p.expiryDurationMs > promoClock));
 
   const isStoreClosedForToday = orderType === 'today' && !orderTodayOpen;
 
@@ -1750,6 +1749,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                               <p className="text-[10px] text-emerald-200">
                                 {promo.type === 'free' ? 'FREE DELIVERY' : promo.type === 'peso' ? formatPeso(promo.discountValue) + ' OFF' : `${promo.discountValue}% OFF`}
                               </p>
+                              {promo.expiryDurationMs > 0 && promo.createdAt && (
+                                <p className="text-[9px] text-amber-300">Expires in {formatVoucherCountdown(promo.createdAt + promo.expiryDurationMs - promoClock)}</p>
+                              )}
                               {isAlreadyApplied && (
                                 <p className="text-[9px] text-amber-300">✓ Stacked and applied.</p>
                               )}
@@ -1856,7 +1858,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         <label className="text-[10px] text-emerald-300 block mb-1">Reservation Date *</label>
                         <input
                           type="date"
-                          min={manilaTodayKey}
+                          min={shiftDateKey(manilaTodayKey, 1)}
                           value={reservationDate}
                           onChange={(e) => setReservationDate(e.target.value)}
                           className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white text-xs focus:outline-none focus:border-lime-400"
@@ -1872,9 +1874,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                           {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => {
                             const slotInfo = slotCapacities.find(s => s.slot_time === slot && s.date_key === reservationDate);
                             const slotsLeft = slotInfo ? Math.max(0, Number(slotInfo.max_slots ?? 20) - Number(slotInfo.booked_bowls || 0)) : 20;
-                            const slotStarted = isSlotStartedForDate(slot, reservationDate);
-                            const isFullyBooked = slotStarted || Boolean(slotInfo?.is_fully_booked) || slotsLeft <= 0 || slotsLeft < cartBowlCount;
-                            const labelText = `${slot} ${slotStarted ? '(Already started)' : isFullyBooked ? '(Fully Booked)' : `(${slotsLeft} bowls left)`}`;
+                            const isFullyBooked = Boolean(slotInfo?.is_fully_booked) || slotsLeft <= 0 || slotsLeft < cartBowlCount;
+                            const labelText = `${slot} ${isFullyBooked ? '(Fully Booked)' : `(${slotsLeft} bowls left)`}`;
 
                             return (
                               <option key={slot} value={slot} disabled={isFullyBooked}>
