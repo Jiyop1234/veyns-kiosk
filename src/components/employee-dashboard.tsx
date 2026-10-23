@@ -64,7 +64,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [editCustValue, setEditCustValue] = useState('');
 
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
-  const [selectedSlotDate, setSelectedSlotDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedSlotDate, setSelectedSlotDate] = useState(getManilaDateKey());
   const timeSlotsList = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'];
 
   const [stampTargetUser, setStampTargetUser] = useState<any>(null);
@@ -202,11 +202,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     try {
       const existing = slotCapacities.find(s => s.date_key === dateKey && s.slot_time === slotTime);
       const bookedCount = existing ? existing.booked_count : 0;
+      const bookedBowls = existing ? (existing.booked_bowls || 0) : 0;
       const payload = {
         date_key: dateKey,
         slot_time: slotTime,
         max_slots: maxSlots,
         booked_count: bookedCount,
+        booked_bowls: bookedBowls,
         is_fully_booked: isFullyBooked
       };
       await supabase.from('slot_capacities').upsert(payload, { onConflict: 'date_key,slot_time' });
@@ -742,13 +744,14 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               </div>
             </div>
             <p className="text-xs text-emerald-300">
-              Configure maximum order slots per time window or mark a time slot as <strong>Fully Booked</strong>. This syncs live with customer checkout.
+              Configure the maximum number of bowls for each time window. Capacity updates live after every order and resets with each Manila calendar date.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {timeSlotsList.map((slotTime) => {
                 const existing = slotCapacities.find(s => s.date_key === selectedSlotDate && s.slot_time === slotTime);
-                const maxSlots = existing ? existing.max_slots : 10;
+                const maxSlots = existing ? existing.max_slots : 20;
                 const bookedCount = existing ? existing.booked_count : 0;
+                const bookedBowls = existing ? (existing.booked_bowls || 0) : 0;
                 const isFullyBooked = existing ? existing.is_fully_booked : false;
                 return (
                   <SlotCapacityCard
@@ -757,6 +760,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     dateKey={selectedSlotDate}
                     initialMax={maxSlots}
                     bookedCount={bookedCount}
+                    bookedBowls={bookedBowls}
                     initialFullyBooked={isFullyBooked}
                     onSave={handleUpdateSlotCapacity}
                   />
@@ -1488,7 +1492,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 }
 
 // --- Reusable editor card for an individual date/time slot's capacity ---
-function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialFullyBooked, onSave }: any) {
+function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, bookedBowls, initialFullyBooked, onSave }: any) {
   const [maxSlots, setMaxSlots] = useState(initialMax);
   const [isFullyBooked, setIsFullyBooked] = useState(initialFullyBooked);
 
@@ -1504,12 +1508,12 @@ function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialF
           <Clock className="size-4" /> {slotTime}
         </span>
         <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] uppercase ${isFullyBooked ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'}`}>
-          {isFullyBooked ? 'Fully Booked' : `${Math.max(0, maxSlots - bookedCount)} Slots Left`}
+          {isFullyBooked || bookedBowls >= maxSlots ? 'Fully Booked' : `${Math.max(0, maxSlots - bookedBowls)} Bowls Left`}
         </span>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] text-emerald-300 block mb-1">Max Capacity Limit:</label>
+          <label className="text-[10px] text-emerald-300 block mb-1">Bowl Capacity:</label>
           <input
             type="number"
             value={maxSlots}
@@ -1530,7 +1534,7 @@ function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialF
         </div>
       </div>
       <div className="flex justify-between items-center pt-1 text-[11px] text-emerald-300">
-        <span>Booked Orders: <strong>{bookedCount}</strong></span>
+        <span>Booked Bowls: <strong>{bookedBowls}</strong> <span className="text-emerald-500">({bookedCount} orders)</span></span>
         <Button
           size="sm"
           onClick={() => onSave(dateKey, slotTime, maxSlots, isFullyBooked)}
@@ -1542,6 +1546,12 @@ function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialF
     </div>
   );
 }
+
+const getManilaDateKey = (date: Date = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  const part = (type: string) => parts.find(p => p.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+};
 
 // --- Default export for the employee dashboard ---
 export default EmployeeDashboard;
