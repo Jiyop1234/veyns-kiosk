@@ -22,6 +22,8 @@ export function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
   const [signUpSuccessMsg, setSignUpSuccessMsg] = useState(false);
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   // Forgot password selector state
@@ -129,10 +131,20 @@ export function App() {
     }
     const credentials = { email, password: authPassword };
     if (isSignUp) {
-      const nickname = authName.trim();
+      const nickname = authName.trim().replace(/\s+/g, ' ');
       if (!nickname) { setNicknameError('Choose a nickname.'); return; }
+      const { data: nicknameAvailable, error: nicknameCheckError } = await supabase.rpc('is_veyns_nickname_available', { p_name: nickname });
+      if (nicknameCheckError) { setNicknameError('Nickname check is unavailable. Please try again in a moment.'); return; }
+      if (!nicknameAvailable) { setNicknameError('This nickname is already in use. Choose another one.'); return; }
       const { data, error } = await supabase.auth.signUp({ ...credentials, options: { data: { name: nickname } } });
-      if (error) { setIdentifierError(error.message); return; }
+      if (error) {
+        setIdentifierError(/already registered|already exists|duplicate/i.test(error.message) ? 'An account already uses this email. Sign in or use a different email.' : error.message);
+        return;
+      }
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        setIdentifierError('An account already uses this email. Sign in or use a different email.');
+        return;
+      }
       if (!data.session) {
         setSignUpSuccessMsg(true); setIsSignUp(false); setAuthPassword(''); setAuthName('');
         return;
@@ -157,6 +169,16 @@ export function App() {
     setAuthMode(isStaff ? 'employee' : 'regular');
     setIsAdminDashboardOpen(isStaff);
     await loadUserStampsAndPenalties(userObj);
+  };
+
+  const handleResendConfirmation = async () => {
+    const email = authEmailInput.trim().toLowerCase();
+    if (!validateIdentifier(email, 'email')) { setResendMessage('Enter the account email above first.'); return; }
+    setResendBusy(true);
+    setResendMessage('');
+    const { error } = await supabase.auth.resend({ type: 'signup', email });
+    setResendBusy(false);
+    setResendMessage(error ? error.message : 'Verification email resent. Check your inbox and spam folder.');
   };
 
   // SECTION 6: Update verified sign-in details using Supabase Auth.
@@ -323,6 +345,10 @@ export function App() {
               <p className="text-xs text-emerald-200">
 `We sent a confirmation email to ${authEmailInput.trim()}. Open it and click the verification link before logging in. Check your spam folder if you don't see it.`
               </p>
+              <button type="button" disabled={resendBusy} onClick={handleResendConfirmation} className="text-xs font-bold text-lime-400 underline disabled:opacity-50">
+                {resendBusy ? 'Sending…' : 'Resend verification email'}
+              </button>
+              {resendMessage && <p className="text-[10px] text-emerald-300">{resendMessage}</p>}
             </div>
           )}
           {loginError && !isSignUp && (
@@ -498,6 +524,7 @@ export function App() {
     if (isAdminDashboardOpen) {
       return (
         <EmployeeDashboard
+          isAdmin={currentUser?.role === 'admin'}
           onBackToStore={() => {
             setIsAdminDashboardOpen(false);
             setAuthMode('select');
