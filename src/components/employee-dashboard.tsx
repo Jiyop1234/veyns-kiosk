@@ -1593,7 +1593,7 @@ function SlotOrderRow({ order, slotTime, dateKey, timeSlotsList, onMoveOrder }: 
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-extrabold text-lime-300">{order.orderNumber} · {order.name || order.accountNickname}</p>
-          <p className="text-[10px] text-emerald-300">{order.email || order.phone || 'No contact recorded'}</p>
+          <p className="text-[10px] text-emerald-300">{[order.email, order.phone].filter(Boolean).join(' · ') || 'No contact recorded'}</p>
         </div>
         <span className="text-[10px] font-bold text-cyan-300">{order.bowlCount} bowls</span>
       </div>
