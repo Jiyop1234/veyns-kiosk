@@ -84,6 +84,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           code: p.code,
           type: p.type,
           discountValue: Number(p.discount_value),
+          target_type: p.target_type || 'subtotal',
+          eligibility: p.eligibility || 'all',
           visibility: p.visibility,
           expiryDurationMs: Number(p.expiry_duration_ms),
           usageLimit: p.usage_limit ? Number(p.usage_limit) : null,
@@ -729,6 +731,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       setPromoError('Invalid promo code.');
       return;
     }
+    if (isGuest) { setPromoError('Sign in to a registered account to use vouchers.'); return; }
 
     if (appliedPromos.some((p) => p.code.toUpperCase() === cleanCode)) {
       setPromoError('This voucher is already applied.');
@@ -791,28 +794,25 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     handleApplyPromoCodeString(promo.code);
   };
 
-  // SECTION 20: Calculate the currently applied promotion discount and order totals.
-  const calculatePromoDiscount = () => {
-    if (appliedPromos.length === 0) return 0;
+  // SECTION 20: Keep food and delivery discounts separate so neither can affect the other.
+  const calculateScopeDiscount = (scope: 'subtotal' | 'delivery', base: number) => {
     let totalPercent = 0;
     let totalPeso = 0;
-
-    appliedPromos.forEach(p => {
-      if (p.type === 'peso') {
-        totalPeso += p.discountValue;
-      } else {
-        totalPercent += p.discountValue;
-      }
+    let free = false;
+    appliedPromos.filter(p => (p.target_type || 'subtotal') === scope).forEach(p => {
+      if (p.type === 'free' && scope === 'delivery') free = true;
+      else if (p.type === 'peso') totalPeso += Number(p.discountValue || 0);
+      else totalPercent += Number(p.discountValue || 0);
     });
-
-    const percentDiscount = (total * totalPercent) / 100;
-    const combinedDiscount = percentDiscount + totalPeso;
-    return Math.min(total, combinedDiscount);
+    if (free) return Math.max(0, base);
+    return Math.min(Math.max(0, base), Math.round((base * totalPercent / 100 + totalPeso) * 100) / 100);
   };
 
-  const promoDiscountAmount = calculatePromoDiscount();
+  const foodPromoDiscount = calculateScopeDiscount('subtotal', total);
   const deliveryFeeTotal = fulfillment === 'delivery' ? calculatedDeliveryFee : 0;
-  const finalCartTotal = Math.max(0, total - promoDiscountAmount + deliveryFeeTotal);
+  const deliveryPromoDiscount = calculateScopeDiscount('delivery', deliveryFeeTotal);
+  const promoDiscountAmount = foodPromoDiscount + deliveryPromoDiscount;
+  const finalCartTotal = Math.max(0, total - foodPromoDiscount) + Math.max(0, deliveryFeeTotal - deliveryPromoDiscount);
 
   // SECTION 21: Confirm only after the database accepts and prices the order.
   const handleReviewOrder = () => {
@@ -841,7 +841,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       orderType, scheduleInfo: scheduleInfoText, deliveryDistanceKm, deliveryFee: deliveryFeeTotal,
       paymentOption: 'Cash on Pickup / Delivery', items: [...lines], subtotal: total,
       promoCode: promoCodesList.length ? promoCodesList.join(', ') : null,
-      promoCodesList, promoDiscount: promoDiscountAmount, total: finalCartTotal, date: new Date().toLocaleString(),
+      promoCodesList, promoDiscount: promoDiscountAmount, foodPromoDiscount, deliveryPromoDiscount, total: finalCartTotal, date: new Date().toLocaleString(),
     };
     try {
       const savedOrder = await saveOrderToHistory(orderData);
@@ -873,7 +873,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // SECTION 22: Derived values used by the rendered menu, loyalty, and checkout interface.
   const validStampsCount = stamps.filter(s => s.status === 'valid').length;
-  const publicVouchersList = availablePromos.filter(p => p.visibility !== 'hidden');
+  const publicVouchersList = isGuest ? [] : availablePromos.filter(p => p.visibility !== 'hidden');
 
   const isStoreClosedForToday = orderType === 'today' && !orderTodayOpen;
 
@@ -1555,14 +1555,22 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   {placedOrderDetails.promoCode && (
                     <div className="flex justify-between text-amber-400 font-semibold">
                       <span>Promos Applied ({placedOrderDetails.promoCode}):</span>
-                      <span>-{formatPeso(placedOrderDetails.promoDiscount)}</span>
+                      <span>-{formatPeso(Number(placedOrderDetails.foodPromoDiscount ?? placedOrderDetails.promoDiscount))}</span>
                     </div>
                   )}
                   {placedOrderDetails.fulfillment === 'delivery' && (
-                    <div className="flex justify-between text-emerald-200">
-                      <span>Delivery Fee ({placedOrderDetails.deliveryDistanceKm} km):</span>
-                      <span className="font-bold text-white">{formatPeso(placedOrderDetails.deliveryFee)}</span>
-                    </div>
+                    <>
+                      {Number(placedOrderDetails.deliveryPromoDiscount || 0) > 0 && (
+                        <div className="flex justify-between text-amber-400 font-semibold">
+                          <span>Delivery Discount:</span>
+                          <span>-{formatPeso(placedOrderDetails.deliveryPromoDiscount)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-emerald-200">
+                        <span>Delivery Fee ({placedOrderDetails.deliveryDistanceKm} km):</span>
+                        <span className="font-bold text-white">{formatPeso(placedOrderDetails.deliveryFee)}</span>
+                      </div>
+                    </>
                   )}
                   <div className="flex justify-between text-sm font-extrabold text-white pt-1">
                     <span>Total Amount Due:</span>
@@ -1664,7 +1672,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     <div className="flex flex-wrap gap-1.5">
                       {appliedPromos.map((p) => (
                         <span key={p.code} className="inline-flex items-center gap-1 bg-[#082a20] border border-lime-400/50 text-lime-300 text-[10px] font-bold px-2.5 py-1 rounded-lg">
-                          {p.code} ({p.type === 'peso' ? `₱${p.discountValue}` : `${p.discountValue}%`})
+                          {p.code} ({p.type === 'free' ? 'FREE' : p.type === 'peso' ? `₱${p.discountValue}` : `${p.discountValue}%`})
                           <button type="button" onClick={() => handleRemoveAppliedPromo(p.code)} className="text-lime-400 hover:text-red-400 ml-0.5 cursor-pointer">
                             <X className="size-3" />
                           </button>
@@ -2040,18 +2048,32 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   <span className="font-bold text-white">{formatPeso(total)}</span>
                 </div>
 
-                {promoDiscountAmount > 0 && (
+                {foodPromoDiscount > 0 && (
                   <div className="flex items-center justify-between text-xs text-amber-400 font-semibold">
-                    <span>Promo Discount ({appliedPromos.map(p => p.code).join(', ')})</span>
-                    <span>-{formatPeso(promoDiscountAmount)}</span>
+                    <span>Food Discount ({appliedPromos.filter(p => (p.target_type || 'subtotal') === 'subtotal').map(p => p.code).join(', ')})</span>
+                    <span>-{formatPeso(foodPromoDiscount)}</span>
                   </div>
                 )}
 
                 {fulfillment === 'delivery' && (
-                  <div className="flex items-center justify-between text-xs text-emerald-200">
-                    <span>Delivery Fee {deliveryDistanceKm !== null ? `(${deliveryDistanceKm} km)` : ''}</span>
-                    <span className="font-bold text-white">{formatPeso(deliveryFeeTotal)}</span>
-                  </div>
+                  <>
+                    <div className="flex items-center justify-between text-xs text-emerald-200">
+                      <span>Delivery Fee {deliveryDistanceKm !== null ? `(${deliveryDistanceKm} km)` : ''}</span>
+                      <span className="font-bold text-white">{formatPeso(deliveryFeeTotal)}</span>
+                    </div>
+                    {deliveryPromoDiscount > 0 && (
+                      <div className="flex items-center justify-between text-xs text-amber-400 font-semibold">
+                        <span>Delivery Discount ({appliedPromos.filter(p => p.target_type === 'delivery').map(p => p.code).join(', ')})</span>
+                        <span>-{formatPeso(deliveryPromoDiscount)}</span>
+                      </div>
+                    )}
+                    {deliveryPromoDiscount > 0 && (
+                      <div className="flex items-center justify-between text-xs text-emerald-200">
+                        <span>Delivery Fee After Discount</span>
+                        <span className="font-bold text-white">{formatPeso(Math.max(0, deliveryFeeTotal - deliveryPromoDiscount))}</span>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <div className="flex items-center justify-between text-sm border-t border-emerald-900/40 pt-2">
