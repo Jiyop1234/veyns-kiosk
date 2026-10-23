@@ -40,6 +40,18 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   // Slot capacities & Fully Booked states
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
 
+  // Manila calendar keys keep daily production capacity aligned with the shop's local midnight.
+  const getManilaDateKey = (date: Date = new Date()) => {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+    const part = (type: string) => parts.find(p => p.type === type)?.value || '';
+    return `${part('year')}-${part('month')}-${part('day')}`;
+  };
+  const shiftDateKey = (dateKey: string, days: number) => {
+    const date = new Date(`${dateKey}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
+
   // SECTION 5: Customer type and ordering-time eligibility checks.
   const isGuest = !currentUser || currentUser.role === 'guest' || (currentUser.name && currentUser.name.toLowerCase().includes('guest')) || (currentUser.identifier && currentUser.identifier.toLowerCase().includes('guest'));
 
@@ -62,6 +74,15 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const orderTodayOpen = isOrderTodayAllowed();
+  const manilaTodayKey = getManilaDateKey();
+  const manilaTomorrowKey = shiftDateKey(manilaTodayKey, 1);
+  const cartBowlCount = lines.reduce((sum: number, line: any) => sum + (String(line.item?.category || '').toLowerCase() === 'apparel' ? 0 : Number(line.qty || 0)), 0);
+  const todayCapacityRows = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map(slot => {
+    const row = slotCapacities.find(s => s.slot_time === slot && s.date_key === manilaTodayKey);
+    const left = row ? Math.max(0, Number(row.max_slots ?? 20) - Number(row.booked_bowls || 0)) : 20;
+    return { slot, row, left, full: Boolean(row?.is_fully_booked) || left <= 0 || left < cartBowlCount };
+  });
+  const allTodaySlotsFull = todayCapacityRows.every(s => s.full);
 
   // SECTION 6: Load scheduling capacity, promotions, loyalty information, and menu configuration.
   const loadSlotCapacities = async () => {
@@ -501,7 +522,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       landmark: newOrder.landmark,
       orderType: newOrder.orderType,
       scheduleInfo: newOrder.scheduleInfo,
-      dateKey: newOrder.orderType === 'reservation' ? reservationDate : null,
+      dateKey: newOrder.orderType === 'reservation' ? reservationDate : manilaTodayKey,
       slotTime: newOrder.orderType === 'reservation' ? reservationTime : todayTimeSlot,
       deliveryLat: deliveryCoordinates?.lat ?? null,
       deliveryLng: deliveryCoordinates?.lng ?? null,
@@ -825,11 +846,24 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     if (orderType === 'today' && !isOrderTodayAllowed()) {
       alert('Store is closed until 12 noon. Select a reservation time instead.'); return;
     }
+    if (orderType === 'today' && allTodaySlotsFull) {
+      alert('Today is fully booked. Please choose a reservation for tomorrow or a later date.'); return;
+    }
+    const chosenSlot = orderType === 'reservation' ? reservationTime : todayTimeSlot;
+    const chosenDate = orderType === 'reservation' ? reservationDate : manilaTodayKey;
+    const chosenSlotState = slotCapacities.find(s => s.slot_time === chosenSlot && s.date_key === chosenDate);
+    const chosenSlotsLeft = chosenSlotState ? Math.max(0, Number(chosenSlotState.max_slots ?? 20) - Number(chosenSlotState.booked_bowls || 0)) : 20;
+    if (chosenSlotState?.is_fully_booked || chosenSlotsLeft <= 0 || chosenSlotsLeft < cartBowlCount) {
+      alert(`That time window has room for only ${chosenSlotsLeft} more bowls. Choose another time.`); return;
+    }
+    if (orderType === 'reservation' && !reservationDate) {
+      alert('Choose a reservation date and time.'); return;
+    }
     if (fulfillment === 'delivery' && !deliveryCoordinates) {
       alert('Choose a delivery location on the map before placing the order.'); return;
     }
     const scheduleInfoText = orderType === 'today'
-      ? fulfillment === 'delivery' && deliveryOption === 'our' ? 'Today (' + todayTimeSlot + ') - Personal Delivery' : 'Today - Maxim Delivery (Anytime)'
+      ? 'Today (' + todayTimeSlot + ') - ' + fulfillment + (fulfillment === 'delivery' && deliveryOption === 'maxim' ? ' via Maxim Courier' : '')
       : 'Reservation on ' + (reservationDate || 'Upcoming Date') + ' (' + reservationTime + ')';
     const promoCodesList = isGuest ? [] : appliedPromos.map(p => p.code);
     const orderData = {
@@ -1726,23 +1760,24 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    disabled={!orderTodayOpen}
+                    disabled={!orderTodayOpen || allTodaySlotsFull}
                     onClick={() => {
                       if (!orderTodayOpen) {
                         alert('⚠️ Store is closed! Will be back later at 12 NOON. Please select "Reservation" instead.');
                         return;
                       }
+                      if (allTodaySlotsFull) return;
                       setOrderType('today');
                     }}
                     className={`p-2.5 rounded-xl text-xs font-extrabold border flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                      !orderTodayOpen
+                      !orderTodayOpen || allTodaySlotsFull
                         ? 'bg-red-950/40 border-red-900/60 text-red-400/60 opacity-50 cursor-not-allowed'
                         : orderType === 'today'
                         ? 'bg-[#082d22] border-lime-400 text-lime-400'
                         : 'bg-[#061c16] border-emerald-800/60 text-emerald-200'
                     }`}
                   >
-                    <Clock className="h-4 w-4" /> Order Today {!orderTodayOpen && '(Closed < 12PM)'}
+                    <Clock className="h-4 w-4" /> Order Today {!orderTodayOpen ? '(Closed < 12PM)' : allTodaySlotsFull ? '(Fully Booked)' : ''}
                   </button>
                   <button
                     type="button"
@@ -1757,46 +1792,43 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   </button>
                 </div>
 
+                {orderType === 'today' && allTodaySlotsFull && (
+                  <div className="bg-amber-950/40 border border-amber-700/70 rounded-xl p-3 text-xs space-y-2">
+                    <p className="font-bold text-amber-200">Today’s bowl capacity is full for every time window. Pickup and delivery are unavailable today.</p>
+                    <Button type="button" onClick={() => { setReservationDate(manilaTomorrowKey); setOrderType('reservation'); }} className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold rounded-lg px-3 py-2">Reserve for tomorrow ({manilaTomorrowKey})</Button>
+                  </div>
+                )}
                 {orderType === 'today' ? (
                   <div className="bg-[#061c16] border border-emerald-800/60 rounded-xl p-3 space-y-2 text-xs">
                     <p className="text-[11px] text-emerald-200 font-medium">
-                      {fulfillment === 'delivery' && deliveryOption === 'our'
-                        ? 'Select your preferred personal delivery time slot (live slots checked):'
-                        : fulfillment === 'delivery' && deliveryOption === 'maxim'
-                        ? 'Maxim Courier selected: You can have your order delivered anytime today.'
-                        : 'Pick up today at your convenience.'}
+                      {fulfillment === 'pickup' ? 'Choose a pickup time window. Pickup also uses the live bowl capacity.' : deliveryOption === 'maxim' ? 'Choose a delivery time window. Maxim delivery follows the same live bowl capacity.' : 'Choose your personal delivery time window (live bowl capacity).'}
                     </p>
 
-                    {fulfillment === 'delivery' && deliveryOption === 'our' && (
-                      <div className="grid grid-cols-2 gap-2">
-                        {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => {
-                          const slotInfo = slotCapacities.find(s => s.slot_time === slot && (s.date_key === 'today' || s.date_key === new Date().toISOString().split('T')[0]));
-                          const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_count >= slotInfo.max_slots);
-                          const slotsLeft = slotInfo ? Math.max(0, slotInfo.max_slots - slotInfo.booked_count) : null;
-
-                          return (
-                            <button
-                              key={slot}
-                              type="button"
-                              disabled={isFullyBooked}
-                              onClick={() => setTodayTimeSlot(slot)}
-                              className={`p-2 rounded-lg border text-[11px] font-bold transition-all flex flex-col items-center justify-between ${
-                                isFullyBooked
-                                  ? 'bg-red-950/60 border-red-800 text-red-400 opacity-60 cursor-not-allowed'
-                                  : todayTimeSlot === slot
-                                  ? 'bg-lime-400 text-black border-lime-400 shadow-md'
-                                  : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50'
-                              }`}
-                            >
-                              <span>{slot}</span>
-                              <span className="text-[9px] font-semibold mt-0.5">
-                                {isFullyBooked ? '⛔ Fully Booked' : slotsLeft !== null ? `🟢 ${slotsLeft} slots left` : 'Available'}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      {todayCapacityRows.map(({ slot, row, left }) => {
+                        const isFullyBooked = Boolean(row?.is_fully_booked) || left <= 0 || left < cartBowlCount;
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            disabled={isFullyBooked}
+                            onClick={() => setTodayTimeSlot(slot)}
+                            className={`p-2 rounded-lg border text-[11px] font-bold transition-all flex flex-col items-center justify-between ${
+                              isFullyBooked
+                                ? 'bg-red-950/60 border-red-800 text-red-400 opacity-60 cursor-not-allowed'
+                                : todayTimeSlot === slot
+                                ? 'bg-lime-400 text-black border-lime-400 shadow-md'
+                                : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50'
+                            }`}
+                          >
+                            <span>{slot}</span>
+                            <span className="text-[9px] font-semibold mt-0.5">
+                              {isFullyBooked ? '⛔ Not enough capacity' : `🟢 ${left} bowls left`}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 ) : (
                   <div className="bg-[#061c16] border border-emerald-800/60 rounded-xl p-3 space-y-2.5 text-xs">
@@ -1806,6 +1838,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         <label className="text-[10px] text-emerald-300 block mb-1">Reservation Date *</label>
                         <input
                           type="date"
+                          min={shiftDateKey(manilaTodayKey, 1)}
                           value={reservationDate}
                           onChange={(e) => setReservationDate(e.target.value)}
                           className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white text-xs focus:outline-none focus:border-lime-400"
@@ -1820,9 +1853,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         >
                           {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => {
                             const slotInfo = slotCapacities.find(s => s.slot_time === slot && s.date_key === reservationDate);
-                            const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_count >= slotInfo.max_slots);
-                            const slotsLeft = slotInfo ? Math.max(0, slotInfo.max_slots - slotInfo.booked_count) : null;
-                            const labelText = `${slot} ${isFullyBooked ? '(Fully Booked)' : slotsLeft !== null ? `(${slotsLeft} slots left)` : ''}`;
+                            const slotsLeft = slotInfo ? Math.max(0, Number(slotInfo.max_slots ?? 20) - Number(slotInfo.booked_bowls || 0)) : 20;
+                            const isFullyBooked = Boolean(slotInfo?.is_fully_booked) || slotsLeft <= 0 || slotsLeft < cartBowlCount;
+                            const labelText = `${slot} ${isFullyBooked ? '(Fully Booked)' : `(${slotsLeft} bowls left)`}`;
 
                             return (
                               <option key={slot} value={slot} disabled={isFullyBooked}>
