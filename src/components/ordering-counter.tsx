@@ -10,6 +10,11 @@ import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
 
 // SECTION 2: Shared menu-image component with a branded fallback when no image is available.
+const formatVoucherCountdown = (milliseconds: number) => {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
+};
+
 function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; alt: string; className: string }) {
   const src = dbImage || menuImages[id];
   if (!src) {
@@ -22,10 +27,6 @@ function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; 
   }
   return <img src={src} alt={alt} width={512} height={512} className={className} />;
 
-const formatVoucherCountdown = (milliseconds: number) => {
-  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
-  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
-};
 }
 
 // SECTION 3: Main ordering experience, including menu browsing, checkout, order history, and loyalty UI.
