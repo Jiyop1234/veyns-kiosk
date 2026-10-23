@@ -41,9 +41,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [promos, setPromos] = useState<any[]>([]);
   const [newPromoCode, setNewPromoCode] = useState('');
   const [newPromoDiscount, setNewPromoDiscount] = useState('');
-  const [newPromoType, setNewPromoType] = useState<'percentage' | 'peso'>('percentage');
+  const [newPromoType, setNewPromoType] = useState<'percentage' | 'peso' | 'free'>('percentage');
   const [newPromoTargetType, setNewPromoTargetType] = useState<'subtotal' | 'delivery'>('subtotal');
-  const [newPromoEligibility, setNewPromoEligibility] = useState<'all' | 'registered'>('all');
+  const newPromoEligibility = 'registered' as const;
   const [newVoucherVisibility, setNewVoucherVisibility] = useState<'public' | 'hidden'>('public');
   const [newVoucherExpiryVal, setNewVoucherExpiryVal] = useState('60');
   const [newVoucherExpiryUnit, setNewVoucherExpiryUnit] = useState<'minutes' | 'hours' | 'never'>('minutes');
@@ -394,7 +394,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   // --- Create a voucher/promo with scope, eligibility, visibility, expiry, and usage limit ---
   const handleAddPromo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPromoCode || !newPromoDiscount) return;
+    if (!newPromoCode || (newPromoType !== 'free' && !newPromoDiscount)) return;
+    if (newPromoType === 'free' && newPromoTargetType !== 'delivery') { alert('Free delivery vouchers must use the Delivery Fee Only scope.'); return; }
 
     const expiryNum = parseFloat(newVoucherExpiryVal) || 60;
     let expiryMs = 0;
@@ -416,7 +417,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     const newVoucherPayload = {
       code: cleanCode,
       type: newPromoType,
-      discount_value: parseFloat(newPromoDiscount),
+      discount_value: newPromoType === 'free' ? 0 : parseFloat(newPromoDiscount),
       target_type: newPromoTargetType, // FEATURE B: Scope
       eligibility: newPromoEligibility, // FEATURE C: Guest vs Registered
       visibility: newVoucherVisibility,
@@ -934,23 +935,21 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   <select value={newPromoType} onChange={(e) => setNewPromoType(e.target.value as any)} className="bg-[#04140f] border border-emerald-800 rounded-xl px-2 py-2 text-xs text-lime-300 font-bold focus:outline-none">
                     <option value="peso">₱ OFF</option>
                     <option value="percentage">% OFF</option>
+                    {newPromoTargetType === 'delivery' && <option value="free">FREE</option>}
                   </select>
-                  <input type="number" placeholder={newPromoType === 'peso' ? "e.g. 50" : "e.g. 10"} value={newPromoDiscount} onChange={(e) => setNewPromoDiscount(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
+                  {newPromoType === 'free' ? <div className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-emerald-300">Waives the delivery fee</div> : <input type="number" min="0" placeholder={newPromoType === 'peso' ? "e.g. 50" : "e.g. 10"} value={newPromoDiscount} onChange={(e) => setNewPromoDiscount(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />}
                 </div>
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Discount Scope (Feature B)</label>
-                <select value={newPromoTargetType} onChange={(e) => setNewPromoTargetType(e.target.value as any)} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none">
+                <select value={newPromoTargetType} onChange={(e) => { const value = e.target.value as 'subtotal' | 'delivery'; setNewPromoTargetType(value); if (value !== 'delivery' && newPromoType === 'free') setNewPromoType('percentage'); }} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none">
                   <option value="subtotal">Food Subtotal Only</option>
                   <option value="delivery">Delivery Fee Only</option>
                 </select>
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Customer Eligibility (Feature C)</label>
-                <select value={newPromoEligibility} onChange={(e) => setNewPromoEligibility(e.target.value as any)} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none">
-                  <option value="all">All Customers (Guests & Registered)</option>
-                  <option value="registered">Registered Customers Only</option>
-                </select>
+                <div className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold">Registered Customers Only</div>
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Visibility in Checkout</label>
@@ -998,7 +997,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                           </span>
                         </div>
                         <p className="text-emerald-200 font-bold">
-                          {p.type === 'peso' ? formatPeso(p.discountValue) + ' OFF' : `${p.discountValue}% OFF`}
+                          {p.type === 'free' ? 'FREE DELIVERY' : p.type === 'peso' ? formatPeso(p.discountValue) + ' OFF' : `${p.discountValue}% OFF`}
                         </p>
                         <p className="text-[10px] text-amber-300">⏱️ Expiry: {p.expiryUnitText || 'Never'}</p>
                         <p className="text-[10px] text-emerald-300">🔢 Usage: {p.usageCount || 0} / {p.usageLimit ? `${p.usageLimit} limit` : 'Unlimited'}</p>
