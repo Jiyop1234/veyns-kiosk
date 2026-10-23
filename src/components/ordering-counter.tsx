@@ -1696,7 +1696,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                             <div className="space-y-0.5">
                               <span className="font-extrabold text-lime-400 text-xs">{promo.code}</span>
                               <p className="text-[10px] text-emerald-200">
-                                {promo.type === 'peso' ? formatPeso(promo.discountValue) + ' OFF' : `${promo.discountValue}% OFF`}
+                                {promo.type === 'free' ? 'FREE DELIVERY' : promo.type === 'peso' ? formatPeso(promo.discountValue) + ' OFF' : `${promo.discountValue}% OFF`}
                               </p>
                               {isAlreadyApplied && (
                                 <p className="text-[9px] text-amber-300">✓ Stacked and applied.</p>
