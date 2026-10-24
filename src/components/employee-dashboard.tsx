@@ -165,10 +165,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         });
         setCustomers(formattedProfiles);
       } else {
-        setCustomers([
-          { name: 'Admin Regular', identifier: 'admin', type: 'regular' },
-          { name: 'Geoff Perez', identifier: 'geoff@gmail.com', type: 'regular' }
-        ]);
+        setCustomers([]);
       }
 
       const { data: cloudSlots } = await supabase.from('slot_capacities').select('*');
