@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star, Calendar, Search, Ticket, Layers, ChevronUp, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star, Calendar, Search, Ticket, Layers, ChevronUp, ChevronDown, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
@@ -54,8 +54,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
   const [customers, setCustomers] = useState<any[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
-  const [resetTargetUser, setResetTargetUser] = useState<any>(null);
-  const [newTempPassword, setNewTempPassword] = useState('');
   
   // Customer Edit State
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
@@ -66,6 +64,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
   const [selectedSlotDate, setSelectedSlotDate] = useState(new Date().toISOString().split('T')[0]);
   const timeSlotsList = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'];
+
+  // Slot Owner Inspector Modal State
+  const [inspectingSlot, setInspectingSlot] = useState<{ slotTime: string; dateKey: string } | null>(null);
+  const [slotReservationsList, setSlotReservationsList] = useState<any[]>([]);
+  const [transferringReservation, setTransferringReservation] = useState<any>(null);
+  const [transferTargetSlot, setTransferTargetSlot] = useState(timeSlotsList[0]);
 
   const [stampTargetUser, setStampTargetUser] = useState<any>(null);
   const [customerStampsDetailed, setCustomerStampsDetailed] = useState<{ status: 'valid' | 'invalid' | 'to_clear' | 'empty'; date: string; penaltyReason?: string }[]>([]);
@@ -125,6 +129,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       const { data: cloudOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
       if (cloudOrders) {
         setOrders(cloudOrders.map((o: any) => ({
+          id: o.id,
           orderNumber: o.order_number,
           accountNickname: o.account_nickname || 'Guest',
           name: o.customer_name,
@@ -197,23 +202,66 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
-  // --- Save configured capacity and booking status for a date/time slot ---
-  const handleUpdateSlotCapacity = async (dateKey: string, slotTime: string, maxSlots: number, isFullyBooked: boolean) => {
+  // --- Save configured capacity (max bowls & max slots) and booking status for a date/time slot ---
+  const handleUpdateSlotCapacity = async (dateKey: string, slotTime: string, maxBowls: number, maxSlots: number, isFullyBooked: boolean) => {
     try {
       const existing = slotCapacities.find(s => s.date_key === dateKey && s.slot_time === slotTime);
+      const bookedBowls = existing ? existing.booked_bowls : 0;
       const bookedCount = existing ? existing.booked_count : 0;
       const payload = {
         date_key: dateKey,
         slot_time: slotTime,
+        max_bowls: maxBowls,
+        booked_bowls: bookedBowls,
         max_slots: maxSlots,
         booked_count: bookedCount,
-        is_fully_booked: isFullyBooked
+        is_fully_booked: isFullyBooked || (bookedBowls >= maxBowls)
       };
       await supabase.from('slot_capacities').upsert(payload, { onConflict: 'date_key,slot_time' });
       alert(`Slot capacity updated successfully for ${slotTime} on ${dateKey}!`);
       fetchCloudData();
     } catch (e) {
       alert('Error updating slot capacity.');
+    }
+  };
+
+  // --- Load Slot Reservations & Owners ---
+  const handleInspectSlot = async (slotTime: string, dateKey: string) => {
+    setInspectingSlot({ slotTime, dateKey });
+    try {
+      const { data, error } = await supabase
+        .from('slot_reservations')
+        .select('*, orders(*)')
+        .eq('slot_time', slotTime)
+        .eq('date_key', dateKey);
+      
+      if (data) {
+        setSlotReservationsList(data);
+      } else {
+        setSlotReservationsList([]);
+      }
+    } catch (e) {
+      setSlotReservationsList([]);
+    }
+  };
+
+  // --- Execute Admin Slot Transfer ---
+  const handleExecuteTransfer = async (reservationId: string, newDateKey: string, newSlotTime: string) => {
+    try {
+      const { data, error } = await supabase.rpc('admin_transfer_slot', {
+        p_reservation_id: reservationId,
+        p_new_date_key: newDateKey,
+        p_new_slot_time: newSlotTime
+      });
+      if (error) throw error;
+      alert('Slot successfully transferred!');
+      setTransferringReservation(null);
+      if (inspectingSlot) {
+        handleInspectSlot(inspectingSlot.slotTime, inspectingSlot.dateKey);
+      }
+      fetchCloudData();
+    } catch (e: any) {
+      alert(e?.message || 'Failed to transfer slot.');
     }
   };
 
@@ -453,8 +501,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }
   };
 
-  // Auth password resets are handled by Supabase recovery flows, never by dashboard password creation.
-
   // Staff can update a nickname. Contact identifiers remain controlled by the customer's verified Auth account.
   const handleSaveCustomerEdits = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -556,7 +602,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const averageOrderValue = totalOrdersCount > 0 ? totalGrossSales / totalOrdersCount : 0;
 
   // --- Derived option dependencies and live customization preview pricing ---
-  // Gather all options across groups for conditional parent dependency selection
   const allAvailableOptions = itemOptionGroups.flatMap(g =>
     (g.options || []).map((o: any) => ({
       groupId: g.id,
@@ -566,7 +611,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     }))
   );
 
-  // Compute preview price
   const basePreviewPrice = parseFloat(itemPrice) || 0;
   const previewAddonsTotal = itemOptionGroups.reduce((acc, group) => {
     const selectedOptIds = previewSelections[group.id] || [];
@@ -616,7 +660,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </button>
         </div>
 
-                {/* Sales analytics and order transaction log */}
+        {/* Sales analytics and order transaction log */}
         {activeTab === 'sales' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -639,7 +683,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   <ShoppingBag className="h-5 w-5 text-lime-400" />
                   <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Completed Order Transactions Log</h3>
                 </div>
-
               </div>
               {orders.length === 0 ? (
                 <div className="text-center py-16 space-y-3">
@@ -722,13 +765,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </div>
         )}
 
-                {/* Scheduling slot capacity controls */}
+        {/* Scheduling slot capacity & bowl inventory controls */}
         {activeTab === 'slots' && (
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-emerald-900/60 pb-3 gap-3">
               <div className="flex items-center gap-2">
                 <Clock className="h-5 w-5 text-lime-400" />
-                <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Manage Time Slot Capacities & Fully Booked Status</h3>
+                <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Manage Bowl Capacity & Time Slot Bookings</h3>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-emerald-300">Select Date:</span>
@@ -741,23 +784,26 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               </div>
             </div>
             <p className="text-xs text-emerald-300">
-              Configure maximum order slots per time window or mark a time slot as <strong>Fully Booked</strong>. This syncs live with customer checkout.
+              Configure maximum bowl limits per time window, inspect slot owners, or transfer reservations between time slots.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {timeSlotsList.map((slotTime) => {
                 const existing = slotCapacities.find(s => s.date_key === selectedSlotDate && s.slot_time === slotTime);
+                const maxBowls = existing ? existing.max_bowls : 20;
+                const bookedBowls = existing ? existing.booked_bowls : 0;
                 const maxSlots = existing ? existing.max_slots : 10;
-                const bookedCount = existing ? existing.booked_count : 0;
                 const isFullyBooked = existing ? existing.is_fully_booked : false;
                 return (
                   <SlotCapacityCard
                     key={slotTime}
                     slotTime={slotTime}
                     dateKey={selectedSlotDate}
-                    initialMax={maxSlots}
-                    bookedCount={bookedCount}
+                    initialMaxBowls={maxBowls}
+                    bookedBowls={bookedBowls}
+                    initialMaxSlots={maxSlots}
                     initialFullyBooked={isFullyBooked}
                     onSave={handleUpdateSlotCapacity}
+                    onInspect={() => handleInspectSlot(slotTime, selectedSlotDate)}
                   />
                 );
               })}
@@ -765,7 +811,98 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </div>
         )}
 
-                {/* Customer account search and management */}
+        {/* Slot Owner Inspector Modal */}
+        <Dialog open={!!inspectingSlot} onOpenChange={(open) => !open && setInspectingSlot(null)}>
+          {inspectingSlot && (
+            <DialogContent className="max-w-2xl w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[85vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
+                <div className="space-y-0.5">
+                  <DialogTitle className="font-display text-lg font-extrabold text-white flex items-center gap-2">
+                    <Users className="h-5 w-5 text-lime-400" /> Slot Owners: {inspectingSlot.slotTime} ({inspectingSlot.dateKey})
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-emerald-300">
+                    Inspect who reserved this slot and view what exact items/bowls they ordered.
+                  </DialogDescription>
+                </div>
+              </div>
+              <div className="my-4 space-y-3">
+                {slotReservationsList.length === 0 ? (
+                  <p className="text-xs text-emerald-400/70 text-center py-6">No reservations found for this time slot.</p>
+                ) : (
+                  slotReservationsList.map((res) => (
+                    <div key={res.id} className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-3 text-xs">
+                      <div className="flex items-center justify-between border-b border-emerald-900/60 pb-2">
+                        <div>
+                          <span className="font-extrabold text-white text-sm">{res.customer_name}</span>
+                          <span className="text-[10px] text-emerald-300 block">{res.customer_phone || 'No phone'}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="bg-lime-400 text-black px-2.5 py-0.5 rounded-full font-extrabold text-[10px]">
+                            {res.bowls_reserved} Bowls Reserved
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-emerald-400 uppercase font-bold">Ordered Items & Customizations:</span>
+                        {res.orders?.items?.map((it: any, i: number) => (
+                          <div key={i} className="text-emerald-200 text-[11px] pl-2 border-l-2 border-lime-400/40">
+                            <span>{it.qty}x {it.item?.name || it.name}</span>
+                            {it.customizationsSummary && <span className="block text-[10px] text-lime-300 font-mono">↳ {it.customizationsSummary}</span>}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-end pt-2 border-t border-emerald-900/40">
+                        <Button
+                          size="sm"
+                          onClick={() => setTransferringReservation(res)}
+                          className="bg-[#082a20] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1.5"
+                        >
+                          <ArrowRightLeft className="size-3.5" /> Transfer Schedule
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </DialogContent>
+          )}
+        </Dialog>
+
+        {/* Transfer Schedule Modal */}
+        <Dialog open={!!transferringReservation} onOpenChange={(open) => !open && setTransferringReservation(null)}>
+          {transferringReservation && (
+            <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
+              <div className="space-y-1 border-b border-emerald-900/60 pb-3">
+                <DialogTitle className="font-display text-lg font-extrabold text-white">
+                  Transfer Reservation for {transferringReservation.customer_name}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-emerald-300">
+                  Select a new time slot to move this customer's {transferringReservation.bowls_reserved} bowls into.
+                </DialogDescription>
+              </div>
+              <div className="my-4 space-y-3 text-xs">
+                <div>
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Target Time Slot</label>
+                  <select
+                    value={transferTargetSlot}
+                    onChange={(e) => setTransferTargetSlot(e.target.value)}
+                    className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-xs text-white font-bold focus:outline-none focus:border-lime-400"
+                  >
+                    {timeSlotsList.map((slot) => (
+                      <option key={slot} value={slot}>{slot}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
+                <Button onClick={() => setTransferringReservation(null)} className="flex-1 bg-emerald-950 text-emerald-200 font-bold py-2.5 rounded-xl text-xs cursor-pointer">Cancel</Button>
+                <Button onClick={() => handleExecuteTransfer(transferringReservation.id, inspectingSlot?.dateKey || selectedSlotDate, transferTargetSlot)} className="flex-1 bg-lime-400 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg">Confirm Transfer</Button>
+              </div>
+            </DialogContent>
+          )}
+        </Dialog>
+
+        {/* Customer account search and management */}
         {activeTab === 'customers' && (
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-emerald-900/60 pb-3 gap-3">
@@ -827,7 +964,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             <Button onClick={() => openStampManager(cust)} size="sm" className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
                               <Award className="h-3.5 w-3.5 mr-1" /> Stamps
                             </Button>
-
                           </td>
                         </tr>
                       );
@@ -839,7 +975,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </div>
         )}
 
-                {/* Menu item list and menu management actions */}
+        {/* Menu item list and menu management actions */}
         {activeTab === 'menu' && (
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
             <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
@@ -1146,7 +1282,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           )}
         </Dialog>
 
-        {/* ADD / EDIT MENU ITEM MODAL WITH ENHANCED OPTION GROUP BUILDER */}
+        {/* ADD / EDIT MENU ITEM MODAL */}
         <Dialog open={isAddingNewItem} onOpenChange={(open) => !open && setIsAddingNewItem(false)}>
           <DialogContent className="max-w-3xl w-full bg-[#03120d] text-white border border-emerald-900/85 shadow-2xl p-6 rounded-3xl max-h-[95vh] overflow-y-auto">
             <div className="space-y-1 border-b border-emerald-900/60 pb-3">
@@ -1220,7 +1356,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 </div>
                 {itemOptionGroups.length === 0 ? (
                   <div className="bg-[#041913] border border-emerald-800/60 rounded-xl p-4 text-center text-emerald-400/70 text-[11px]">
-                    No custom option groups configured for this item yet. Click "+ Add Option Group" to add add-ons (e.g. Add Egg, Ramen Style, Egg Preparation).
+                    No custom option groups configured for this item yet. Click "+ Add Option Group" to add add-ons.
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -1249,11 +1385,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             </button>
                           </div>
                         </div>
-                        {/* Optional Group Description */}
                         <div>
                           <input
                             type="text"
-                            placeholder="Optional Group Description (e.g. Choose egg preparation method)"
+                            placeholder="Optional Group Description"
                             value={group.description || ''}
                             onChange={(e) => handleUpdateGroup(group.id, 'description', e.target.value)}
                             className="w-full bg-[#061d16] border border-emerald-800/60 rounded-lg px-2.5 py-1 text-[11px] text-emerald-200 focus:outline-none focus:border-lime-400"
@@ -1301,33 +1436,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             />
                           </div>
                         </div>
-                        {/* Conditional Visibility Trigger Rule */}
-                        <div className="bg-[#061d16] border border-emerald-800/60 rounded-xl p-2.5 space-y-1">
-                          <label className="text-[10px] font-bold text-amber-300 uppercase tracking-wider block">
-                            Conditional Visibility Rule (Trigger Option)
-                          </label>
-                          <p className="text-[9px] text-emerald-300">
-                            Only show this group if the customer selects a specific parent option (e.g. show "Egg Prep" only if "Add Egg" is selected).
-                          </p>
-                          <select
-                            value={(group.parentOptionIds && group.parentOptionIds[0]) || ''}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              handleUpdateGroup(group.id, 'parentOptionIds', val ? [val] : []);
-                            }}
-                            className="w-full bg-[#04140f] border border-emerald-800 rounded-lg p-1.5 text-xs text-lime-300 font-bold focus:outline-none"
-                          >
-                            <option value="">Always Visible (No Parent Dependency)</option>
-                            {allAvailableOptions
-                              .filter(o => o.groupId !== group.id)
-                              .map(o => (
-                                <option key={o.optId} value={o.optId}>
-                                  Show when [{o.groupName}] → "{o.optName}" is selected
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                        {/* Options List Inside Group */}
                         <div className="space-y-2 pt-2 border-t border-emerald-900/40">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold text-lime-400 uppercase tracking-wider">Options & Additional Prices (₱)</span>
@@ -1373,60 +1481,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </div>
                 )}
               </div>
-              {/* LIVE CUSTOMIZATION PREVIEW BOX */}
-              {itemOptionGroups.length > 0 && (
-                <div className="bg-[#041913] border border-lime-400/40 rounded-2xl p-4 space-y-3">
-                  <span className="font-bold text-lime-400 text-xs uppercase tracking-wider block">
-                    👁️ Customer Customization Interactive Preview
-                  </span>
-                  <div className="space-y-3 bg-[#061d16] rounded-xl p-3 border border-emerald-800/80">
-                    {itemOptionGroups.map((group) => {
-                      // Conditional check
-                      if (group.parentOptionIds && group.parentOptionIds.length > 0) {
-                        const isTriggered = group.parentOptionIds.some(parentId => 
-                          Object.values(previewSelections).some(selList => selList.includes(parentId))
-                        );
-                        if (!isTriggered) return null;
-                      }
-                      const currentSelected = previewSelections[group.id] || [];
-                      return (
-                        <div key={group.id} className="space-y-1.5">
-                          <label className="text-xs font-bold text-white block">
-                            {group.name} {group.required && <span className="text-red-400">*</span>}
-                          </label>
-                          <div className="flex flex-wrap gap-2">
-                            {(group.options || []).map((opt: any) => {
-                              const isSelected = currentSelected.includes(opt.id);
-                              return (
-                                <button
-                                  type="button"
-                                  key={opt.id}
-                                  onClick={() => {
-                                    if (group.type === 'single') {
-                                      setPreviewSelections(prev => ({ ...prev, [group.id]: [opt.id] }));
-                                    } else {
-                                      const existing = prev[group.id] || [];
-                                      const next = isSelected ? existing.filter(id => id !== opt.id) : [...existing, opt.id];
-                                      setPreviewSelections(prev => ({ ...prev, [group.id]: next }));
-                                    }
-                                  }}
-                                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${isSelected ? 'bg-lime-400 text-black border-lime-400' : 'bg-[#04140f] text-emerald-200 border-emerald-800 hover:border-lime-400/50'}`}
-                                >
-                                  {opt.name || 'Option'} {opt.price > 0 ? `(+₱${opt.price})` : ''}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div className="pt-2 border-t border-emerald-900/60 flex items-center justify-between text-xs">
-                      <span className="text-emerald-300 font-bold">Simulated Item Total:</span>
-                      <span className="text-lime-400 font-extrabold text-sm">{formatPeso(basePreviewPrice + previewAddonsTotal)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
               <div className="flex gap-2 pt-3 border-t border-emerald-900/60">
                 <Button type="button" onClick={() => setIsAddingNewItem(false)} className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-3 rounded-xl text-xs cursor-pointer">Cancel</Button>
                 <Button type="submit" className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs cursor-pointer shadow-lg">Save to Database</Button>
@@ -1435,7 +1489,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </DialogContent>
         </Dialog>
 
-                {/* Loyalty stamp and penalty management modal */}
+        {/* Loyalty stamp and penalty management modal */}
         <Dialog open={!!stampTargetUser} onOpenChange={(open) => !open && setStampTargetUser(null)}>
           {stampTargetUser && (
             <DialogContent className="max-w-xl w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
@@ -1488,15 +1542,19 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   );
 }
 
-// --- Reusable editor card for an individual date/time slot's capacity ---
-function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialFullyBooked, onSave }: any) {
-  const [maxSlots, setMaxSlots] = useState(initialMax);
+// --- Reusable editor card for an individual date/time slot's bowl capacity & bookings ---
+function SlotCapacityCard({ slotTime, dateKey, initialMaxBowls, bookedBowls, initialMaxSlots, initialFullyBooked, onSave, onInspect }: any) {
+  const [maxBowls, setMaxBowls] = useState(initialMaxBowls);
+  const [maxSlots, setMaxSlots] = useState(initialMaxSlots);
   const [isFullyBooked, setIsFullyBooked] = useState(initialFullyBooked);
 
   useEffect(() => {
-    setMaxSlots(initialMax);
+    setMaxBowls(initialMaxBowls);
+    setMaxSlots(initialMaxSlots);
     setIsFullyBooked(initialFullyBooked);
-  }, [initialMax, initialFullyBooked]);
+  }, [initialMaxBowls, initialMaxSlots, initialFullyBooked]);
+
+  const remainingBowls = Math.max(0, maxBowls - bookedBowls);
 
   return (
     <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-3 text-xs">
@@ -1504,17 +1562,26 @@ function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialF
         <span className="font-extrabold text-lime-400 text-sm flex items-center gap-1.5">
           <Clock className="size-4" /> {slotTime}
         </span>
-        <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] uppercase ${isFullyBooked ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'}`}>
-          {isFullyBooked ? 'Fully Booked' : `${Math.max(0, maxSlots - bookedCount)} Slots Left`}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] uppercase ${isFullyBooked || remainingBowls === 0 ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'}`}>
+            {isFullyBooked || remainingBowls === 0 ? 'Fully Booked' : `${remainingBowls} Bowls Left`}
+          </span>
+          <Button
+            size="sm"
+            onClick={onInspect}
+            className="bg-[#082a20] hover:bg-lime-400 hover:text-black text-lime-300 border border-emerald-700 text-[10px] px-2 py-0.5 rounded-lg font-bold cursor-pointer"
+          >
+            Inspect Owners
+          </Button>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] text-emerald-300 block mb-1">Max Capacity Limit:</label>
+          <label className="text-[10px] text-emerald-300 block mb-1">Max Bowls Capacity:</label>
           <input
             type="number"
-            value={maxSlots}
-            onChange={(e) => setMaxSlots(parseInt(e.target.value) || 0)}
+            value={maxBowls}
+            onChange={(e) => setMaxBowls(parseInt(e.target.value) || 0)}
             className="w-full bg-[#04140f] border border-emerald-800 rounded-lg p-2 text-white font-bold text-xs focus:outline-none focus:border-lime-400"
           />
         </div>
@@ -1531,10 +1598,10 @@ function SlotCapacityCard({ slotTime, dateKey, initialMax, bookedCount, initialF
         </div>
       </div>
       <div className="flex justify-between items-center pt-1 text-[11px] text-emerald-300">
-        <span>Booked Orders: <strong>{bookedCount}</strong></span>
+        <span>Reserved Bowls: <strong>{bookedBowls} / {maxBowls}</strong></span>
         <Button
           size="sm"
-          onClick={() => onSave(dateKey, slotTime, maxSlots, isFullyBooked)}
+          onClick={() => onSave(dateKey, slotTime, maxBowls, maxSlots, isFullyBooked)}
           className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-[10px] px-3 py-1.5 rounded-lg cursor-pointer"
         >
           Save Slot
