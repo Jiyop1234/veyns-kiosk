@@ -7,9 +7,8 @@ import { CartProvider } from '@/lib/cart';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { 
-  User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, 
-  XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings, Edit3, Facebook, 
-  Instagram, Eye, EyeOff, ChevronDown, Mail, Phone 
+  User, ShieldAlert, Sparkles, CheckCircle2, 
+  KeyRound, Settings, Edit3, Facebook, Instagram, Eye, EyeOff 
 } from 'lucide-react';
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
@@ -20,19 +19,15 @@ export function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   
-  // Selector State ('email' | 'phone')
-  const [authInputType, setAuthInputType] = useState<'email' | 'phone'>('email');
+  // Pure Email State
   const [authEmailInput, setAuthEmailInput] = useState('');
-  const [authPhoneInput, setAuthPhoneInput] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
   const [signUpSuccessMsg, setSignUpSuccessMsg] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Forgot password selector state
-  const [forgotInputType, setForgotInputType] = useState<'email' | 'phone'>('email');
+  // Forgot password state
   const [forgotEmailInput, setForgotEmailInput] = useState('');
-  const [forgotPhoneInput, setForgotPhoneInput] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState(false);
 
   // Validation & Error States
@@ -43,14 +38,11 @@ export function App() {
 
   const [showMyOrders, setShowMyOrders] = useState(false);
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
-  const [showAccountSettingsPanel, setShowAccountSettingsPanel] = useState(false);
   const [isUpdatingIdentifier, setIsUpdatingIdentifier] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   // Account settings update state
-  const [updateInputType, setUpdateInputType] = useState<'email' | 'phone'>('email');
   const [newEmailInput, setNewEmailInput] = useState('');
-  const [newPhoneInput, setNewPhoneInput] = useState('');
   const [currentPasswordInput, setCurrentPasswordInput] = useState('');
   const [newPasswordSettingInput, setNewPasswordSettingInput] = useState('');
   const [accountUpdateSuccess, setAccountUpdateSuccess] = useState(false);
@@ -58,16 +50,13 @@ export function App() {
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
   const [resetTrigger, setResetTrigger] = useState(0);
 
-  // Restore session on launch and listen for Supabase auth state changes
+  // Restore session on launch
   useEffect(() => {
     let alive = true;
     const restoreAuthUser = async (session: any) => {
       if (!session?.user) return;
       const { data, error } = await supabase.rpc('claim_veyns_profile');
-      if (!alive || error) { 
-        if (error) console.error('Unable to load profile:', error.message); 
-        return; 
-      }
+      if (!alive || error) return;
       const profile = Array.isArray(data) ? data[0] : data;
       if (!profile) return;
 
@@ -94,7 +83,6 @@ export function App() {
           void restoreAuthUser(session);
           if (event === 'PASSWORD_RECOVERY') { 
             setShowLoyaltyModal(true); 
-            setShowAccountSettingsPanel(true); 
             setIsResettingPassword(true); 
           }
         }, 0);
@@ -118,19 +106,8 @@ export function App() {
     };
   }, []);
 
-  // Validation helpers
-  const validateIdentifier = (val: string, type: 'email' | 'phone') => 
-    type === 'email'
-      ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)
-      : /^9\d{9}$/.test(val.replace(/\D/g, ''));
-
-  const validatePasswordStrength = (pass: string) => 
-    pass.length >= 8 && /\d/.test(pass) && /[\W_]/.test(pass);
-
-  const getCanonicalIdentifier = (type: 'email' | 'phone', emailVal: string, phoneVal: string) => 
-    type === 'email'
-      ? emailVal.trim().toLowerCase()
-      : '+63' + phoneVal.replace(/\D/g, '');
+  const validateEmail = (val: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+  const validatePasswordStrength = (pass: string) => pass.length >= 8 && /\d/.test(pass) && /[\W_]/.test(pass);
 
   // Handle Sign up & Login
   const handleRegularAuth = async (e: React.FormEvent) => {
@@ -140,11 +117,10 @@ export function App() {
     setPasswordError(''); 
     setLoginError('');
 
-    const rawIdentifier = authInputType === 'email' ? authEmailInput : authPhoneInput;
-    const canonicalKey = getCanonicalIdentifier(authInputType, authEmailInput, authPhoneInput);
+    const email = authEmailInput.trim().toLowerCase();
 
-    if (!rawIdentifier.trim() || (isSignUp && !validateIdentifier(rawIdentifier, authInputType))) {
-      setIdentifierError(authInputType === 'email' ? 'Enter a valid email address.' : 'Enter a valid Philippine mobile number.'); 
+    if (!email || (isSignUp && !validateEmail(email))) {
+      setIdentifierError('Enter a valid email address.'); 
       return;
     }
     if (!authPassword || (isSignUp && !validatePasswordStrength(authPassword))) {
@@ -152,7 +128,7 @@ export function App() {
       return;
     }
 
-    const credentials = authInputType === 'email' ? { email: canonicalKey, password: authPassword } : { phone: canonicalKey, password: authPassword };
+    const credentials = { email, password: authPassword };
 
     if (isSignUp) {
       const nickname = authName.trim();
@@ -160,10 +136,7 @@ export function App() {
 
       const { data, error } = await supabase.auth.signUp({ 
         ...credentials, 
-        options: { 
-          data: { name: nickname }, 
-          ...(authInputType === 'phone' ? { channel: 'sms' as const } : {}) 
-        } 
+        options: { data: { name: nickname } } 
       });
 
       if (error) { setIdentifierError(error.message); return; }
@@ -180,7 +153,7 @@ export function App() {
       const profile = Array.isArray(profileData) ? profileData[0] : profileData;
 
       if (profileError || !profile) { 
-        setIdentifierError(profileError?.message || 'Verify your contact method, then sign in.'); 
+        setIdentifierError(profileError?.message || 'Verify your email, then sign in.'); 
         return; 
       }
 
@@ -195,7 +168,7 @@ export function App() {
 
     const { data, error } = await supabase.auth.signInWithPassword(credentials);
     if (error || !data.user) { 
-      setLoginError('Incorrect email or phone number or password.'); 
+      setLoginError('Incorrect email or password.'); 
       return; 
     }
 
@@ -220,19 +193,15 @@ export function App() {
     e.preventDefault();
     if (!currentUser || currentUser.type === 'guest') return;
 
-    const raw = updateInputType === 'email' ? newEmailInput : newPhoneInput;
-    if (!validateIdentifier(raw, updateInputType)) { 
-      alert('Enter a valid email address or Philippine mobile number.'); 
+    const email = newEmailInput.trim().toLowerCase();
+    if (!validateEmail(email)) { 
+      alert('Enter a valid email address.'); 
       return; 
     }
 
-    const identifier = getCanonicalIdentifier(updateInputType, newEmailInput, newPhoneInput);
-    const { error } = updateInputType === 'email'
-      ? await supabase.auth.updateUser({ email: identifier })
-      : await supabase.auth.updateUser({ phone: identifier });
-
+    const { error } = await supabase.auth.updateUser({ email });
     if (error) { alert(error.message); return; }
-    alert('A verification request was sent to your new contact method.');
+    alert('A verification email was sent to your new address.');
     setIsUpdatingIdentifier(false);
   };
 
@@ -261,7 +230,7 @@ export function App() {
     e.preventDefault();
     const email = forgotEmailInput.trim().toLowerCase();
 
-    if (!validateIdentifier(email, 'email')) { 
+    if (!validateEmail(email)) { 
       alert('Enter a valid email address.'); 
       return; 
     }
@@ -309,7 +278,6 @@ export function App() {
     setAuthMode('select');
     setIsAdminDashboardOpen(false);
     setAuthEmailInput('');
-    setAuthPhoneInput('');
     setAuthPassword('');
     setAuthName('');
     setNicknameError('');
@@ -343,7 +311,7 @@ export function App() {
           </div>
           <div className="space-y-3 pt-2">
             <Button
-              onClick={() => { setAuthEmailInput(''); setAuthPhoneInput(''); setAuthPassword(''); setAuthName(''); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError(''); setAuthMode('regular'); setIsSignUp(false); }}
+              onClick={() => { setAuthEmailInput(''); setAuthPassword(''); setAuthName(''); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError(''); setAuthMode('regular'); setIsSignUp(false); }}
               className="w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-white border border-emerald-700/80 py-4 px-3 h-auto rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 transition-all shadow-lg cursor-pointer text-center"
             >
               <User className="size-4 text-lime-400 shrink-0" />
@@ -369,7 +337,7 @@ export function App() {
     );
   }
 
-  // Customer Login/Signup View
+  // Customer Login/Signup View (Pure Email)
   if (authMode === 'regular' && !currentUser) {
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
@@ -379,7 +347,7 @@ export function App() {
               {isSignUp ? 'Be part of us!' : "Look who's back."}
             </h2>
             <p className="text-xs text-emerald-300/80">
-              {isSignUp ? 'Sign up with email or phone to unlock Loyalty Stamps' : 'Access your order history and loyalty rewards'}
+              {isSignUp ? 'Sign up with email to unlock Loyalty Stamps' : 'Access your order history and loyalty rewards'}
             </p>
           </div>
 
@@ -388,9 +356,7 @@ export function App() {
               <CheckCircle2 className="h-6 w-6 text-lime-400 mx-auto" />
               <p className="font-bold text-lime-400 text-xs">Account successfully created.</p>
               <p className="text-xs text-emerald-200">
-                {authInputType === 'email'
-                  ? `Verification sent to ${authEmailInput.trim()}. Please verify before logging in.`
-                  : 'Verification code sent to your phone.'}
+                Verification email sent to {authEmailInput.trim()}. Please verify before logging in.
               </p>
             </div>
           )}
@@ -419,44 +385,17 @@ export function App() {
               </div>
             )}
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">
-                  {authInputType === 'email' ? 'Email Address' : 'Phone Number'}
-                </label>
-                <select
-                  value={authInputType}
-                  onChange={(e) => setAuthInputType(e.target.value as 'email' | 'phone')}
-                  className="bg-[#041913] text-lime-400 border border-emerald-800 rounded-xl px-3 py-1 text-[11px] font-bold focus:outline-none"
-                >
-                  <option value="email">Email</option>
-                  <option value="phone">Phone Number</option>
-                </select>
-              </div>
-
-              {authInputType === 'email' ? (
-                <input
-                  type="email"
-                  required
-                  placeholder="Enter your email address"
-                  value={authEmailInput}
-                  onChange={(e) => setAuthEmailInput(e.target.value)}
-                  className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
-                />
-              ) : (
-                <div className="flex items-center w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5">
-                  <span className="text-xs font-mono font-bold text-lime-400 mr-1">+63</span>
-                  <input
-                    type="tel"
-                    required
-                    maxLength={10}
-                    placeholder="Enter mobile number"
-                    value={authPhoneInput}
-                    onChange={(e) => setAuthPhoneInput(e.target.value.replace(/\D/g, ''))}
-                    className="w-full bg-transparent text-xs text-white placeholder:text-emerald-700 font-mono focus:outline-none"
-                  />
-                </div>
-              )}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">Email Address</label>
+              <input
+                type="email"
+                required
+                placeholder="Enter your email address"
+                value={authEmailInput}
+                onChange={(e) => setAuthEmailInput(e.target.value)}
+                className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
+              />
+              {identifierError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{identifierError}</p>}
             </div>
 
             <div className="space-y-1">
@@ -472,14 +411,24 @@ export function App() {
                   </button>
                 )}
               </div>
-              <input
-                type={showPassword ? 'text' : 'password'}
-                required
-                placeholder="Enter password"
-                value={authPassword}
-                onChange={(e) => setAuthPassword(e.target.value)}
-                className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  placeholder="Enter password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 pr-10 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-400 hover:text-lime-400 transition-colors cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {passwordError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{passwordError}</p>}
             </div>
 
             <Button
@@ -490,12 +439,18 @@ export function App() {
             </Button>
           </form>
 
-          <div className="text-center pt-2 border-t border-emerald-900/60 space-y-2">
+          <div className="text-center pt-2 border-t border-emerald-900/60 space-y-3">
             <button
               onClick={() => setIsSignUp(!isSignUp)}
-              className="text-xs font-bold text-lime-400 hover:underline cursor-pointer"
+              className="text-xs font-bold text-lime-400 hover:underline cursor-pointer block w-full"
             >
               {isSignUp ? 'Already have an account? Login here' : "Don't have an account? Sign up"}
+            </button>
+            <button
+              onClick={() => setAuthMode('select')}
+              className="text-xs font-bold text-emerald-400/80 hover:text-white transition-colors cursor-pointer block w-full"
+            >
+              ← Back to role selection
             </button>
           </div>
         </div>
@@ -504,7 +459,6 @@ export function App() {
   }
 
   // Employee Dashboard View
-  // SECTION 17: Render employee code entry or the employee dashboard.
   if (authMode === 'employee') {
     if (isAdminDashboardOpen) {
       return (
@@ -512,13 +466,11 @@ export function App() {
           onBackToStore={() => {
             setIsAdminDashboardOpen(false);
             setAuthMode('select');
-            if (currentUser && currentUser.type !== 'guest') {
-              loadUserStampsAndPenalties(currentUser);
-            }
           }}
         />
       );
     }
+
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
         <div className="max-w-md w-full bg-[#051813] border border-red-900/40 rounded-3xl p-8 shadow-2xl space-y-6 text-center">
