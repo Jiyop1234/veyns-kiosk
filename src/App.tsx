@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { 
   User, ShieldAlert, Sparkles, CheckCircle2, 
-  KeyRound, Settings, Edit3, Facebook, Instagram, Eye, EyeOff 
+  Settings, Edit3, Facebook, Instagram, Eye, EyeOff, RefreshCw 
 } from 'lucide-react';
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
@@ -25,6 +25,10 @@ export function App() {
   const [authName, setAuthName] = useState('');
   const [signUpSuccessMsg, setSignUpSuccessMsg] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Resend Email State
+  const [isResending, setIsResending] = useState(false);
+  const [resendStatusMsg, setResendStatusMsg] = useState('');
 
   // Forgot password state
   const [forgotEmailInput, setForgotEmailInput] = useState('');
@@ -109,6 +113,34 @@ export function App() {
   const validateEmail = (val: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
   const validatePasswordStrength = (pass: string) => pass.length >= 8 && /\d/.test(pass) && /[\W_]/.test(pass);
 
+  // Resend Signup Email Handler
+  const handleResendSignupEmail = async () => {
+    const email = authEmailInput.trim().toLowerCase();
+    if (!email || !validateEmail(email)) {
+      setResendStatusMsg('Please enter a valid email address.');
+      return;
+    }
+
+    setIsResending(true);
+    setResendStatusMsg('');
+
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email,
+      options: {
+        emailRedirectTo: window.location.origin,
+      }
+    });
+
+    setIsResending(false);
+
+    if (error) {
+      setResendStatusMsg(error.message);
+    } else {
+      setResendStatusMsg('A new verification email has been sent!');
+    }
+  };
+
   // Handle Sign up & Login
   const handleRegularAuth = async (e: React.FormEvent) => {
     e.preventDefault(); 
@@ -116,6 +148,7 @@ export function App() {
     setIdentifierError(''); 
     setPasswordError(''); 
     setLoginError('');
+    setResendStatusMsg('');
 
     const email = authEmailInput.trim().toLowerCase();
 
@@ -189,80 +222,6 @@ export function App() {
     setIsAdminDashboardOpen(isStaff);
   };
 
-  const handleUpdateIdentifierSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentUser || currentUser.type === 'guest') return;
-
-    const email = newEmailInput.trim().toLowerCase();
-    if (!validateEmail(email)) { 
-      alert('Enter a valid email address.'); 
-      return; 
-    }
-
-    const { error } = await supabase.auth.updateUser({ email });
-    if (error) { alert(error.message); return; }
-    alert('A verification email was sent to your new address.');
-    setIsUpdatingIdentifier(false);
-  };
-
-  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentUser || currentUser.type === 'guest') return;
-
-    if (!validatePasswordStrength(newPasswordSettingInput)) { 
-      alert('Use at least 8 characters, including a number and a symbol.'); 
-      return; 
-    }
-
-    const { error } = await supabase.auth.updateUser({ password: newPasswordSettingInput });
-    if (error) { alert(error.message); return; }
-
-    setAccountUpdateSuccess(true);
-    setTimeout(() => { 
-      setAccountUpdateSuccess(false); 
-      setIsResettingPassword(false); 
-      setCurrentPasswordInput(''); 
-      setNewPasswordSettingInput(''); 
-    }, 2000);
-  };
-
-  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const email = forgotEmailInput.trim().toLowerCase();
-
-    if (!validateEmail(email)) { 
-      alert('Enter a valid email address.'); 
-      return; 
-    }
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
-    if (error) { alert(error.message); return; }
-    setForgotSuccess(true);
-  };
-
-  const handleEmployeeAuth = async () => {
-    const email = authEmailInput.trim().toLowerCase();
-    if (!email || !authPassword) { setLoginError('Enter your staff email and password.'); return; }
-
-    const credentials = { email, password: authPassword };
-    const { data, error } = await supabase.auth.signInWithPassword(credentials);
-
-    if (error || !data.user) { setLoginError('Staff sign-in failed. Check your credentials.'); return; }
-
-    const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
-    const profile = Array.isArray(profileData) ? profileData[0] : profileData;
-
-    if (profileError || !profile || !['employee', 'admin'].includes(profile.role)) {
-      await supabase.auth.signOut(); 
-      setLoginError('This account does not have staff access.'); 
-      return;
-    }
-
-    setCurrentUser({ id: profile.id, authUserId: data.user.id, name: profile.name, identifier: profile.identifier, role: profile.role, type: 'regular' });
-    setAuthMode('employee'); 
-    setIsAdminDashboardOpen(true);
-  };
-
   const handleGuestLogin = () => {
     const guestData = { name: 'Guest Diner', identifier: 'guest_trial', type: 'guest' };
     setCurrentUser(guestData);
@@ -284,6 +243,7 @@ export function App() {
     setIdentifierError('');
     setPasswordError('');
     setLoginError('');
+    setResendStatusMsg('');
     setOrderHistory([]);
     localStorage.removeItem('veyns_auth_mode');
     sessionStorage.removeItem('veyns_guest_order_history');
@@ -337,7 +297,7 @@ export function App() {
     );
   }
 
-  // Customer Login/Signup View (Pure Email)
+  // Customer Login/Signup View (Pure Email with Resend)
   if (authMode === 'regular' && !currentUser) {
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
@@ -352,12 +312,28 @@ export function App() {
           </div>
 
           {signUpSuccessMsg && (
-            <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-2">
+            <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-3">
               <CheckCircle2 className="h-6 w-6 text-lime-400 mx-auto" />
-              <p className="font-bold text-lime-400 text-xs">Account successfully created.</p>
-              <p className="text-xs text-emerald-200">
-                Verification email sent to {authEmailInput.trim()}. Please verify before logging in.
-              </p>
+              <div className="space-y-1">
+                <p className="font-bold text-lime-400 text-xs">Account successfully created.</p>
+                <p className="text-xs text-emerald-200">
+                  Verification email sent to <span className="font-mono text-lime-300">{authEmailInput.trim()}</span>. Please verify before logging in. Check your spam folder if you don't see it.
+                </p>
+              </div>
+              <div className="pt-1">
+                <Button
+                  type="button"
+                  disabled={isResending}
+                  onClick={handleResendSignupEmail}
+                  className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 py-2 px-3 text-[11px] font-bold rounded-xl flex items-center justify-center gap-1.5 mx-auto transition-all cursor-pointer"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isResending ? 'animate-spin' : ''}`} />
+                  {isResending ? 'Sending...' : 'Didn\'t receive it? Resend Email'}
+                </Button>
+                {resendStatusMsg && (
+                  <p className="text-[11px] font-semibold text-lime-400 mt-2">{resendStatusMsg}</p>
+                )}
+              </div>
             </div>
           )}
 
