@@ -6,25 +6,26 @@ import { EmployeeDashboard } from '@/components/employee-dashboard';
 import { CartProvider } from '@/lib/cart';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings, Edit3, Facebook, Instagram, Eye, EyeOff, ChevronDown, Mail, Phone } from 'lucide-react';
+import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings, Edit3, Facebook, Instagram, Eye, EyeOff, ChevronDown, Mail, RefreshCw } from 'lucide-react';
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
 
-// SECTION 1: App state for authentication, account settings, orders, and loyalty.
 export function App() {
   const [authMode, setAuthMode] = useState<'select' | 'regular' | 'guest' | 'employee' | 'forgot'>('select');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   
-  // Email-only authentication inputs
+  // Email authentication inputs
   const [authEmailInput, setAuthEmailInput] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
   const [signUpSuccessMsg, setSignUpSuccessMsg] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isResending, setIsResending] = useState(false);
 
-  // Forgot password selector state
+  // Forgot password state
   const [forgotEmailInput, setForgotEmailInput] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState(false);
 
@@ -51,7 +52,7 @@ export function App() {
   const [stamps, setStamps] = useState<any[]>([]);
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
 
-  // SECTION 2: Load loyalty data only from the authenticated profile row.
+  // SECTION 1: Load loyalty data only from the authenticated profile row.
   const loadUserStampsAndPenalties = async (userObj: any) => {
     if (!userObj || userObj.type === 'guest' || !userObj.authUserId) { setStamps([]); setFairPlayPenalty(null); return; }
     const { data: profile, error } = await supabase.from('profiles')
@@ -68,31 +69,41 @@ export function App() {
     }
   };
 
-  // SECTION 3: Restore Supabase Auth sessions; guests remain a non-privileged local choice.
+  // SECTION 2: Restore session and handle verification email redirects.
   useEffect(() => {
     let alive = true;
     const restoreAuthUser = async (session: any) => {
       if (!session?.user) return;
+      
+      // Enforce email confirmation check
+      if (!session.user.email_confirmed_at) {
+        setLoginError('Your email address is not verified yet. Please check your inbox and confirm your account.');
+        await supabase.auth.signOut();
+        return;
+      }
+
       const { data, error } = await supabase.rpc('claim_veyns_profile');
       if (!alive || error) { if (error) console.error('Unable to load profile:', error.message); return; }
       const profile = Array.isArray(data) ? data[0] : data;
       if (!profile) return;
+
       const userObj = { id: profile.id, authUserId: session.user.id, name: profile.name || 'Valued Customer', identifier: profile.identifier, role: profile.role, type: 'regular' };
       setCurrentUser(userObj);
       setAuthMode(['employee', 'admin'].includes(profile.role) ? 'employee' : 'regular');
       setIsAdminDashboardOpen(['employee', 'admin'].includes(profile.role));
       loadUserStampsAndPenalties(userObj);
     };
+
     void supabase.auth.getSession().then(({ data }) => restoreAuthUser(data.session));
+
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) setTimeout(() => {
         void restoreAuthUser(session);
         if (event === 'PASSWORD_RECOVERY') { setShowLoyaltyModal(true); setShowAccountSettingsPanel(true); setIsResettingPassword(true); }
       }, 0);
     });
+
     try {
-      for (const key of Object.keys(localStorage)) if (key.startsWith('veyns_pwd_hash_')) localStorage.removeItem(key);
-      if (localStorage.getItem('veyns_auth_mode') !== 'guest') { localStorage.removeItem('veyns_current_user'); localStorage.removeItem('veyns_auth_mode'); }
       if (localStorage.getItem('veyns_auth_mode') === 'guest') {
         setCurrentUser({ name: 'Guest Diner', identifier: 'guest_trial', role: 'guest', type: 'guest' });
         setAuthMode('guest');
@@ -100,51 +111,91 @@ export function App() {
         if (sessionOrders) setOrderHistory(JSON.parse(sessionOrders));
       }
     } catch (e) { console.error(e); }
+
     return () => { alive = false; listener.subscription.unsubscribe(); };
   }, []);
 
-  // SECTION 4: Input validation helpers.
+  // SECTION 3: Validation Helpers
   const validateEmail = (val: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim());
   const validatePasswordStrength = (pass: string) => pass.length >= 8 && /\d/.test(pass) && /[\W_]/.test(pass);
 
-  // SECTION 5: Handle customer registration and login with Supabase Auth (Email Only).
+  // SECTION 4: Registration and Login with Mandatory Email Verification
   const handleRegularAuth = async (e: React.FormEvent) => {
     e.preventDefault(); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError('');
     const email = authEmailInput.trim().toLowerCase();
 
-    if (!email || (isSignUp && !validateEmail(email))) {
+    if (!email || !validateEmail(email)) {
       setIdentifierError('Enter a valid email address.'); return;
     }
     if (!authPassword || (isSignUp && !validatePasswordStrength(authPassword))) {
       setPasswordError('Use at least 8 characters, including a number and a symbol.'); return;
     }
 
-    const credentials = { email, password: authPassword };
-
     if (isSignUp) {
       const nickname = authName.trim();
       if (!nickname) { setNicknameError('Choose a nickname.'); return; }
-      const { data, error } = await supabase.auth.signUp({ ...credentials, options: { data: { name: nickname } } });
-      if (error) { setIdentifierError(error.message); return; }
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password: authPassword,
+        options: {
+          data: { name: nickname },
+          emailRedirectTo: window.location.origin
+        }
+      });
+
+      if (error) { 
+        setIdentifierError(error.message); 
+        return; 
+      }
+
+      // If email confirmation is ON, session is null until verified
       if (!data.session) {
-        setSignUpSuccessMsg(true); setIsSignUp(false); setAuthPassword(''); setAuthName('');
+        setRegisteredEmail(email);
+        setSignUpSuccessMsg(true); 
+        setIsSignUp(false); 
+        setAuthPassword(''); 
+        setAuthName('');
         return;
       }
+
+      // If session exists immediately (e.g., auto-confirm is enabled in Supabase)
       const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
       const profile = Array.isArray(profileData) ? profileData[0] : profileData;
-      if (profileError || !profile) { setIdentifierError(profileError?.message || 'Verify your email address, then sign in.'); return; }
+      if (profileError || !profile) { setIdentifierError(profileError?.message || 'Unable to load profile.'); return; }
+      
       const userObj = { id: profile.id, authUserId: data.user.id, name: profile.name || nickname, identifier: profile.identifier, role: profile.role, type: 'regular' };
       setCurrentUser(userObj);
       const isStaff = ['employee', 'admin'].includes(profile.role);
-      setAuthMode(isStaff ? 'employee' : 'regular'); setIsAdminDashboardOpen(isStaff);
-      loadUserStampsAndPenalties(userObj); return;
+      setAuthMode(isStaff ? 'employee' : 'regular'); 
+      setIsAdminDashboardOpen(isStaff);
+      loadUserStampsAndPenalties(userObj); 
+      return;
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword(credentials);
-    if (error || !data.user) { setLoginError('Incorrect email address or password.'); return; }
+    // SIGN IN
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password: authPassword });
+    
+    if (error || !data.user) { 
+      setLoginError(error?.message || 'Incorrect email address or password.'); 
+      return; 
+    }
+
+    // Check if email is verified
+    if (!data.user.email_confirmed_at) {
+      await supabase.auth.signOut();
+      setLoginError('Your email address is not verified. Please check your inbox and click the verification link.');
+      return;
+    }
+
     const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
     const profile = Array.isArray(profileData) ? profileData[0] : profileData;
-    if (profileError || !profile) { await supabase.auth.signOut(); setLoginError(profileError?.message || 'Unable to load your account.'); return; }
+    if (profileError || !profile) { 
+      await supabase.auth.signOut(); 
+      setLoginError(profileError?.message || 'Unable to load your account profile.'); 
+      return; 
+    }
+
     const userObj = { id: profile.id, authUserId: data.user.id, name: profile.name || 'Valued Customer', identifier: profile.identifier, role: profile.role, type: 'regular' };
     setCurrentUser(userObj);
     const isStaff = ['employee', 'admin'].includes(profile.role);
@@ -153,7 +204,30 @@ export function App() {
     await loadUserStampsAndPenalties(userObj);
   };
 
-  // SECTION 6: Update email address using Supabase Auth.
+  // SECTION 5: Resend Verification Link
+  const handleResendVerification = async () => {
+    const email = registeredEmail || authEmailInput.trim().toLowerCase();
+    if (!email || !validateEmail(email)) {
+      setIdentifierError('Enter a valid email address to resend the verification link.');
+      return;
+    }
+
+    setIsResending(true);
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email,
+      options: { emailRedirectTo: window.location.origin }
+    });
+    setIsResending(false);
+
+    if (error) {
+      alert('Failed to resend confirmation: ' + error.message);
+    } else {
+      alert(`A fresh verification email has been sent to ${email}. Please check your inbox and spam folder.`);
+    }
+  };
+
+  // SECTION 6: Account Management Handlers
   const handleUpdateIdentifierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.type === 'guest') return;
@@ -161,11 +235,10 @@ export function App() {
     if (!validateEmail(email)) { alert('Enter a valid email address.'); return; }
     const { error } = await supabase.auth.updateUser({ email });
     if (error) { alert(error.message); return; }
-    alert('A verification email was sent to your new email address.');
+    alert('A verification email was sent to your new email address. Please verify it to update your account.');
     setIsUpdatingIdentifier(false);
   };
 
-  // SECTION 7: Change passwords through Supabase Auth.
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.type === 'guest') return;
@@ -176,7 +249,6 @@ export function App() {
     setTimeout(() => { setAccountUpdateSuccess(false); setIsResettingPassword(false); setCurrentPasswordInput(''); setNewPasswordSettingInput(''); }, 2000);
   };
 
-  // SECTION 8: Send password recovery through Supabase Auth.
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const email = forgotEmailInput.trim().toLowerCase();
@@ -186,7 +258,6 @@ export function App() {
     setForgotSuccess(true);
   };
 
-  // SECTION 9: Employees use email Auth credentials and a server-checked profile role.
   const handleEmployeeAuth = async () => {
     const email = authEmailInput.trim().toLowerCase();
     if (!email || !authPassword) { setLoginError('Enter your staff email and password.'); return; }
@@ -202,7 +273,6 @@ export function App() {
     setAuthMode('employee'); setIsAdminDashboardOpen(true);
   };
 
-  // SECTION 10: Start a guest session and clear guest-only order history.
   const handleGuestLogin = () => {
     const guestData = { name: 'Guest Diner', identifier: 'guest_trial', type: 'guest' };
     setCurrentUser(guestData);
@@ -215,7 +285,6 @@ export function App() {
     sessionStorage.removeItem('veyns_guest_order_history');
   };
 
-  // SECTION 11: Clear current user view and cached session keys.
   const handleLogout = () => {
     void supabase.auth.signOut();
     setCurrentUser(null);
@@ -236,19 +305,17 @@ export function App() {
     sessionStorage.removeItem('veyns_guest_order_history');
   };
 
-  // SECTION 12: Reset menu-related overlays and refresh the ordering view.
   const handleResetMenu = () => {
     setShowMyOrders(false);
     setShowLoyaltyModal(false);
     setResetTrigger((prev) => prev + 1);
   };
 
-  // SECTION 13: Reload server-awarded loyalty data after an order.
   const recordOrderForLoyalty = async () => {
     if (currentUser && currentUser.type !== 'guest') await loadUserStampsAndPenalties(currentUser);
   };
 
-  // SECTION 14: Render the entry screen for customer, guest, or employee access.
+  // Entry Role Selection Screen
   if (authMode === 'select') {
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
@@ -288,7 +355,7 @@ export function App() {
     );
   }
 
-  // SECTION 15: Render regular customer login and sign-up screens (Email Only).
+  // Regular Customer Login & Signup Form
   if (authMode === 'regular' && !currentUser) {
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
@@ -301,24 +368,49 @@ export function App() {
               {isSignUp ? 'Sign up with email to unlock Loyalty Stamps' : 'Access your order history and loyalty rewards'}
             </p>
           </div>
+
+          {/* Verification Email Sent Success Banner */}
           {signUpSuccessMsg && (
             <div
-              className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-2"
+              className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-3"
               role="status"
               aria-live="polite"
             >
-              <CheckCircle2 className="h-6 w-6 text-lime-400 mx-auto" />
-              <p className="font-bold text-lime-400 text-xs">Account successfully created.</p>
-              <p className="text-xs text-emerald-200">
-                We sent a confirmation email to <span className="font-bold text-white">{authEmailInput.trim()}</span>. Open it and click the verification link before logging in.
+              <Mail className="h-7 w-7 text-lime-400 mx-auto animate-bounce" />
+              <p className="font-bold text-lime-400 text-sm">Verification email sent!</p>
+              <p className="text-xs text-emerald-200 leading-relaxed">
+                We sent a confirmation link to <span className="font-extrabold text-white">{registeredEmail || authEmailInput.trim()}</span>.<br />
+                Open your email inbox, click the verification link, and then log in below.
               </p>
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  disabled={isResending}
+                  className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-lime-400 hover:text-black hover:bg-lime-400 bg-[#082d22] border border-emerald-700 px-3.5 py-2 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`size-3.5 ${isResending ? 'animate-spin' : ''}`} />
+                  {isResending ? 'Sending...' : "Didn't receive email? Resend"}
+                </button>
+              </div>
             </div>
           )}
+
           {loginError && !isSignUp && (
-            <div className="bg-red-950/80 border border-red-500 rounded-xl p-3 text-center">
+            <div className="bg-red-950/80 border border-red-500 rounded-xl p-3 text-center space-y-1">
               <p className="text-xs font-bold text-red-400">{loginError}</p>
+              {loginError.includes('verified') && (
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  className="text-[10px] text-lime-400 underline font-semibold cursor-pointer block mx-auto pt-1"
+                >
+                  Click here to resend verification link
+                </button>
+              )}
             </div>
           )}
+
           <form onSubmit={handleRegularAuth} className="space-y-4">
             {isSignUp && (
               <div className="space-y-1">
@@ -402,7 +494,7 @@ export function App() {
               type="submit"
               className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg mt-2 cursor-pointer"
             >
-              {isSignUp ? 'Lock in & Earn Stamps' : 'Login to My Account'}
+              {isSignUp ? 'Create Account & Send Link' : 'Login to My Account'}
             </Button>
           </form>
           <div className="text-center pt-2 border-t border-emerald-900/60 space-y-2">
@@ -436,7 +528,7 @@ export function App() {
     );
   }
 
-  // SECTION 16: Render forgot-password screen.
+  // Forgot Password Screen
   if (authMode === 'forgot') {
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
@@ -483,7 +575,7 @@ export function App() {
     );
   }
 
-  // SECTION 17: Render employee code entry or employee dashboard.
+  // Employee Login Screen
   if (authMode === 'employee') {
     if (isAdminDashboardOpen) {
       return (
@@ -535,7 +627,7 @@ export function App() {
     );
   }
 
-  // SECTION 18: Render main store, order counter, and account settings.
+  // Main Store Interface
   return (
     <CartProvider>
       <div className="min-h-screen bg-[#071F19] text-white flex flex-col">
