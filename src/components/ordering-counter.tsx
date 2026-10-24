@@ -1,4 +1,5 @@
 // @ts-nocheck
+// SECTION 1: Imports for React, UI components, menu data, cart state, and Supabase.
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar, UserPlus, Ticket, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,12 +8,12 @@ import { MENU_GRID, UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } 
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
-import { LoyaltyCard } from '@/components/loyalty-card';
 
-// Menu-image helper component
+// SECTION 2: Shared menu-image component with a branded fallback when no image is available.
 function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; alt: string; className: string }) {
   const src = dbImage || menuImages[id];
   if (!src) {
+  // SECTION 22: Render the customer-facing ordering interface and its related dialogs.
     return (
       <div className={`${className} flex items-center justify-center bg-[#0d2e26] font-display text-sm font-bold text-[#d4af37]`}>
         VEYNS
@@ -22,7 +23,9 @@ function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; 
   return <img src={src} alt={alt} width={512} height={512} className={className} />;
 }
 
+// SECTION 3: Main ordering experience, including menu browsing, checkout, order history, and loyalty UI.
 export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, setOrderHistory, resetKey, currentUser, onOrderPlacedSuccess, onOpenRegister }: any) {
+  // SECTION 4: Cart access and local state for menu browsing, promotions, loyalty, and slot availability.
   const { add, lines, setLineQty, remove, clear, total } = useCart();
   const [category, setCategory] = useState('All items');
   const [search, setSearch] = useState('');
@@ -31,14 +34,17 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [availablePromos, setAvailablePromos] = useState<any[]>([]);
 
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
-  const [userProfileData, setUserProfileData] = useState<any>(null);
+  const [stamps, setStamps] = useState<any[]>([]);
+  const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
 
   // Slot capacities & Fully Booked states
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
 
+  // SECTION 5: Customer type and ordering-time eligibility checks.
   const isGuest = !currentUser || currentUser.role === 'guest' || (currentUser.name && currentUser.name.toLowerCase().includes('guest')) || (currentUser.identifier && currentUser.identifier.toLowerCase().includes('guest'));
 
-  // Philippine Time Check (12:00 AM - 12:00 PM closed check)
+  // Helper to check if "Order Today" is allowed in Philippine Time (Asia/Manila)
+  // Closed from 12:00 AM (00:00) until 12:00 PM (12:00)
   const isOrderTodayAllowed = () => {
     try {
       const options: Intl.DateTimeFormatOptions = {
@@ -57,10 +63,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const orderTodayOpen = isOrderTodayAllowed();
 
+  // SECTION 6: Load scheduling capacity, promotions, loyalty information, and menu configuration.
   const loadSlotCapacities = async () => {
     try {
-      const { data } = await supabase.from('slot_capacities').select('*');
-      if (data) setSlotCapacities(data);
+      const { data, error } = await supabase.from('slot_capacities').select('*');
+      if (data) {
+        setSlotCapacities(data);
+      }
     } catch (e) {
       const saved = localStorage.getItem('veyns_slot_capacities');
       if (saved) setSlotCapacities(JSON.parse(saved));
@@ -69,7 +78,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const loadPromosFromCloud = async () => {
     try {
-      const { data: cloudPromos } = await supabase.from('promos').select('*');
+      const { data: cloudPromos, error } = await supabase.from('promos').select('*');
       if (cloudPromos && cloudPromos.length > 0) {
         const formatted = cloudPromos.map((p: any) => ({
           code: p.code,
@@ -90,27 +99,21 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   };
 
-  const loadUserProfileData = async () => {
-    if (!currentUser || isGuest || !currentUser.authUserId) {
-      setUserProfileData(null);
-      return;
-    }
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('auth_user_id', currentUser.authUserId)
-      .single();
-
-    if (profile) {
-      setUserProfileData(profile);
-    }
+  const loadUserStampsAndPenalties = async () => {
+    if (!currentUser || isGuest || !currentUser.authUserId) { setStamps([]); setFairPlayPenalty(null); return; }
+    const { data: profile, error } = await supabase.from('profiles')
+      .select('stamps_data,penalty_data').eq('auth_user_id', currentUser.authUserId).single();
+    if (error || !profile) { setStamps(Array.from({ length: 12 }, () => ({ status: 'empty', date: '' }))); setFairPlayPenalty(null); return; }
+    setStamps(Array.from({ length: 12 }).map((_, idx) => profile.stamps_data?.[idx] || { status: 'empty', date: '' }));
+    setFairPlayPenalty(profile.penalty_data || null);
   };
 
+  // SECTION 7: Merge Supabase menu records with the existing local menu data and sort the result.
   const loadMenuFromCloud = async () => {
     let mergedMenu = [...MENU_GRID];
 
     try {
-      const { data: cloudMenu } = await supabase.from('menu_items').select('*');
+      const { data: cloudMenu, error } = await supabase.from('menu_items').select('*');
       if (cloudMenu && cloudMenu.length > 0) {
         const formatted = cloudMenu.map((m: any) => ({
           id: m.id,
@@ -139,27 +142,47 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     mergedMenu.sort((a, b) => {
       if (a.category === 'Apparel' && b.category !== 'Apparel') return 1;
       if (a.category !== 'Apparel' && b.category === 'Apparel') return -1;
+      
       if (a.bestSeller && !b.bestSeller) return -1;
       if (!a.bestSeller && b.bestSeller) return 1;
+
       return (a.sortOrder || 100) - (b.sortOrder || 100);
     });
 
     setCurrentMenuGrid(mergedMenu);
   };
 
+  // SECTION 8: Initial data loading, Supabase Realtime subscriptions, storage updates, and cleanup.
   useEffect(() => {
     loadMenuFromCloud();
-    loadUserProfileData();
+    loadUserStampsAndPenalties();
     loadSlotCapacities();
     loadPromosFromCloud();
 
-    const menuChannel = supabase.channel('public:menu_items_counter').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, loadMenuFromCloud).subscribe();
-    const slotsChannel = supabase.channel('public:slot_capacities_counter').on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, loadSlotCapacities).subscribe();
-    const promosChannel = supabase.channel('public:promos_counter').on('postgres_changes', { event: '*', schema: 'public', table: 'promos' }, loadPromosFromCloud).subscribe();
+    const menuChannel = supabase
+      .channel('public:menu_items_counter')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => {
+        loadMenuFromCloud();
+      })
+      .subscribe();
+
+    const slotsChannel = supabase
+      .channel('public:slot_capacities_counter')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, () => {
+        loadSlotCapacities();
+      })
+      .subscribe();
+
+    const promosChannel = supabase
+      .channel('public:promos_counter')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'promos' }, () => {
+        loadPromosFromCloud();
+      })
+      .subscribe();
 
     const handleStorageChange = () => {
       loadMenuFromCloud();
-      loadUserProfileData();
+      loadUserStampsAndPenalties();
       loadSlotCapacities();
       loadPromosFromCloud();
     };
@@ -173,8 +196,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     };
   }, [resetKey, currentUser]);
 
+  // SECTION 9: State for item customization, upsells, checkout, customer details, and order scheduling.
   const [selected, setSelected] = useState(null);
   const [qty, setQty] = useState(1);
+  
+  // Dynamic Option Selections State for Customers
   const [selectedOptions, setSelectedOptions] = useState<{ [groupId: string]: string[] }>({});
   const [validationError, setValidationError] = useState('');
 
@@ -184,7 +210,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [addedItemName, setAddedItemName] = useState('');
 
   const [promoInput, setPromoInput] = useState('');
-  const [appliedPromos, setAppliedPromos] = useState<any[]>([]);
+  const [appliedPromos, setAppliedPromos] = useState<any[]>([]); // Stacking multiple vouchers
   const [promoError, setPromoError] = useState('');
   const [claimedVouchersState, setClaimedVouchersState] = useState<{ [code: string]: number }>({});
 
@@ -194,6 +220,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [fulfillment, setFulfillment] = useState<'pickup' | 'delivery'>('delivery');
   const [deliveryOption, setDeliveryOption] = useState<'our' | 'maxim'>('our');
 
+  // Order Type & Scheduling States
   const [orderType, setOrderType] = useState<'today' | 'reservation'>(orderTodayOpen ? 'today' : 'reservation');
   const [todayTimeSlot, setTodayTimeSlot] = useState('12:00 PM - 1:00 PM');
   const [reservationDate, setReservationDate] = useState('');
@@ -202,8 +229,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  // Pre-fill the account's verified contact, while leaving the checkout inputs editable.
   const lastPrefilledIdentifierRef = useRef<string | null>(null);
-
   useEffect(() => {
     if (isGuest) {
       lastPrefilledIdentifierRef.current = null;
@@ -220,10 +247,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       setCustomerEmail('');
     }
   }, [currentUser?.identifier, isGuest]);
-
   const [customerLocation, setCustomerLocation] = useState('');
   const [nearestLandmark, setNearestLandmark] = useState('');
 
+  // Distance & Delivery Fee states
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null);
   const [deliveryCoordinates, setDeliveryCoordinates] = useState<{ lat: number; lng: number } | null>(null);
   const [calculatedDeliveryFee, setCalculatedDeliveryFee] = useState<number>(0);
@@ -234,6 +261,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const markerInstanceRef = useRef<any>(null);
   const geocodeTimeoutRef = useRef<any>(null);
 
+  // SECTION 10: Delivery map references, store coordinates, distance calculation, and delivery-fee calculation.
+  // TRUE STORE COORDINATES (Center Origin = 0.0 km)
   const STORE_LAT = 10.359511;
   const STORE_LNG = 123.952739;
 
@@ -249,10 +278,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const computeFeeFromKm = (km: number) => {
-    if (km < 1.0) return 0;
-    if (km <= 2.0) return 40;
+    if (km < 1.0) return 0; // Under 1km is free
+    if (km <= 2.0) return 40; // 1km through 2km = ₱40 fixed
     const succeedingKm = km - 2.0;
-    return 40 + Math.ceil(succeedingKm) * 5;
+    return 40 + Math.ceil(succeedingKm) * 5; // ₱40 base + ₱5 per succeeding km
   };
 
   useEffect(() => {
@@ -273,6 +302,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   }, [showCheckout, fulfillment, isPinning]);
 
+  // SECTION 11: Initialize the delivery map and allow customers to choose a delivery location.
   const initMap = () => {
     if (!mapRef.current || mapInstanceRef.current) return;
     const L = window.L;
@@ -292,7 +322,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    const marker = L.marker([STORE_LAT, STORE_LNG], { draggable: true, icon: customIcon }).addTo(map);
+    const customerInitialLat = STORE_LAT;
+    const customerInitialLng = STORE_LNG;
+
+    const marker = L.marker([customerInitialLat, customerInitialLng], { draggable: true, icon: customIcon }).addTo(map);
     marker.bindPopup('<b>Store Location / Drag to your delivery pin!</b>').openPopup();
     markerInstanceRef.current = marker;
 
@@ -306,9 +339,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       await processSelectedCoordinates(e.latlng.lat, e.latlng.lng);
     });
 
-    processSelectedCoordinates(STORE_LAT, STORE_LNG);
+    processSelectedCoordinates(customerInitialLat, customerInitialLng);
   };
 
+  // SECTION 12: Process selected coordinates, calculate delivery costs, and look up a readable address.
   const processSelectedCoordinates = async (lat: number, lng: number) => {
     setDeliveryCoordinates({ lat, lng });
     const dist = calculateDistanceKm(STORE_LAT, STORE_LNG, lat, lng);
@@ -325,7 +359,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     geocodeTimeoutRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`, {
-          headers: { 'User-Agent': 'VeynsKioskDeliveryApp/1.0' }
+          headers: {
+            'User-Agent': 'VeynsKioskDeliveryApp/1.0'
+          }
         });
         if (res.ok) {
           const data = await res.json();
@@ -333,7 +369,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
             setCustomerLocation(data.display_name);
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Fallback remains Lat/Lng
+      }
     }, 600);
   };
 
@@ -359,6 +397,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     );
   };
 
+  // SECTION 13: Customer order-history state and per-customer storage key.
   const [internalOrderHistory, setInternalOrderHistory] = useState<any[]>([]);
   const historyList = orderHistory !== undefined ? orderHistory : internalOrderHistory;
   const setHistoryList = setOrderHistory || setInternalOrderHistory;
@@ -369,10 +408,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const userIdentifier = isGuest ? 'guest_session_user' : (currentUser.email || currentUser.name || 'admin').toLowerCase().trim();
   const userHistoryStorageKey = `veyns_user_orders_${userIdentifier}`;
 
+  // SECTION 14: Retrieve and normalize order history from Supabase and local/session storage.
   const refreshOrderHistoryFromStorage = async () => {
     try {
       if (!isGuest) {
-        const { data: cloudOrders } = await supabase
+        const { data: cloudOrders, error } = await supabase
           .from('orders')
           .select('*')
           .eq('user_id', currentUser.authUserId)
@@ -405,7 +445,18 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         setHistoryList(saved ? JSON.parse(saved) : []);
       } else {
         const saved = localStorage.getItem(userHistoryStorageKey);
-        setHistoryList(saved ? JSON.parse(saved) : []);
+        if (saved) {
+          setHistoryList(JSON.parse(saved));
+        } else {
+          const legacy = localStorage.getItem('veyns_order_history');
+          if (legacy && userIdentifier.includes('admin')) {
+            const parsedLegacy = JSON.parse(legacy);
+            setHistoryList(parsedLegacy);
+            localStorage.setItem(userHistoryStorageKey, JSON.stringify(parsedLegacy));
+          } else {
+            setHistoryList([]);
+          }
+        }
       }
     } catch (e) {
       setHistoryList([]);
@@ -419,7 +470,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   useEffect(() => {
     if (showMyOrders !== undefined) {
       setInternalShowMyOrders(showMyOrders);
-      if (showMyOrders) refreshOrderHistoryFromStorage();
+      if (showMyOrders) {
+        refreshOrderHistoryFromStorage();
+      }
     }
   }, [showMyOrders]);
 
@@ -435,6 +488,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   }, [resetKey]);
 
+  // SECTION 15: Create orders only through the server-validated Supabase RPC.
   const saveOrderToHistory = async (newOrder: any) => {
     const payload = {
       name: newOrder.name,
@@ -468,10 +522,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     try {
       if (isGuest) sessionStorage.setItem(userHistoryStorageKey, JSON.stringify(updated));
       else localStorage.setItem(userHistoryStorageKey, JSON.stringify(updated));
-    } catch (e) {}
+    } catch (e) { console.error('Unable to cache order history:', e); }
     return savedOrder;
   };
 
+  // SECTION 16: Filter visible menu items by availability, category, and search text.
   const filtered = currentMenuGrid.filter((item) => {
     if (item.isAvailable === false) return false;
     const matchCategory = category === 'All items' || item.category === category;
@@ -482,6 +537,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     return matchCategory && matchSearch;
   });
 
+  // SECTION 17: Menu customization logic, conditional option groups, pricing, and cart insertion.
   const handleOpenModal = (item) => {
     setSelected(item);
     setQty(1);
@@ -490,6 +546,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     const initialSelections: { [groupId: string]: string[] } = {};
     if (item.optionGroups && Array.isArray(item.optionGroups)) {
       item.optionGroups.forEach((group: any) => {
+        // Pre-select default option if specified, or first option if single-select required
         const defaultOpt = (group.options || []).find((o: any) => o.is_default || o.isDefault);
         if (defaultOpt) {
           initialSelections[group.id] = [defaultOpt.id];
@@ -506,20 +563,24 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const getEffectiveItemPrice = (item) => {
     const base = item.price || 0;
     const discountPct = item.discountPercent || 0;
-    if (discountPct > 0) return base * (1 - discountPct / 100);
+    if (discountPct > 0) {
+      return base * (1 - discountPct / 100);
+    }
     return base;
   };
 
+  // Dynamic Customization Calculation & Dependency Rules Engine
   const calculateCustomizationTotal = () => {
     if (!selected || !selected.optionGroups) return 0;
     let totalAddons = 0;
 
     selected.optionGroups.forEach((group: any) => {
+      // Conditional Visibility Check: group is visible ONLY if no parent required OR parent is currently selected
       if (group.parentOptionIds && group.parentOptionIds.length > 0) {
         const isTriggered = group.parentOptionIds.some((parentId: string) =>
           Object.values(selectedOptions).some((selectedList) => selectedList.includes(parentId))
         );
-        if (!isTriggered) return;
+        if (!isTriggered) return; // Skip hidden group
       }
 
       const groupSelections = selectedOptions[group.id] || [];
@@ -545,6 +606,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     let extraCharge = 0;
 
     selected.optionGroups.forEach((group: any) => {
+      // Evaluate visibility
       if (group.parentOptionIds && group.parentOptionIds.length > 0) {
         const isTriggered = group.parentOptionIds.some((parentId: string) =>
           Object.values(selectedOptions).some((selectedList) => selectedList.includes(parentId))
@@ -571,20 +633,25 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       }
     });
 
-    return { snapshots, summary: summaryParts.join(', '), extraCharge };
+    return {
+      snapshots,
+      summary: summaryParts.join(', '),
+      extraCharge
+    };
   };
 
   const handleAddCustomToCart = () => {
     if (!selected) return;
     setValidationError('');
 
+    // Validate visible option groups against requirement & selection limits
     if (selected.optionGroups && selected.optionGroups.length > 0) {
       for (const group of selected.optionGroups) {
         if (group.parentOptionIds && group.parentOptionIds.length > 0) {
           const isTriggered = group.parentOptionIds.some((parentId: string) =>
             Object.values(selectedOptions).some((selectedList) => selectedList.includes(parentId))
           );
-          if (!isTriggered) continue;
+          if (!isTriggered) continue; // Skip hidden group validation
         }
 
         const selections = selectedOptions[group.id] || [];
@@ -604,12 +671,15 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
     const { snapshots, summary, extraCharge } = buildCustomizationPayload();
 
+    // Add to cart with full immutable customization snapshots and extra charges
     add(selected, qty, snapshots, extraCharge, summary);
+
     setAddedItemName(`${qty} × ${selected.name}${summary ? ` (${summary})` : ''}`);
     setSelected(null);
     setShowUpsell(true);
   };
 
+  // SECTION 18: Upsell quantity helpers and cart quantity updates.
   const getUpsellQty = (itemId) => {
     const line = lines.find((l) => l.item.id === itemId);
     return line ? line.qty : 0;
@@ -628,6 +698,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   };
 
+  // SECTION 19: Client-side voucher usage tracking and promotion-code interactions.
+  // Helper for per-user promo limits tracking
   const getUserVoucherUsageMap = () => {
     try {
       const userKey = currentUser ? (currentUser.identifier || 'guest').toLowerCase().trim() : 'guest';
@@ -636,6 +708,15 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     } catch (e) {
       return {};
     }
+  };
+
+  const recordUserVoucherUse = (code: string) => {
+    try {
+      const userKey = currentUser ? (currentUser.identifier || 'guest').toLowerCase().trim() : 'guest';
+      const usageMap = getUserVoucherUsageMap();
+      usageMap[code] = (usageMap[code] || 0) + 1;
+      localStorage.setItem(`veyns_user_voucher_uses_${userKey}`, JSON.stringify(usageMap));
+    } catch (e) {}
   };
 
   const handleApplyPromoCodeString = (codeToApply: string) => {
@@ -688,6 +769,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setAppliedPromos(prev => prev.filter(p => p.code !== codeToRemove));
   };
 
+  // Public vouchers auto-apply immediately upon clicking "Claim" (Stashing to appliedPromos)
   const handleClaimVoucher = (promo: any) => {
     if (promo.usageLimit && (promo.usageCount || 0) >= promo.usageLimit) {
       alert('This voucher has already reached its maximum usage limit.');
@@ -704,17 +786,23 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
     const expiryMs = promo.expiryDurationMs || (60 * 60 * 1000);
     setClaimedVouchersState(prev => ({ ...prev, [promo.code]: Date.now() + expiryMs }));
+
+    // Apply or stack the claimed voucher right away
     handleApplyPromoCodeString(promo.code);
   };
 
+  // SECTION 20: Calculate the currently applied promotion discount and order totals.
   const calculatePromoDiscount = () => {
     if (appliedPromos.length === 0) return 0;
     let totalPercent = 0;
     let totalPeso = 0;
 
     appliedPromos.forEach(p => {
-      if (p.type === 'peso') totalPeso += p.discountValue;
-      else totalPercent += p.discountValue;
+      if (p.type === 'peso') {
+        totalPeso += p.discountValue;
+      } else {
+        totalPercent += p.discountValue;
+      }
     });
 
     const percentDiscount = (total * totalPercent) / 100;
@@ -726,6 +814,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const deliveryFeeTotal = fulfillment === 'delivery' ? calculatedDeliveryFee : 0;
   const finalCartTotal = Math.max(0, total - promoDiscountAmount + deliveryFeeTotal);
 
+  // SECTION 21: Confirm only after the database accepts and prices the order.
   const handleReviewOrder = () => {
     setShowUpsell(false);
     setOrderPlaced(false);
@@ -734,12 +823,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const handleConfirmOrder = async () => {
     if (orderType === 'today' && !isOrderTodayAllowed()) {
-      alert('Store is closed until 12 noon. Select a reservation time instead.');
-      return;
+      alert('Store is closed until 12 noon. Select a reservation time instead.'); return;
     }
     if (fulfillment === 'delivery' && !deliveryCoordinates) {
-      alert('Choose a delivery location on the map before placing the order.');
-      return;
+      alert('Choose a delivery location on the map before placing the order.'); return;
     }
     const scheduleInfoText = orderType === 'today'
       ? fulfillment === 'delivery' && deliveryOption === 'our' ? 'Today (' + todayTimeSlot + ') - Personal Delivery' : 'Today - Maxim Delivery (Anytime)'
@@ -761,7 +848,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       setPlacedOrderDetails(savedOrder);
       setOrderPlaced(true);
       if (onOrderPlacedSuccess) await onOrderPlacedSuccess();
-      loadUserProfileData(); // Refresh stamps display upon successful order
     } catch (error: any) {
       console.error('Order submission failed:', error);
       alert(error?.message || 'Unable to place this order. Please try again.');
@@ -785,15 +871,15 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setIsPinning(false);
   };
 
+  // SECTION 22: Derived values used by the rendered menu, loyalty, and checkout interface.
+  const validStampsCount = stamps.filter(s => s.status === 'valid').length;
   const publicVouchersList = availablePromos.filter(p => p.visibility !== 'hidden');
-  const isStoreClosedForToday = orderType === 'today' && !orderTodayOpen;
 
-  // Stamp Count Display logic (Driven dynamically from profile current_stamp_count)
-  const currentStampsCount = userProfileData?.current_stamp_count || 1;
+  const isStoreClosedForToday = orderType === 'today' && !orderTodayOpen;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Top Header & Loyalty Access Button */}
+      {/* SECTION 23: Menu search, customer account actions, and category navigation. */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-300/70" />
@@ -819,12 +905,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           ) : (
             <Button
               onClick={() => {
-                loadUserProfileData();
+                loadUserStampsAndPenalties();
                 setShowLoyaltyModal(true);
               }}
               className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold text-xs px-4 py-2.5 rounded-full transition-all shadow-lg flex items-center gap-2 cursor-pointer"
             >
-              <Award className="h-4 w-4" /> Loyalty Card ({currentStampsCount} Stamps)
+              <Award className="h-4 w-4" /> Loyalty Card ({validStampsCount}/12)
             </Button>
           )}
 
@@ -844,7 +930,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         </div>
       </div>
 
-      {/* Menu Cards */}
+      {/* SECTION 24: Menu item cards and add-to-cart entry points. */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((item) => {
           const effectivePrice = getEffectiveItemPrice(item);
@@ -899,34 +985,129 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         })}
       </div>
 
-      {/* Dynamic Loyalty Card Modal */}
+      {/* SECTION 25: Loyalty stamp card and fair-play status modal. */}
       <Dialog open={showLoyaltyModal} onOpenChange={setShowLoyaltyModal}>
-        <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl flex flex-col items-center">
-          <div className="w-full text-left border-b border-emerald-900/60 pb-3 mb-2">
+        <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
+          <div className="space-y-1 text-left border-b border-emerald-900/60 pb-3">
             <DialogTitle className="font-display text-xl font-extrabold text-white flex items-center gap-2">
-              <Award className="h-5 w-5 text-lime-400" /> VEYNS. Loyalty Card
+              <Award className="h-5 w-5 text-lime-400" /> VEYNS. Loyalty Stamp Card
             </DialogTitle>
             <DialogDescription className="text-xs text-emerald-300/80">
-              1 order per Manila day = 1 stamp. Flip card to claim secret milestone vouchers.
+              Rule: 1 order per day = 1 stamp. "To Be Cleared" slots must be stamped first before progressing.
             </DialogDescription>
           </div>
 
-          {userProfileData ? (
-            <LoyaltyCard userId={userProfileData.id} />
-          ) : (
-            <div className="p-6 text-xs text-emerald-400">Loading Loyalty Card...</div>
-          )}
+          <div className="my-4 space-y-4">
+            <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 text-center space-y-2">
+              <p className="text-xs text-emerald-300">Active Valid Stamps:</p>
+              <p className="text-3xl font-black text-lime-400 font-display">{validStampsCount} / 12 Stamps</p>
+              
+              {fairPlayPenalty && fairPlayPenalty.appliedPenalties && fairPlayPenalty.appliedPenalties.length > 0 ? (
+                <div className="bg-red-950/80 border border-red-500/80 rounded-xl p-3 text-left space-y-1.5 mt-2">
+                  <p className="text-[10px] font-extrabold text-red-400 uppercase flex items-center gap-1">
+                    <AlertTriangle className="size-3.5" /> Fair Play Infraction Notice:
+                  </p>
+                  <p className="text-[10px] text-red-200 font-medium">
+                    Offense Recorded: <strong>{fairPlayPenalty.appliedPenalties.join(', ')}</strong>
+                  </p>
+                  <div className="text-[10px] text-amber-300 pt-1 border-t border-red-900/60 space-y-0.5">
+                    <p>• 6th Stamp Reward: <strong>{fairPlayPenalty.sixthReward}</strong></p>
+                    <p>• 9th Stamp Reward: <strong>{fairPlayPenalty.ninthReward}</strong></p>
+                    <p>• 12th Stamp Reward: <strong>{fairPlayPenalty.twelfthReward}</strong></p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="grid grid-cols-4 gap-2.5">
+              {Array.from({ length: 12 }).map((_, idx) => {
+                const stampEntry = stamps[idx];
+                const status = stampEntry ? stampEntry.status : 'empty';
+                const isSixth = idx === 5;
+                const isNinth = idx === 8;
+                const isTwelfth = idx === 11;
+
+                let sixthText = '25% OFF';
+                let ninthText = '50% OFF';
+                let twelfthText = 'FREE';
+
+                if (fairPlayPenalty && fairPlayPenalty.appliedPenalties && fairPlayPenalty.appliedPenalties.length > 0) {
+                  if (fairPlayPenalty.sixthReward) sixthText = fairPlayPenalty.sixthReward;
+                  if (fairPlayPenalty.ninthReward) ninthText = fairPlayPenalty.ninthReward;
+                  if (fairPlayPenalty.twelfthReward) twelfthText = fairPlayPenalty.twelfthReward;
+                }
+
+                return (
+                  <div
+                    key={idx}
+                    className={`relative aspect-square rounded-2xl border flex flex-col items-center justify-center text-xs font-extrabold transition-all p-1 text-center ${
+                      status === 'valid'
+                        ? 'bg-[#082d22] border-lime-400 text-lime-400 shadow-md'
+                        : status === 'to_clear'
+                        ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-md animate-pulse'
+                        : status === 'invalid'
+                        ? 'bg-red-950/80 border-red-500 text-red-400 shadow-md'
+                        : 'bg-[#041913] border-emerald-800/60 text-emerald-600'
+                    }`}
+                  >
+                    {status === 'valid' && <Check className="size-5 text-lime-400 mb-0.5" />}
+                    {status === 'to_clear' && <Clock className="size-5 text-amber-400 mb-0.5" />}
+                    {status === 'invalid' && <XCircle className="size-5 text-red-400 mb-0.5" />}
+                    {status === 'empty' && <span className="text-xs font-mono">#{idx + 1}</span>}
+
+                    {fairPlayPenalty && fairPlayPenalty.appliedPenalties && fairPlayPenalty.appliedPenalties.length > 0 ? (
+                      <>
+                        {isSixth && (
+                          <span className={`absolute -top-2 -right-1 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow ${sixthText.includes('Invalid') || sixthText.includes('CANCELLED') ? 'bg-red-500 text-white' : 'bg-amber-500'}`}>
+                            {sixthText}
+                          </span>
+                        )}
+                        {isNinth && (
+                          <span className={`absolute -top-2 -right-1 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow ${ninthText.includes('Invalid') || ninthText.includes('CANCELLED') ? 'bg-red-500 text-white' : 'bg-amber-400'}`}>
+                            {ninthText}
+                          </span>
+                        )}
+                        {isTwelfth && (
+                          <span className={`absolute -top-2 -right-1 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow ${twelfthText.includes('Cancelled') || twelfthText.includes('Invalid') ? 'bg-red-500 text-white' : twelfthText === '25% OFF' ? 'bg-amber-400' : 'bg-lime-400'}`}>
+                            {twelfthText}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {isSixth && (
+                          <span className="absolute -top-2 -right-1 bg-amber-500 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">
+                            25% OFF
+                          </span>
+                        )}
+                        {isNinth && (
+                          <span className="absolute -top-2 -right-1 bg-amber-400 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">
+                            50% OFF
+                          </span>
+                        )}
+                        {isTwelfth && (
+                          <span className="absolute -top-2 -right-1 bg-lime-400 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">
+                            FREE
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
           <Button
             onClick={() => setShowLoyaltyModal(false)}
-            className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg mt-4 cursor-pointer"
+            className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg"
           >
             Close Loyalty Card
           </Button>
         </DialogContent>
       </Dialog>
 
-      {/* Customer Order History Modal */}
+      {/* SECTION 26: Customer order-history modal. */}
       <Dialog open={isOrdersOpen} onOpenChange={(open) => {
         setIsOrdersOpen(open);
         if (setShowMyOrders) setShowMyOrders(open);
@@ -1018,7 +1199,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         </DialogContent>
       </Dialog>
 
-      {/* Menu Customization Modal */}
+      {/* SECTION 27: Dynamic menu customization modal with option validation and price preview. */}
+      {/* DYNAMIC MENU ITEM CUSTOMIZATION MODAL */}
       <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
         {selected && (
           <DialogContent className="max-w-md w-full bg-[#04140f] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
@@ -1040,14 +1222,16 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
               </div>
             </div>
 
+            {/* Dynamic Option Groups Rendering */}
             {selected.optionGroups && selected.optionGroups.length > 0 && (
               <div className="space-y-4 my-2 border-t border-emerald-900/60 pt-3">
                 {selected.optionGroups.map((group: any) => {
+                  // Evaluate conditional dependency trigger rules
                   if (group.parentOptionIds && group.parentOptionIds.length > 0) {
                     const isTriggered = group.parentOptionIds.some((parentId: string) =>
                       Object.values(selectedOptions).some((selectedList) => selectedList.includes(parentId))
                     );
-                    if (!isTriggered) return null;
+                    if (!isTriggered) return null; // Conditionally hide dependent group
                   }
 
                   const currentSelections = selectedOptions[group.id] || [];
@@ -1164,7 +1348,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         )}
       </Dialog>
 
-      {/* Post-add-to-cart Upsell Dialog */}
+      {/* SECTION 28: Post-add-to-cart upsell suggestions. */}
       <Dialog open={showUpsell} onOpenChange={setShowUpsell}>
         <DialogContent className="max-w-lg w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-5 rounded-3xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
           <div className="space-y-0.5 text-left border-b border-emerald-900/60 pb-3">
@@ -1261,7 +1445,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         </DialogContent>
       </Dialog>
 
-      {/* Checkout Dialog */}
+      {/* SECTION 29: Checkout flow, delivery/pickup details, scheduling, promotions, and order confirmation. */}
       <Dialog open={showCheckout} onOpenChange={setShowCheckout}>
         <DialogContent className="max-w-md sm:max-w-lg w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-4 sm:p-6 rounded-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           {orderPlaced && placedOrderDetails ? (
@@ -1454,81 +1638,79 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 )}
               </div>
 
-              {!isGuest && (
-                <div className="space-y-2 pt-2 border-t border-emerald-900/60">
-                  <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Have a Promo Code?</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="e.g. VEYNS2026"
-                      value={promoInput}
-                      onChange={(e) => setPromoInput(e.target.value)}
-                      className="flex-1 bg-[#041913] border border-emerald-800/80 rounded-xl px-3 py-2 text-xs text-white uppercase placeholder:normal-case placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
-                    />
-                    <Button
-                      type="button"
-                      onClick={handleApplyPromo}
-                      className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold text-xs px-4 rounded-xl transition-all cursor-pointer"
-                    >
-                      Apply
-                    </Button>
-                  </div>
-                  {promoError && <p className="text-[10px] text-red-400 font-semibold">{promoError}</p>}
-                  
-                  {appliedPromos.length > 0 && (
-                    <div className="space-y-1.5 pt-1">
-                      <p className="text-[10px] text-lime-400 font-semibold">🎉 Applied Vouchers (Stacked):</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {appliedPromos.map((p) => (
-                          <span key={p.code} className="inline-flex items-center gap-1 bg-[#082a20] border border-lime-400/50 text-lime-300 text-[10px] font-bold px-2.5 py-1 rounded-lg">
-                            {p.code} ({p.type === 'peso' ? `₱${p.discountValue}` : `${p.discountValue}%`})
-                            <button type="button" onClick={() => handleRemoveAppliedPromo(p.code)} className="text-lime-400 hover:text-red-400 ml-0.5 cursor-pointer">
-                              <X className="size-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {publicVouchersList.length > 0 && (
-                    <div className="space-y-1.5 pt-2">
-                      <span className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider flex items-center gap-1">
-                        <Ticket className="size-3 text-lime-400" /> Available Public Vouchers (Click Claim to Stack):
-                      </span>
-                      <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
-                        {publicVouchersList.map((promo, pIdx) => {
-                          const isAlreadyApplied = appliedPromos.some(p => p.code.toUpperCase() === promo.code.toUpperCase());
-
-                          return (
-                            <div key={pIdx} className="bg-[#061d16] border border-emerald-800/70 rounded-xl p-2.5 flex items-center justify-between text-xs">
-                              <div className="space-y-0.5">
-                                <span className="font-extrabold text-lime-400 text-xs">{promo.code}</span>
-                                <p className="text-[10px] text-emerald-200">
-                                  {promo.type === 'peso' ? formatPeso(promo.discountValue) + ' OFF' : `${promo.discountValue}% OFF`}
-                                </p>
-                                {isAlreadyApplied && (
-                                  <p className="text-[9px] text-amber-300">✓ Stacked and applied.</p>
-                                )}
-                              </div>
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => handleClaimVoucher(promo)}
-                                className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-extrabold text-[10px] px-3 py-1 rounded-lg cursor-pointer"
-                              >
-                                {isAlreadyApplied ? 'Applied ✓' : 'Claim & Stack'}
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+              {!isGuest && <div className="space-y-2 pt-2 border-t border-emerald-900/60">
+                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Have a Promo Code?</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. VEYNS2026"
+                    value={promoInput}
+                    onChange={(e) => setPromoInput(e.target.value)}
+                    className="flex-1 bg-[#041913] border border-emerald-800/80 rounded-xl px-3 py-2 text-xs text-white uppercase placeholder:normal-case placeholder:text-emerald-600 focus:outline-none focus:border-lime-400"
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleApplyPromo}
+                    className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold text-xs px-4 rounded-xl transition-all cursor-pointer"
+                  >
+                    Apply
+                  </Button>
                 </div>
-              )}
+                {promoError && <p className="text-[10px] text-red-400 font-semibold">{promoError}</p>}
+                
+                {appliedPromos.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <p className="text-[10px] text-lime-400 font-semibold">🎉 Applied Vouchers (Stacked):</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {appliedPromos.map((p) => (
+                        <span key={p.code} className="inline-flex items-center gap-1 bg-[#082a20] border border-lime-400/50 text-lime-300 text-[10px] font-bold px-2.5 py-1 rounded-lg">
+                          {p.code} ({p.type === 'peso' ? `₱${p.discountValue}` : `${p.discountValue}%`})
+                          <button type="button" onClick={() => handleRemoveAppliedPromo(p.code)} className="text-lime-400 hover:text-red-400 ml-0.5 cursor-pointer">
+                            <X className="size-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-              {/* Order Schedule Selection */}
+                {publicVouchersList.length > 0 && (
+                  <div className="space-y-1.5 pt-2">
+                    <span className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider flex items-center gap-1">
+                      <Ticket className="size-3 text-lime-400" /> Available Public Vouchers (Click Claim to Stack):
+                    </span>
+                    <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                      {publicVouchersList.map((promo, pIdx) => {
+                        const isAlreadyApplied = appliedPromos.some(p => p.code.toUpperCase() === promo.code.toUpperCase());
+
+                        return (
+                          <div key={pIdx} className="bg-[#061d16] border border-emerald-800/70 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                            <div className="space-y-0.5">
+                              <span className="font-extrabold text-lime-400 text-xs">{promo.code}</span>
+                              <p className="text-[10px] text-emerald-200">
+                                {promo.type === 'peso' ? formatPeso(promo.discountValue) + ' OFF' : `${promo.discountValue}% OFF`}
+                              </p>
+                              {isAlreadyApplied && (
+                                <p className="text-[9px] text-amber-300">✓ Stacked and applied.</p>
+                              )}
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleClaimVoucher(promo)}
+                              className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-extrabold text-[10px] px-3 py-1 rounded-lg cursor-pointer"
+                            >
+                              {isAlreadyApplied ? 'Applied ✓' : 'Claim & Stack'}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>}
+
+              {/* ORDER TYPE SELECTION (Order Today vs Reservation) */}
               <div className="space-y-2 border-t border-emerald-900/60 pt-3">
                 <h4 className="text-[11px] font-bold text-lime-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5 text-lime-400" /> Order Schedule Type
@@ -1647,7 +1829,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 )}
               </div>
 
-              {/* Fulfillment Method */}
               <div className="space-y-2 border-t border-emerald-900/60 pt-3">
                 <h4 className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
                   <Truck className="h-3.5 w-3.5 text-lime-400" /> Fulfillment Method (All To-Go)
@@ -1910,4 +2091,5 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   );
 }
 
+// SECTION 30: Default export for the OrderingCounter component.
 export default OrderingCounter;
