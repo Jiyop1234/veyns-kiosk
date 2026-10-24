@@ -462,8 +462,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       code: cleanCode,
       type: newPromoType,
       discount_value: parseFloat(newPromoDiscount),
-      target_type: newPromoTargetType, // FEATURE B: Scope
-      eligibility: newPromoEligibility, // FEATURE C: Guest vs Registered
+      target_type: newPromoTargetType, // Scope: subtotal or delivery
+      eligibility: 'registered',       // Strictly enforced: registered customers only
       visibility: newVoucherVisibility,
       expiry_duration_ms: expiryMs,
       usage_limit: usageLimitNum,
@@ -1079,9 +1079,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Customer Eligibility (Feature C)</label>
-                <select value={newPromoEligibility} onChange={(e) => setNewPromoEligibility(e.target.value as any)} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none">
-                  <option value="all">All Customers (Guests & Registered)</option>
+                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Customer Eligibility</label>
+                <select value="registered" disabled className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none opacity-80 cursor-not-allowed">
                   <option value="registered">Registered Customers Only</option>
                 </select>
               </div>
