@@ -59,20 +59,9 @@ export function App() {
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
 
   // SECTION 2: Load loyalty data only from the authenticated profile row.
-  const loadUserStampsAndPenalties = async (userObj: any) => {
-    if (!userObj || userObj.type === 'guest' || !userObj.authUserId) { setStamps([]); setFairPlayPenalty(null); return; }
-    const { data: profile, error } = await supabase.from('profiles')
-      .select('stamps_data,penalty_data').eq('auth_user_id', userObj.authUserId).single();
-    if (error || !profile) { setStamps(Array.from({ length: 12 }, () => ({ status: 'empty', date: '' }))); setFairPlayPenalty(null); return; }
-    const normalized = Array.from({ length: 12 }).map((_, idx) => profile.stamps_data?.[idx] || { status: 'empty', date: '' });
-    setStamps(normalized);
-    setFairPlayPenalty(profile.penalty_data || null);
-    const key = (userObj.identifier || '').toLowerCase().trim();
-    if (key) {
-      localStorage.setItem('veyns_detailed_stamps_' + key, JSON.stringify(normalized));
-      if (profile.penalty_data) localStorage.setItem('veyns_fair_play_penalty_' + key, JSON.stringify(profile.penalty_data));
-      else localStorage.removeItem('veyns_fair_play_penalty_' + key);
-    }
+  const loadUserStampsAndPenalties = async (_userObj: any) => {
+    setStamps([]);
+    setFairPlayPenalty(null);
   };
 
   // SECTION 3: Restore Supabase Auth sessions; guests remain a non-privileged local choice.
