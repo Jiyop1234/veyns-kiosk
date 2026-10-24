@@ -504,6 +504,7 @@ export function App() {
   }
 
   // Employee Dashboard View
+  // SECTION 17: Render employee code entry or the employee dashboard.
   if (authMode === 'employee') {
     if (isAdminDashboardOpen) {
       return (
@@ -511,25 +512,65 @@ export function App() {
           onBackToStore={() => {
             setIsAdminDashboardOpen(false);
             setAuthMode('select');
+            if (currentUser && currentUser.type !== 'guest') {
+              loadUserStampsAndPenalties(currentUser);
+            }
           }}
         />
       );
     }
-
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
         <div className="max-w-md w-full bg-[#051813] border border-red-900/40 rounded-3xl p-8 shadow-2xl space-y-6 text-center">
           <div className="space-y-3 flex flex-col items-center">
-            <ShieldAlert className="size-12 text-red-500" />
-            <h2 className="font-display text-lg font-black tracking-wider text-red-500 uppercase">AUTHORIZED PERSONNEL ONLY</h2>
+            <div className="w-12 h-12 rounded-2xl bg-red-950/40 border border-red-800/60 flex items-center justify-center text-red-500 shadow-lg">
+              <ShieldAlert className="size-6" />
+            </div>
+            <div className="space-y-2 text-center w-full">
+              <div className="inline-block bg-red-950/60 border border-red-900/60 px-6 py-2 rounded-xl shadow-inner">
+                <h2 className="font-display text-lg md:text-xl font-black tracking-wider text-red-500 uppercase leading-tight">AUTHORIZED</h2>
+                <h2 className="font-display text-lg md:text-xl font-black tracking-wider text-red-500 uppercase leading-tight">PERSONEL ONLY</h2>
+              </div>
+              <p className="font-display text-sm font-bold text-white uppercase tracking-wide pt-2">security clearance required</p>
+              <div className="text-xs text-emerald-300/80 italic max-w-xs mx-auto pt-1 leading-relaxed text-center space-y-0.5">
+                <p>"Every action is logged. Every mistake leaves a trace."</p>
+                <p>You have been warned.</p>
+              </div>
+            </div>
           </div>
-
           <div className="bg-[#041913] border border-emerald-800/60 rounded-2xl p-5 text-xs text-emerald-200 space-y-3">
-            <input type="email" value={authEmailInput} onChange={(e) => setAuthEmailInput(e.target.value)} placeholder="Staff Email" className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" />
-            <input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="Password" className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" />
-            {loginError && <p className="text-red-400">{loginError}</p>}
-            <Button onClick={() => void handleEmployeeAuth()} className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs">Sign in</Button>
+            <label className="font-bold text-lime-400 uppercase tracking-wider text-[11px] block text-center">staff Supabase Auth sign-in</label>
+            <input 
+              type="email" 
+              autoComplete="username" 
+              value={authEmailInput} 
+              onChange={(e) => setAuthEmailInput(e.target.value)} 
+              placeholder="Staff email" 
+              className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" 
+            />
+            <input 
+              type="password" 
+              autoComplete="current-password" 
+              value={authPassword} 
+              onChange={(e) => setAuthPassword(e.target.value)} 
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleEmployeeAuth(); }} 
+              placeholder="Password" 
+              className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" 
+            />
+            {loginError && <p className="text-red-400 font-bold">{loginError}</p>}
+            <Button 
+              onClick={() => void handleEmployeeAuth()} 
+              className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg cursor-pointer mt-1"
+            >
+              Sign in
+            </Button>
           </div>
+          <button
+            onClick={() => setAuthMode('select')}
+            className="text-xs font-bold text-emerald-400/80 hover:text-white transition-colors cursor-pointer block mx-auto"
+          >
+            back to the front
+          </button>
         </div>
       </div>
     );
