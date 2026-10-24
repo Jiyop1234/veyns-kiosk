@@ -149,7 +149,6 @@ export function App() {
         return; 
       }
 
-      // If email confirmation is ON, session is null until verified
       if (!data.session) {
         setRegisteredEmail(email);
         setSignUpSuccessMsg(true); 
@@ -159,7 +158,6 @@ export function App() {
         return;
       }
 
-      // If session exists immediately (e.g., auto-confirm is enabled in Supabase)
       const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
       const profile = Array.isArray(profileData) ? profileData[0] : profileData;
       if (profileError || !profile) { setIdentifierError(profileError?.message || 'Unable to load profile.'); return; }
@@ -181,7 +179,6 @@ export function App() {
       return; 
     }
 
-    // Check if email is verified
     if (!data.user.email_confirmed_at) {
       await supabase.auth.signOut();
       setLoginError('Your email address is not verified. Please check your inbox and click the verification link.');
@@ -206,9 +203,9 @@ export function App() {
 
   // SECTION 5: Resend Verification Link
   const handleResendVerification = async () => {
-    const email = registeredEmail || authEmailInput.trim().toLowerCase();
+    const email = (registeredEmail || authEmailInput).trim().toLowerCase();
     if (!email || !validateEmail(email)) {
-      setIdentifierError('Enter a valid email address to resend the verification link.');
+      setIdentifierError('Please enter your email address to resend the link.');
       return;
     }
 
@@ -221,9 +218,9 @@ export function App() {
     setIsResending(false);
 
     if (error) {
-      alert('Failed to resend confirmation: ' + error.message);
+      alert('Failed to resend email: ' + error.message);
     } else {
-      alert(`A fresh verification email has been sent to ${email}. Please check your inbox and spam folder.`);
+      alert(`A fresh verification link has been sent to ${email}. Check your inbox and spam folder!`);
     }
   };
 
@@ -376,36 +373,35 @@ export function App() {
               role="status"
               aria-live="polite"
             >
-              <Mail className="h-7 w-7 text-lime-400 mx-auto animate-bounce" />
-              <p className="font-bold text-lime-400 text-sm">Verification email sent!</p>
+              <CheckCircle2 className="h-6 w-6 text-lime-400 mx-auto" />
+              <p className="font-bold text-lime-400 text-xs">Account successfully created.</p>
               <p className="text-xs text-emerald-200 leading-relaxed">
-                We sent a confirmation link to <span className="font-extrabold text-white">{registeredEmail || authEmailInput.trim()}</span>.<br />
-                Open your email inbox, click the verification link, and then log in below.
+                We sent a confirmation email to <span className="font-bold text-white">{registeredEmail || authEmailInput.trim()}</span>. Open it and click the verification link before logging in.
               </p>
               <div className="pt-1">
                 <button
                   type="button"
                   onClick={handleResendVerification}
                   disabled={isResending}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-lime-400 hover:text-black hover:bg-lime-400 bg-[#082d22] border border-emerald-700 px-3.5 py-2 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-lime-400 hover:text-black hover:bg-lime-400 bg-[#082d22] border border-emerald-700/80 px-3.5 py-2 rounded-xl transition-all cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`size-3.5 ${isResending ? 'animate-spin' : ''}`} />
-                  {isResending ? 'Sending...' : "Didn't receive email? Resend"}
+                  {isResending ? 'Sending email...' : "Didn't receive it? Resend link"}
                 </button>
               </div>
             </div>
           )}
 
           {loginError && !isSignUp && (
-            <div className="bg-red-950/80 border border-red-500 rounded-xl p-3 text-center space-y-1">
+            <div className="bg-red-950/80 border border-red-500 rounded-xl p-3 text-center space-y-2">
               <p className="text-xs font-bold text-red-400">{loginError}</p>
-              {loginError.includes('verified') && (
+              {loginError.toLowerCase().includes('verified') && (
                 <button
                   type="button"
                   onClick={handleResendVerification}
-                  className="text-[10px] text-lime-400 underline font-semibold cursor-pointer block mx-auto pt-1"
+                  className="text-[11px] text-lime-400 hover:underline font-extrabold cursor-pointer block mx-auto"
                 >
-                  Click here to resend verification link
+                  Click here to resend verification email
                 </button>
               )}
             </div>
@@ -494,7 +490,7 @@ export function App() {
               type="submit"
               className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg mt-2 cursor-pointer"
             >
-              {isSignUp ? 'Create Account & Send Link' : 'Login to My Account'}
+              {isSignUp ? 'Lock in & Earn Stamps' : 'Login to My Account'}
             </Button>
           </form>
           <div className="text-center pt-2 border-t border-emerald-900/60 space-y-2">
