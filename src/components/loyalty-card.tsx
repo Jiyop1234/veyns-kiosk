@@ -1,190 +1,172 @@
-// @ts-nocheck
-import React, { useState, useEffect, useCallback } from 'react';
-import { Star, Gift, Check, X, RefreshCw, ShieldAlert, Sparkles, Crown, Gem, Ticket } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
-const BLOCKS = [
-  { n: 1, size: 4,  start: 1  },
-  { n: 2, size: 10, start: 5  },
-  { n: 3, size: 15, start: 15 },
-  { n: 4, size: 20, start: 30 },
-  { n: 5, size: 10, start: 50 },
-];
-const TOTAL = 59;
-const REWARDS = {
-  4:{label:'10% OFF',kind:'pct'}, 9:{label:'10% OFF',kind:'pct'}, 14:{label:'15% OFF',kind:'pct'},
-  19:{label:'10% OFF',kind:'pct'},24:{label:'15% OFF',kind:'pct'},29:{label:'20% OFF',kind:'pct'},
-  34:{label:'10% OFF',kind:'pct'},39:{label:'15% OFF',kind:'pct'},44:{label:'25% OFF',kind:'pct'},
-  49:{label:'50% OFF',kind:'pct'},54:{label:'50% OFF',kind:'pct'},59:{label:'FREE MEAL',kind:'meal'},
-};
-const WELCOME = 1;
-
-function blockFor(lifetime) {
-  if (lifetime >= TOTAL) return { ...BLOCKS[4], done: true };
-  return BLOCKS.find(b => lifetime <= b.start + b.size - 1) || BLOCKS[0];
-}
-function nextRewardAfter(lifetime) {
-  const pos = Object.keys(REWARDS).map(Number).filter(p => p > lifetime).sort((a,b)=>a-b)[0];
-  return pos ? { pos, ...REWARDS[pos] } : null;
+interface LoyaltyCardProps {
+  userId: string;
 }
 
-export default function LoyaltyCard({ open, onOpenChange, userId, isGuest, onSignIn }) {
-  const [loyalty, setLoyalty] = useState(null);
-  const [name, setName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [back, setBack] = useState(false);
-  const [busyPos, setBusyPos] = useState(null);
-  const [err, setErr] = useState('');
+export const LoyaltyCard: React.FC<LoyaltyCardProps> = ({ userId }) => {
+  const [profile, setProfile] = useState<any>(null);
+  const [blocks, setBlocks] = useState<any[]>([]);
+  const [rewards, setRewards] = useState<any[]>([]);
+  const [vouchers, setVouchers] = useState<any[]>([]);
+  const [isFlipped, setIsFlipped] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    if (!userId) return;
-    setLoading(true); setErr('');
-    const { data, error } = await supabase.from('profiles')
-      .select('name, loyalty_data').eq('auth_user_id', userId).single();
-    if (error) setErr(error.message);
-    else { setName(data?.name || 'Valued Customer'); setLoyalty(data?.loyalty_data || null); }
-    setLoading(false);
+  useEffect(() => {
+    fetchLoyaltyData();
   }, [userId]);
 
-  useEffect(() => { if (open && userId) { setBack(false); load(); } }, [open, userId, load]);
+  const fetchLoyaltyData = async () => {
+    setLoading(true);
+    
+    // Fetch profile
+    const { data: prof } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    // Fetch dynamic milestone blocks & rewards
+    const { data: blks } = await supabase.from('milestone_blocks').select('*').order('block_number');
+    const { data: rwds } = await supabase.from('block_rewards').select('*');
+    // Fetch user vouchers
+    const { data: vchs } = await supabase.from('vouchers').select('*').eq('user_id', userId);
 
-  const claim = async (pos) => {
-    setBusyPos(pos); setErr('');
-    const { data, error } = await supabase.rpc('claim_veyns_loyalty_reward', { p_pos: pos });
-    if (error) setErr(error.message); else await load();
-    setBusyPos(null);
+    setProfile(prof);
+    setBlocks(blks || []);
+    setRewards(rwds || []);
+    setVouchers(vchs || []);
+    setLoading(false);
   };
 
-  const tier = loyalty?.tier || 'silver';
-  const freeze = !!loyalty?.freeze;
-  const lifetime = Math.min(Math.max(parseInt(loyalty?.lifetime || 0, 10) || 0, 0), TOTAL);
-  const cycle = parseInt(loyalty?.cycle || 1, 10) || 1;
-  const rewards = Array.isArray(loyalty?.rewards) ? loyalty.rewards : [];
-  const entryFor = (pos) => rewards.find(r => Number(r.pos) === pos && Number(r.cycle || 1) === cycle);
+  if (loading) return <div className="p-4 text-white">Loading Loyalty Card...</div>;
 
-  const skin =
-    tier === 'diamond' ? 'from-[#05070d] to-[#0a1430] border-cyan-400/70 shadow-[0_0_40px_-8px_rgba(34,211,238,0.7)]'
-    : tier === 'platinum' ? 'from-[#0a0a0c] to-[#16161c] border-slate-300/70 shadow-[0_0_40px_-10px_rgba(226,232,240,0.6)]'
-    : 'from-[#041913] to-[#06281d] border-emerald-400/60 shadow-[0_0_40px_-10px_rgba(52,211,153,0.6)]';
-  const accent = tier === 'diamond' ? 'text-cyan-300' : tier === 'platinum' ? 'text-slate-200' : 'text-lime-400';
+  if (profile?.status === 'SUSPENDED') {
+    return (
+      <div className="w-full max-w-md p-6 bg-red-950/80 border border-red-500 rounded-xl text-center text-red-200">
+        <h2 className="text-xl font-bold mb-2">CARD SUSPENDED</h2>
+        <p className="text-sm">Your loyalty card is currently suspended and cannot accumulate stamps or claim rewards.</p>
+      </div>
+    );
+  }
 
-  const b = blockFor(lifetime);
-  const filledInBlock = Math.min(Math.max(lifetime - b.start + 1, 0), b.size);
-  const nr = nextRewardAfter(lifetime);
+  // Calculate current active block dynamically
+  const stamps = profile?.current_stamp_count || 1;
+  const currentBlock = blocks.find(
+    (b) => stamps >= b.cumulative_start && stamps <= b.cumulative_end
+  ) || blocks[0] || { stamps_required: 4, cumulative_start: 1, block_number: 1 };
 
-  const earnedRewardPositions = Object.keys(REWARDS).map(Number).filter(p => p <= lifetime).sort((a,c)=>a-c);
+  const stampsInCurrentBlock = stamps - currentBlock.cumulative_start + 1;
+
+  const claimVoucher = async (reward: any) => {
+    const code = `VEYNS-${reward.reward_type.replace(/[^a-zA-Z0-9]/g, '')}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const { data, error } = await supabase.from('vouchers').insert({
+      user_id: userId,
+      code,
+      discount_type: reward.reward_type,
+      is_claimed: true
+    }).select().single();
+
+    if (!error && data) {
+      setVouchers([...vouchers, data]);
+    }
+  };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md p-0 overflow-hidden border-0 bg-transparent">
-        <div className={`relative rounded-3xl bg-gradient-to-br ${skin} border p-5 text-white`}>
-          {freeze && (
-            <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-center gap-2 bg-red-600/90 py-2 text-xs font-bold uppercase tracking-wider">
-              <ShieldAlert className="h-4 w-4" /> Card suspended — stamps paused
-            </div>
-          )}
-          <div className="flex items-center justify-between pb-3">
-            <div>
-              <DialogTitle className={`text-sm font-black uppercase tracking-widest ${accent}`}>
-                {tier === 'diamond' ? <Gem className="mr-1 inline h-4 w-4"/> : tier === 'platinum' ? <Crown className="mr-1 inline h-4 w-4"/> : <Sparkles className="mr-1 inline h-4 w-4"/>}
-                VEYNS {tier === 'silver' ? 'Journey' : tier}
-              </DialogTitle>
-              <DialogDescription className="text-[11px] text-white/60">Hi {name}</DialogDescription>
-            </div>
-            <Button size="sm" variant="ghost" className="text-white/80 hover:text-white" onClick={() => setBack(v => !v)}>
-              <RefreshCw className="mr-1 h-4 w-4"/> {back ? 'Front' : 'Rewards'}
-            </Button>
+    <div className="w-full max-w-md perspective-1000 my-4">
+      <div 
+        className={`relative w-full h-80 rounded-2xl transition-transform duration-700 transform-style-3d cursor-pointer shadow-2xl ${
+          isFlipped ? 'rotate-y-180' : ''
+        } ${
+          profile?.tier === 'DIAMOND' 
+            ? 'bg-zinc-950 border-2 border-cyan-400 shadow-cyan-500/20' 
+            : profile?.tier === 'PLATINUM'
+            ? 'bg-zinc-900 border-2 border-slate-300 shadow-slate-400/20'
+            : 'bg-emerald-950 border-2 border-blue-500 shadow-blue-500/30' // Block / Silver Skin
+        }`}
+      >
+        {/* FRONT OF CARD */}
+        <div className="absolute inset-0 p-6 flex flex-col justify-between backface-hidden">
+          <div className="flex justify-between items-center">
+            <span className="text-xs font-bold tracking-widest text-emerald-400 uppercase">
+              {profile?.tier} CARD • BLOCK {currentBlock.block_number}
+            </span>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setIsFlipped(true); }}
+              className="text-xs bg-emerald-800/50 hover:bg-emerald-700 px-3 py-1 rounded-full text-emerald-200"
+            >
+              Flip for Rewards ↺
+            </button>
           </div>
 
-          {!userId || isGuest ? (
-            <div className="py-10 text-center">
-              <p className="mb-3 text-sm text-white/70">Sign in to start your 59‑stamp journey.</p>
-              <Button className={accent} onClick={onSignIn}>Sign in / Register</Button>
-            </div>
-          ) : loading ? (
-            <div className="py-12 text-center text-white/60">Loading card…</div>
-          ) : !back ? (
-            <div>
-              <div className="mb-3 flex items-baseline justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-white/70">
-                  {b.done ? 'Journey complete' : `Block ${b.n} of 5`}
-                </span>
-                <span className="text-xs text-white/60">{lifetime}/{TOTAL} stamps</span>
-              </div>
-              {b.done ? (
-                <div className="rounded-2xl border border-white/15 bg-black/30 p-6 text-center">
-                  <Crown className="mx-auto mb-2 h-8 w-8 text-amber-300"/>
-                  <p className="font-black uppercase tracking-widest text-amber-300">Platinum unlocked</p>
-                  <p className="mt-1 text-xs text-white/60">Your VIP loop begins now.</p>
+          {/* Stamp Grid */}
+          <div className="grid grid-cols-4 gap-3 my-auto">
+            {Array.from({ length: currentBlock.stamps_required }).map((_, idx) => {
+              const stampNum = idx + 1;
+              const isStamped = stampNum <= stampsInCurrentBlock;
+              const globalStampNum = currentBlock.cumulative_start + idx;
+              const reward = rewards.find((r) => r.cumulative_stamp === globalStampNum);
+
+              return (
+                <div
+                  key={idx}
+                  className={`h-14 rounded-full border-2 flex items-center justify-center font-bold text-xs transition-all ${
+                    isStamped
+                      ? 'bg-emerald-500 border-emerald-300 text-black shadow-lg shadow-emerald-500/50'
+                      : 'bg-emerald-900/30 border-emerald-800 text-emerald-600'
+                  }`}
+                >
+                  {isStamped ? (
+                    globalStampNum === 1 ? 'WELCOME' : '✓'
+                  ) : reward ? (
+                    <span className="text-[10px] text-amber-400">{reward.reward_type}</span>
+                  ) : (
+                    stampNum
+                  )}
                 </div>
-              ) : (
-                <div className="grid grid-cols-5 gap-2 sm:grid-cols-6">
-                  {Array.from({ length: b.size }).map((_, i) => {
-                    const cum = b.start + i;
-                    const filled = cum <= lifetime;
-                    const isWel = cum === WELCOME;
-                    const rw = REWARDS[cum];
-                    return (
-                      <div key={cum} className="flex flex-col items-center gap-1">
-                        <div className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-xs font-black transition
-                          ${filled ? (isWel ? 'border-amber-300 bg-amber-300/20 text-amber-200'
-                                : rw ? `border ${accent} bg-white/10`
-                                : 'border-emerald-400 bg-emerald-400/20 text-emerald-200')
-                                : 'border-white/15 bg-white/5 text-white/30'}`}>
-                          {filled ? (isWel ? <Star className="h-4 w-4"/> : rw ? <Gift className="h-4 w-4"/> : <Check className="h-4 w-4"/>) : cum - b.start + 1}
-                        </div>
-                        {rw && <span className={`text-[8px] font-bold uppercase ${filled ? accent : 'text-white/30'}`}>{rw.label}</span>}
-                        {isWel && <span className="text-[8px] font-bold uppercase text-amber-300">Welcome</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {nr && !b.done && (
-                <p className="mt-3 text-center text-[11px] text-white/50">
-                  {nr.pos - lifetime} more stamp{nr.pos - lifetime === 1 ? '' : 's'} → <span className={accent}>{nr.label}</span>
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p className="rounded-xl border border-white/10 bg-black/30 p-3 text-center text-[11px] italic text-white/70">
-                “Thank you for growing with us. Every stamp is a seat at our table.” — the founders
-              </p>
-              {earnedRewardPositions.length === 0 && (
-                <p className="py-6 text-center text-xs text-white/50">No rewards yet — keep collecting stamps.</p>
-              )}
-              {earnedRewardPositions.map(pos => {
-                const e = entryFor(pos); const rw = REWARDS[pos];
-                const status = e?.status || 'pending';
-                return (
-                  <div key={pos} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="flex items-center gap-2">
-                      <Gift className={`h-4 w-4 ${accent}`}/>
-                      <div>
-                        <p className="text-xs font-bold uppercase">{rw.label}</p>
-                        <p className="text-[10px] text-white/50">Stamp #{pos}</p>
-                      </div>
-                    </div>
-                    {status === 'pending' && (
-                      <Button size="sm" disabled={busyPos === pos || freeze} onClick={() => claim(pos)} className={accent}>
-                        {busyPos === pos ? '…' : 'Claim'}
-                      </Button>
-                    )}
-                    {status === 'claimed' && (
-                      <code className="rounded bg-black/50 px-2 py-1 text-[11px] font-mono text-lime-300">{e.code}</code>
-                    )}
-                    {status === 'used' && <span className="text-[10px] uppercase text-white/40">Used</span>}
-                  </div>
-                );
-              })}
-              {err && <p className="text-center text-[11px] text-red-300">{err}</p>}
-            </div>
-          )}
+              );
+            })}
+          </div>
+
+          <div className="text-xs text-emerald-400/70 text-center">
+            Total Stamps: {stamps} | 1 Stamp / Day Limit
+          </div>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        {/* BACK OF CARD */}
+        <div className="absolute inset-0 p-6 flex flex-col justify-between backface-hidden rotate-y-180 bg-zinc-900 rounded-2xl text-white">
+          <div className="flex justify-between items-center">
+            <h3 className="text-sm font-semibold text-emerald-400">Founder's Vault & Vouchers</h3>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setIsFlipped(false); }}
+              className="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1 rounded-full text-zinc-300"
+            >
+              Front ↺
+            </button>
+          </div>
+
+          <div className="overflow-y-auto max-h-48 space-y-2 my-2 pr-1">
+            <p className="text-xs italic text-zinc-400 mb-2">"Thank you for being part of VEYNS."</p>
+            {rewards.filter(r => r.cumulative_stamp <= stamps).map((reward, i) => {
+              const existingVoucher = vouchers.find(v => v.discount_type === reward.reward_type);
+
+              return (
+                <div key={i} className="flex justify-between items-center bg-zinc-800/80 p-2 rounded text-xs border border-zinc-700">
+                  <span>{reward.reward_type} (Stamp #{reward.cumulative_stamp})</span>
+                  {existingVoucher ? (
+                    <span className="font-mono bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded border border-emerald-800">
+                      {existingVoucher.code}
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => claimVoucher(reward)}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-black px-3 py-1 rounded font-bold"
+                    >
+                      Claim
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
   );
-}
+};
