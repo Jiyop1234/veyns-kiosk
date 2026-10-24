@@ -13,7 +13,6 @@ import { supabase } from '@/lib/supabase';
 function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; alt: string; className: string }) {
   const src = dbImage || menuImages[id];
   if (!src) {
-  // SECTION 22: Render the customer-facing ordering interface and its related dialogs.
     return (
       <div className={`${className} flex items-center justify-center bg-[#0d2e26] font-display text-sm font-bold text-[#d4af37]`}>
         VEYNS
@@ -84,6 +83,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           code: p.code,
           type: p.type,
           discountValue: Number(p.discount_value),
+          targetType: p.target_type || p.scope || 'subtotal',
           visibility: p.visibility,
           expiryDurationMs: Number(p.expiry_duration_ms),
           usageLimit: p.usage_limit ? Number(p.usage_limit) : null,
@@ -229,6 +229,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+
   // Pre-fill the account's verified contact, while leaving the checkout inputs editable.
   const lastPrefilledIdentifierRef = useRef<string | null>(null);
   useEffect(() => {
@@ -503,6 +504,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       slotTime: newOrder.orderType === 'reservation' ? reservationTime : todayTimeSlot,
       deliveryLat: deliveryCoordinates?.lat ?? null,
       deliveryLng: deliveryCoordinates?.lng ?? null,
+      deliveryFee: newOrder.deliveryFee,
       promoCodesList: isGuest ? [] : newOrder.promoCodesList,
       items: lines.map((line: any) => ({
         menuItemId: line.item.id,
@@ -513,7 +515,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     };
     const { data, error } = await supabase.rpc('place_order_secure_v2', { p_order: payload });
     if (error || !data) throw new Error(error?.message || 'Order could not be saved.');
-    const savedOrder = { ...newOrder, ...data, orderNumber: data.orderNumber, items: data.items, subtotal: Number(data.subtotal), promoDiscount: Number(data.promoDiscount), deliveryFee: Number(data.deliveryFee), total: Number(data.total), promoCode: newOrder.promoCode };
+    const savedOrder = { ...newOrder, ...data, orderNumber: data.orderNumber, items: data.items, subtotal: Number(data.foodSubtotal ?? data.subtotal), promoDiscount: Number(data.foodDiscount ?? data.promoDiscount), deliveryDiscount: Number(data.deliveryDiscount || 0), deliveryFee: Number(data.finalDeliveryFee ?? data.deliveryFee), total: Number(data.total), promoCode: newOrder.promoCode };
     const prior = isGuest ? sessionStorage.getItem(userHistoryStorageKey) : localStorage.getItem(userHistoryStorageKey);
     let previous: any[] = [];
     try { previous = prior ? JSON.parse(prior) : []; } catch { previous = []; }
@@ -710,15 +712,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   };
 
-  const recordUserVoucherUse = (code: string) => {
-    try {
-      const userKey = currentUser ? (currentUser.identifier || 'guest').toLowerCase().trim() : 'guest';
-      const usageMap = getUserVoucherUsageMap();
-      usageMap[code] = (usageMap[code] || 0) + 1;
-      localStorage.setItem(`veyns_user_voucher_uses_${userKey}`, JSON.stringify(usageMap));
-    } catch (e) {}
-  };
-
   const handleApplyPromoCodeString = (codeToApply: string) => {
     setPromoError('');
     const promos = availablePromos;
@@ -791,28 +784,40 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     handleApplyPromoCodeString(promo.code);
   };
 
-  // SECTION 20: Calculate the currently applied promotion discount and order totals.
-  const calculatePromoDiscount = () => {
-    if (appliedPromos.length === 0) return 0;
-    let totalPercent = 0;
-    let totalPeso = 0;
+  // SECTION 20: Calculate separate food vs delivery promotion discounts and order totals.
+  const rawDeliveryFee = fulfillment === 'delivery' ? calculatedDeliveryFee : 0;
+
+  const calculatePromoDiscounts = () => {
+    let foodDiscountRaw = 0;
+    let deliveryDiscountRaw = 0;
 
     appliedPromos.forEach(p => {
-      if (p.type === 'peso') {
-        totalPeso += p.discountValue;
+      const isDeliveryTarget = p.targetType === 'delivery' || p.target_type === 'delivery' || p.scope === 'delivery';
+
+      if (isDeliveryTarget) {
+        if (p.type === 'percentage') {
+          deliveryDiscountRaw += (rawDeliveryFee * p.discountValue) / 100;
+        } else {
+          deliveryDiscountRaw += p.discountValue;
+        }
       } else {
-        totalPercent += p.discountValue;
+        if (p.type === 'percentage') {
+          foodDiscountRaw += (total * p.discountValue) / 100;
+        } else {
+          foodDiscountRaw += p.discountValue;
+        }
       }
     });
 
-    const percentDiscount = (total * totalPercent) / 100;
-    const combinedDiscount = percentDiscount + totalPeso;
-    return Math.min(total, combinedDiscount);
+    const foodDiscountAmount = Math.min(total, foodDiscountRaw);
+    const deliveryDiscountAmount = Math.min(rawDeliveryFee, deliveryDiscountRaw);
+
+    return { foodDiscountAmount, deliveryDiscountAmount };
   };
 
-  const promoDiscountAmount = calculatePromoDiscount();
-  const deliveryFeeTotal = fulfillment === 'delivery' ? calculatedDeliveryFee : 0;
-  const finalCartTotal = Math.max(0, total - promoDiscountAmount + deliveryFeeTotal);
+  const { foodDiscountAmount, deliveryDiscountAmount } = calculatePromoDiscounts();
+  const finalDeliveryFee = Math.max(0, rawDeliveryFee - deliveryDiscountAmount);
+  const finalCartTotal = Math.max(0, (total - foodDiscountAmount) + finalDeliveryFee);
 
   // SECTION 21: Confirm only after the database accepts and prices the order.
   const handleReviewOrder = () => {
@@ -838,10 +843,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       email: fulfillment === 'delivery' ? customerEmail : '', phone: fulfillment === 'delivery' ? customerPhone : '',
       location: fulfillment === 'delivery' ? customerLocation : 'Pick Up at Store',
       landmark: fulfillment === 'delivery' ? nearestLandmark : 'N/A', fulfillment, deliveryOption,
-      orderType, scheduleInfo: scheduleInfoText, deliveryDistanceKm, deliveryFee: deliveryFeeTotal,
+      orderType, scheduleInfo: scheduleInfoText, deliveryDistanceKm, deliveryFee: rawDeliveryFee,
       paymentOption: 'Cash on Pickup / Delivery', items: [...lines], subtotal: total,
       promoCode: promoCodesList.length ? promoCodesList.join(', ') : null,
-      promoCodesList, promoDiscount: promoDiscountAmount, total: finalCartTotal, date: new Date().toLocaleString(),
+      promoCodesList, promoDiscount: foodDiscountAmount + deliveryDiscountAmount, total: finalCartTotal, date: new Date().toLocaleString(),
     };
     try {
       const savedOrder = await saveOrderToHistory(orderData);
@@ -1552,9 +1557,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 </div>
 
                 <div className="border-t border-emerald-900/60 pt-2 space-y-1">
-                  {placedOrderDetails.promoCode && (
+                  <div className="flex justify-between text-emerald-200">
+                    <span>Food Subtotal:</span>
+                    <span className="font-bold text-white">{formatPeso(placedOrderDetails.subtotal)}</span>
+                  </div>
+                  {placedOrderDetails.promoDiscount > 0 && (
                     <div className="flex justify-between text-amber-400 font-semibold">
-                      <span>Promos Applied ({placedOrderDetails.promoCode}):</span>
+                      <span>Promo Discount ({placedOrderDetails.promoCode}):</span>
                       <span>-{formatPeso(placedOrderDetails.promoDiscount)}</span>
                     </div>
                   )}
@@ -1664,7 +1673,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     <div className="flex flex-wrap gap-1.5">
                       {appliedPromos.map((p) => (
                         <span key={p.code} className="inline-flex items-center gap-1 bg-[#082a20] border border-lime-400/50 text-lime-300 text-[10px] font-bold px-2.5 py-1 rounded-lg">
-                          {p.code} ({p.type === 'peso' ? `₱${p.discountValue}` : `${p.discountValue}%`})
+                          {p.code} ({p.targetType === 'delivery' ? 'Delivery Fee' : 'Food Subtotal'} - {p.type === 'peso' ? `₱${p.discountValue}` : `${p.discountValue}%`})
                           <button type="button" onClick={() => handleRemoveAppliedPromo(p.code)} className="text-lime-400 hover:text-red-400 ml-0.5 cursor-pointer">
                             <X className="size-3" />
                           </button>
@@ -1688,6 +1697,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                             <div className="space-y-0.5">
                               <span className="font-extrabold text-lime-400 text-xs">{promo.code}</span>
                               <p className="text-[10px] text-emerald-200">
+                                {promo.targetType === 'delivery' ? 'Delivery Discount: ' : 'Food Discount: '}
                                 {promo.type === 'peso' ? formatPeso(promo.discountValue) + ' OFF' : `${promo.discountValue}% OFF`}
                               </p>
                               {isAlreadyApplied && (
@@ -2040,18 +2050,27 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   <span className="font-bold text-white">{formatPeso(total)}</span>
                 </div>
 
-                {promoDiscountAmount > 0 && (
+                {foodDiscountAmount > 0 && (
                   <div className="flex items-center justify-between text-xs text-amber-400 font-semibold">
-                    <span>Promo Discount ({appliedPromos.map(p => p.code).join(', ')})</span>
-                    <span>-{formatPeso(promoDiscountAmount)}</span>
+                    <span>Food Promo Discount ({appliedPromos.filter(p => p.targetType !== 'delivery' && p.target_type !== 'delivery' && p.scope !== 'delivery').map(p => p.code).join(', ')})</span>
+                    <span>-{formatPeso(foodDiscountAmount)}</span>
                   </div>
                 )}
 
                 {fulfillment === 'delivery' && (
-                  <div className="flex items-center justify-between text-xs text-emerald-200">
-                    <span>Delivery Fee {deliveryDistanceKm !== null ? `(${deliveryDistanceKm} km)` : ''}</span>
-                    <span className="font-bold text-white">{formatPeso(deliveryFeeTotal)}</span>
-                  </div>
+                  <>
+                    <div className="flex items-center justify-between text-xs text-emerald-200">
+                      <span>Delivery Fee {deliveryDistanceKm !== null ? `(${deliveryDistanceKm} km)` : ''}</span>
+                      <span className="font-bold text-white">{formatPeso(rawDeliveryFee)}</span>
+                    </div>
+
+                    {deliveryDiscountAmount > 0 && (
+                      <div className="flex items-center justify-between text-xs text-lime-400 font-semibold">
+                        <span>Delivery Promo Discount ({appliedPromos.filter(p => p.targetType === 'delivery' || p.target_type === 'delivery' || p.scope === 'delivery').map(p => p.code).join(', ')})</span>
+                        <span>-{formatPeso(deliveryDiscountAmount)}</span>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <div className="flex items-center justify-between text-sm border-t border-emerald-900/40 pt-2">
