@@ -4,10 +4,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar, UserPlus, Ticket, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { MENU_GRID, UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
+import { UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
+import LoyaltyCard from '@/components/loyalty-card';
 
 // SECTION 2: Shared menu-image component with a branded fallback when no image is available.
 const formatVoucherCountdown = (milliseconds: number) => {
@@ -142,7 +143,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // SECTION 7: Merge Supabase menu records with the existing local menu data and sort the result.
   const loadMenuFromCloud = async () => {
-    let mergedMenu = [...MENU_GRID];
+    let mergedMenu: any[] = [];
 
     try {
       const { data: cloudMenu, error } = await supabase.from('menu_items').select('*');
