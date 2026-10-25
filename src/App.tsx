@@ -16,6 +16,15 @@ export function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
 
+  // Hardcode state for immediate testing
+  const [authMode, setAuthMode] = useState<'select' | 'regular' | 'guest' | 'employee' | 'forgot'>('regular');
+  const [currentUser, setCurrentUser] = useState<any>({
+    userId: 'test-user-id-123',
+    email: 'testregular@veyns.com',
+    role: 'regular', // Change to 'admin' or 'employee' whenever needed
+    name: 'Geo Test'
+  });
+
   // Recovery states
   const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -531,12 +540,36 @@ export function App() {
               </div>
               {passwordError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{passwordError}</p>}
             </div>
-            <Button
+              <button
               type="submit"
-              className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg mt-2 cursor-pointer"
+              className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs py-3 rounded-xl uppercase tracking-wider transition cursor-pointer"
             >
-              {isSignUp ? 'Lock in & Earn Stamps' : 'Login to My Account'}
-            </Button>
+              Login to My Account
+            </button>
+
+            {/* Hardcoded Quick Test Buttons */}
+            <div className="flex gap-2 pt-3 border-t border-emerald-900/40 mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthEmailInput('testregular@veyns.com');
+                  setAuthPassword('password123');
+                }}
+                className="flex-1 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/50 text-[10px] font-bold py-2 rounded-lg transition cursor-pointer"
+              >
+                Fill Regular Test
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthEmailInput('admin@veyns.com');
+                  setAuthPassword('adminpassword123');
+                }}
+                className="flex-1 bg-lime-950/80 hover:bg-lime-900 text-lime-400 border border-lime-600/50 text-[10px] font-bold py-2 rounded-lg transition cursor-pointer"
+              >
+                Fill Admin Test
+              </button>
+            </div>
           </form>
           <div className="text-center pt-2 border-t border-emerald-900/60 space-y-2">
             <button
