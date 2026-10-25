@@ -15,7 +15,13 @@ export function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
-  
+
+  // Recovery states
+  const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetSuccess, setResetSuccess] = useState(false);
+
   // Email authentication inputs
   const [authEmailInput, setAuthEmailInput] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -51,6 +57,45 @@ export function App() {
   const [resetTrigger, setResetTrigger] = useState(0);
   const [stamps, setStamps] = useState<any[]>([]);
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
+
+  // Listen for recovery links & link expiry
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.includes('error_code=otp_expired')) {
+      alert('The password reset link has expired or was already used. Please request a new one.');
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsResetPasswordOpen(true);
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError('');
+    if (newPassword.length < 8) {
+      setResetError('Password must be at least 8 characters long.');
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      setResetError(error.message);
+    } else {
+      setResetSuccess(true);
+      setTimeout(() => {
+        setIsResetPasswordOpen(false);
+        setResetSuccess(false);
+        setNewPassword('');
+      }, 2000);
+    }
+  };
 
   // SECTION 1: Load loyalty data only from the authenticated profile row.
   const loadUserStampsAndPenalties = async (userObj: any) => {
@@ -862,6 +907,52 @@ export function App() {
             </Button>
           </DialogContent>
         </Dialog>
+          {/* Password Recovery Modal */}
+        {isResetPasswordOpen && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-[#051813] border border-emerald-800/80 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+              <h3 className="font-display text-xl font-extrabold text-white text-center uppercase tracking-wide">
+                Set New Password
+              </h3>
+              <p className="text-xs text-emerald-300 text-center">
+                Enter your new password below to regain access to your VEYNS account.
+              </p>
+
+              {resetSuccess ? (
+                <div className="bg-lime-950/60 border border-lime-500/40 rounded-xl p-3 text-center text-xs text-lime-400 font-bold">
+                  Password updated successfully! Redirecting...
+                </div>
+              ) : (
+                <form onSubmit={handleUpdatePassword} className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block mb-1">
+                      New Password
+                    </label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Minimum 8 characters"
+                      required
+                      className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-400 font-bold"
+                    />
+                  </div>
+
+                  {resetError && (
+                    <p className="text-[11px] font-bold text-red-400 text-center">{resetError}</p>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs py-3 rounded-xl uppercase tracking-wider transition cursor-pointer"
+                  >
+                    Update Password
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </CartProvider>
   );
