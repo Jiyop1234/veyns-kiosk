@@ -491,6 +491,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // SECTION 15: Create orders only through the server-validated Supabase RPC.
   const saveOrderToHistory = async (newOrder: any) => {
+    // Calculate total quantity of bowls ordered across all cart lines
+    const totalBowlsCount = lines.reduce((sum, line) => sum + (line.qty || 1), 0);
+    const targetDateKey = newOrder.orderType === 'reservation' ? reservationDate : new Date().toISOString().split('T')[0];
+    const targetSlotTime = newOrder.orderType === 'reservation' ? reservationTime : todayTimeSlot;
+
     const payload = {
       name: newOrder.name,
       email: newOrder.email,
@@ -500,8 +505,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       landmark: newOrder.landmark,
       orderType: newOrder.orderType,
       scheduleInfo: newOrder.scheduleInfo,
-      dateKey: newOrder.orderType === 'reservation' ? reservationDate : null,
-      slotTime: newOrder.orderType === 'reservation' ? reservationTime : todayTimeSlot,
+      dateKey: targetDateKey,
+      slotTime: targetSlotTime,
       deliveryLat: deliveryCoordinates?.lat ?? null,
       deliveryLng: deliveryCoordinates?.lng ?? null,
       deliveryFee: newOrder.deliveryFee,
@@ -513,9 +518,46 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         customizationsSummary: line.customizationsSummary || '',
       })),
     };
-    const { data, error } = await supabase.rpc('place_order_secure_v2', { p_order: payload });
-    if (error || !data) throw new Error(error?.message || 'Order could not be saved.');
-    const savedOrder = { ...newOrder, ...data, orderNumber: data.orderNumber, items: data.items, subtotal: Number(data.foodSubtotal ?? data.subtotal), promoDiscount: Number(data.foodDiscount ?? data.promoDiscount), deliveryDiscount: Number(data.deliveryDiscount || 0), deliveryFee: Number(data.finalDeliveryFee ?? data.deliveryFee), total: Number(data.total), promoCode: newOrder.promoCode };
+
+    // 1. Insert order and get order id
+    const { data: orderDataRes, error: orderErr } = await supabase.from('orders').insert({
+      user_id: isGuest ? null : currentUser?.authUserId,
+      account_nickname: isGuest ? 'Guest' : (currentUser?.name || 'User'),
+      customer_name: payload.name,
+      email: payload.email,
+      phone: payload.phone,
+      fulfillment: payload.fulfillment,
+      location: payload.location,
+      landmark: payload.landmark,
+      order_type: payload.orderType,
+      schedule_info: payload.scheduleInfo,
+      delivery_fee: payload.deliveryFee,
+      promo_code: newOrder.promoCode,
+      total: newOrder.total,
+      items: payload.items
+    }).select().single();
+
+    if (orderErr || !orderDataRes) throw new Error(orderErr?.message || 'Order could not be saved.');
+
+    // 2. Securely reserve slot and deduct total bowls
+    const { data: slotRes, error: slotErr } = await supabase.rpc('reserve_slot_capacity_v2', {
+      p_date_key: targetDateKey,
+      p_slot_time: targetSlotTime,
+      p_bowls_requested: totalBowlsCount,
+      p_order_id: orderDataRes.id,
+      p_user_id: isGuest ? null : currentUser?.authUserId,
+      p_customer_name: payload.name,
+      p_customer_phone: payload.phone
+    });
+
+    if (slotErr || (slotRes && slotRes.success === false)) {
+      // Rollback order if slot is fully booked
+      await supabase.from('orders').delete().eq('id', orderDataRes.id);
+      throw new Error(slotRes?.message || slotErr?.message || 'Time slot is fully booked.');
+    }
+
+    const savedOrder = { ...newOrder, orderNumber: orderDataRes.order_number, items: orderDataRes.items, subtotal: Number(orderDataRes.subtotal || newOrder.subtotal), promoDiscount: Number(orderDataRes.promo_discount || newOrder.promoDiscount), deliveryDiscount: Number(orderDataRes.delivery_discount || 0), deliveryFee: Number(orderDataRes.delivery_fee || newOrder.deliveryFee), total: Number(orderDataRes.total || newOrder.total) };
+    
     const prior = isGuest ? sessionStorage.getItem(userHistoryStorageKey) : localStorage.getItem(userHistoryStorageKey);
     let previous: any[] = [];
     try { previous = prior ? JSON.parse(prior) : []; } catch { previous = []; }

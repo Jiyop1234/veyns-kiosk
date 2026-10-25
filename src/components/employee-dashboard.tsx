@@ -774,9 +774,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <span className="text-xs font-bold text-emerald-300">Select Date:</span>
                 <input
                   type="date"
-                  value={selectedSlotDate}
-                  onChange={(e) => setSelectedSlotDate(e.target.value)}
-                  className="bg-[#041913] border border-emerald-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-lime-400"
+                  min={new Date().toISOString().split('T')[0]}
+                  value={reservationDate}
+                  onChange={(e) => setReservationDate(e.target.value)}
+                  className="..."
                 />
               </div>
             </div>
@@ -1540,17 +1541,18 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
 // --- Reusable editor card for an individual date/time slot's bowl capacity & bookings ---
 function SlotCapacityCard({ slotTime, dateKey, initialMaxBowls, bookedBowls, initialMaxSlots, initialFullyBooked, onSave, onInspect }: any) {
-  const [maxBowls, setMaxBowls] = useState(initialMaxBowls);
-  const [maxSlots, setMaxSlots] = useState(initialMaxSlots);
-  const [isFullyBooked, setIsFullyBooked] = useState(initialFullyBooked);
+  const [maxBowls, setMaxBowls] = useState(initialMaxBowls || 20);
+  const [maxSlots, setMaxSlots] = useState(initialMaxSlots || 10);
+  const [isFullyBooked, setIsFullyBooked] = useState(initialFullyBooked || false);
 
   useEffect(() => {
-    setMaxBowls(initialMaxBowls);
-    setMaxSlots(initialMaxSlots);
-    setIsFullyBooked(initialFullyBooked);
+    setMaxBowls(initialMaxBowls || 20);
+    setMaxSlots(initialMaxSlots || 10);
+    setIsFullyBooked(initialFullyBooked || false);
   }, [initialMaxBowls, initialMaxSlots, initialFullyBooked]);
 
-  const remainingBowls = Math.max(0, maxBowls - bookedBowls);
+  const currentBookedBowls = Number(bookedBowls || 0);
+  const remainingBowls = Math.max(0, maxBowls - currentBookedBowls);
 
   return (
     <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-3 text-xs">
@@ -1577,7 +1579,7 @@ function SlotCapacityCard({ slotTime, dateKey, initialMaxBowls, bookedBowls, ini
           <input
             type="number"
             value={maxBowls}
-            onChange={(e) => setMaxBowls(parseInt(e.target.value) || 0)}
+            onChange={(e) => setMaxBowls(parseInt(e.target.value) || 20)}
             className="w-full bg-[#04140f] border border-emerald-800 rounded-lg p-2 text-white font-bold text-xs focus:outline-none focus:border-lime-400"
           />
         </div>
@@ -1594,7 +1596,7 @@ function SlotCapacityCard({ slotTime, dateKey, initialMaxBowls, bookedBowls, ini
         </div>
       </div>
       <div className="flex justify-between items-center pt-1 text-[11px] text-emerald-300">
-        <span>Reserved Bowls: <strong>{bookedBowls} / {maxBowls}</strong></span>
+        <span>Reserved Bowls: <strong>{currentBookedBowls} / {maxBowls}</strong></span>
         <Button
           size="sm"
           onClick={() => onSave(dateKey, slotTime, maxBowls, maxSlots, isFullyBooked)}
