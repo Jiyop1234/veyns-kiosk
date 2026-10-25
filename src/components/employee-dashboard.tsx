@@ -775,9 +775,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <input
                   type="date"
                   min={new Date().toISOString().split('T')[0]}
-                  value={reservationDate}
-                  onChange={(e) => setReservationDate(e.target.value)}
-                  className="..."
+                  value={selectedSlotDate}
+                  onChange={(e) => setSelectedSlotDate(e.target.value)}
+                  className="bg-[#041913] border border-emerald-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-lime-400"
                 />
               </div>
             </div>
