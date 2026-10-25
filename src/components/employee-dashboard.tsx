@@ -680,6 +680,25 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   <ShoppingBag className="h-5 w-5 text-lime-400" />
                   <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Completed Order Transactions Log</h3>
                 </div>
+                {orders.length > 0 && (
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      if (!confirm('Are you sure you want to clear all sales logs? Customer order histories will remain untouched.')) return;
+                      try {
+                        const { error } = await supabase.from('orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                        if (error) throw error;
+                        setOrders([]);
+                        alert('Sales transaction logs successfully cleared for admin.');
+                      } catch (err: any) {
+                        alert('Failed to clear sales logs: ' + (err?.message || 'Permission denied'));
+                      }
+                    }}
+                    className="bg-red-950 hover:bg-red-900 text-red-300 border border-red-800 font-extrabold text-xs px-3 py-1.5 rounded-xl cursor-pointer"
+                  >
+                    Clear Sales Log
+                  </Button>
+                )}
               </div>
               {orders.length === 0 ? (
                 <div className="text-center py-16 space-y-3">
