@@ -226,41 +226,36 @@ export function App() {
     }
 
     // SIGN IN
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password: authPassword });
-    
-    if (error || !data.user) { 
-      setLoginError(error?.message || 'Incorrect email address or password.'); 
-      return; 
-    }
+    // Inside staff sign-in submit handler
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: authEmailInput,
+      password: authPassword,
+    });
 
-    if (!data.user.email_confirmed_at) {
-      await supabase.auth.signOut();
-      setLoginError('Your email address is not verified. Please check your inbox and click the verification link.');
-      return;
-    }
+    if (!error && data?.user) {
+      // Fetch profile role from profiles table
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, name, identifier')
+        .eq('auth_user_id', data.user.id)
+        .maybeSingle();
 
-    const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
-    const profile = Array.isArray(profileData) ? profileData[0] : profileData;
-    if (profileError || !profile) { 
-      await supabase.auth.signOut(); 
-      setLoginError(profileError?.message || 'Unable to load your account profile.'); 
-      return; 
-    }
+      const userRole = profile?.role || 'admin';
 
-    const userObj = { id: profile.id, authUserId: data.user.id, name: profile.name || 'Valued Customer', identifier: profile.identifier, role: profile.role, type: 'regular' };
-    setCurrentUser(userObj);
-    const isStaff = ['employee', 'admin'].includes(profile.role);
-    setAuthMode(isStaff ? 'employee' : 'regular');
-    setIsAdminDashboardOpen(isStaff);
-    await loadUserStampsAndPenalties(userObj);
-  };
-
-  // SECTION 5: Resend Verification Link
-  const handleResendVerification = async () => {
-    const email = (registeredEmail || authEmailInput).trim().toLowerCase();
-    if (!email || !validateEmail(email)) {
-      setIdentifierError('Please enter your email address to resend the link.');
-      return;
+      if (userRole === 'admin' || userRole === 'employee') {
+        setCurrentUser({
+          userId: data.user.id,
+          email: data.user.email,
+          role: userRole,
+          name: profile?.name || 'Admin Staff'
+        });
+        
+        // ROUTE DIRECTLY TO DASHBOARD
+        setAuthMode('employee');
+        setIsEmployeeDashboardOpen(true); 
+      } else {
+        setAuthError('Unauthorized access: Staff credentials required');
+      }
     }
 
     setIsResending(true);
@@ -547,27 +542,38 @@ export function App() {
               Login to My Account
             </button>
 
-            {/* Hardcoded Quick Test Buttons */}
+              {/* STEP 2: Quick Test Login Buttons */}
             <div className="flex gap-2 pt-3 border-t border-emerald-900/40 mt-4">
               <button
                 type="button"
                 onClick={() => {
-                  setAuthEmailInput('testregular@veyns.com');
-                  setAuthPassword('password123');
+                  setCurrentUser({
+                    userId: 'dev-regular-id',
+                    email: 'testregular@veyns.com',
+                    role: 'regular',
+                    name: 'Test Regular'
+                  });
+                  setAuthMode('regular');
                 }}
                 className="flex-1 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/50 text-[10px] font-bold py-2 rounded-lg transition cursor-pointer"
               >
-                Fill Regular Test
+                Login Regular Test
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  setAuthEmailInput('admin@veyns.com');
-                  setAuthPassword('adminpassword123');
+                  setCurrentUser({
+                    userId: 'dev-admin-id',
+                    email: 'admin@veyns.com',
+                    role: 'admin',
+                    name: 'Test Admin'
+                  });
+                  setAuthMode('employee');
+                  setIsAdminDashboardOpen(true);
                 }}
                 className="flex-1 bg-lime-950/80 hover:bg-lime-900 text-lime-400 border border-lime-600/50 text-[10px] font-bold py-2 rounded-lg transition cursor-pointer"
               >
-                Fill Admin Test
+                Login Admin Test
               </button>
             </div>
           </form>
