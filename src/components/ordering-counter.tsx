@@ -120,7 +120,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     let mergedMenu = [...MENU_GRID];
 
     // Load slot capacities from Supabase
-  const loadSlotCapacities = async () => {
+  const loadSlotCapacities = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('slot_capacities')
@@ -131,7 +131,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         return;
       }
 
-      if (data && data.length > 0 && typeof setSlotCapacities === 'function') {
+      if (data && data.length > 0) {
         const capacitiesMap: Record<string, any> = {};
         data.forEach((slot: any) => {
           const key = `${slot.date_key}_${slot.slot_time}`;
@@ -142,7 +142,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     } catch (err) {
       console.error('Failed to load slot capacities:', err);
     }
-  };
+  }, []);
 
     try {
       const { data: cloudMenu, error } = await supabase.from('menu_items').select('*');
@@ -754,7 +754,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // SECTION 18: Upsell quantity helpers and cart quantity updates.
   const getUpsellQty = (itemId) => {
-    const line = lines.find((l) => l.item.id === itemId);
+    const line = Array.isArray(lines) ? lines.find((l: any) => l.item.id === itemId) : null;
     return line ? line.qty : 0;
   };
 
@@ -792,7 +792,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setPromoError('');
     const promos = availablePromos;
     const cleanCode = codeToApply.trim().toUpperCase();
-    const found = promos.find((p) => p.code.toUpperCase() === cleanCode);
+    const found = Array.isArray(promos) ? promos.find((p: any) => p.code.toUpperCase() === cleanCode) : null;
 
     if (!found) {
       setPromoError('Invalid promo code.');
@@ -1839,7 +1839,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     {fulfillment === 'delivery' && deliveryOption === 'our' && (
                       <div className="grid grid-cols-2 gap-2">
                         {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => {
-                          const slotInfo = slotCapacities.find(s => s.slot_time === slot && (s.date_key === 'today' || s.date_key === new Date().toISOString().split('T')[0]));
+                          const slotArray = Array.isArray(slotCapacities) ? slotCapacities : (slotCapacities ? Object.values(slotCapacities) : []);
+                          const slotInfo = slotArray.find((s: any) => s.slot_time === slot && (s.date_key === 'today' || s.date_key === selectedSlotDate));
                           const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_count >= slotInfo.max_slots);
                           const slotsLeft = slotInfo ? Math.max(0, slotInfo.max_slots - slotInfo.booked_count) : null;
 
@@ -1888,7 +1889,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                           className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white text-xs focus:outline-none focus:border-lime-400"
                         >
                           {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => {
-                            const slotInfo = slotCapacities.find(s => s.slot_time === slot && s.date_key === reservationDate);
+                            const slotArray = Array.isArray(slotCapacities) ? slotCapacities : (slotCapacities ? Object.values(slotCapacities) : []);
+                            const slotInfo = slotArray.find((s: any) => s.slot_time === slot && s.date_key === reservationDate);
                             const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_count >= slotInfo.max_slots);
                             const slotsLeft = slotInfo ? Math.max(0, slotInfo.max_slots - slotInfo.booked_count) : null;
                             const labelText = `${slot} ${isFullyBooked ? '(Fully Booked)' : slotsLeft !== null ? `(${slotsLeft} slots left)` : ''}`;

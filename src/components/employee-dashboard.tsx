@@ -202,7 +202,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   // --- Save configured capacity (max bowls & max slots) and booking status for a date/time slot ---
   const handleUpdateSlotCapacity = async (dateKey: string, slotTime: string, maxBowls: number, maxSlots: number, isFullyBooked: boolean) => {
     try {
-      const existing = slotCapacities.find(s => s.date_key === dateKey && s.slot_time === slotTime);
+      const existing = slotCapacities ? Object.values(slotCapacities).find((s: any) => s.date_key === dateKey && s.slot_time === slotTime) : null;
       const bookedBowls = existing ? existing.booked_bowls : 0;
       const bookedCount = existing ? existing.booked_count : 0;
       const payload = {
@@ -556,7 +556,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       let slotsToSave = selectedInfractionPreset === 'No Violation till card clears' 
          ? Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })) 
          : customerStampsDetailed;
-       const matchedPreset = !isCleanPreset ? infractionPresets.find(p => p.label === selectedInfractionPreset) : null;
+       const matchedPreset = !isCleanPreset && Array.isArray(infractionPresets) 
+          ? infractionPresets.find((p: any) => p.label === selectedInfractionPreset) 
+          : null;
        const penaltyStatus = matchedPreset ? { sixthReward: matchedPreset.sixthReward, ninthReward: matchedPreset.ninthReward, twelfthReward: matchedPreset.twelfthReward, appliedPenalties: [matchedPreset.label] } : null;
        if (isCleanPreset) {
          slotsToSave = slotsToSave.map(s => (s.status === 'invalid' || s.status === 'to_clear' ? { status: 'empty', date: '' } : s));
@@ -805,7 +807,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {timeSlotsList.map((slotTime) => {
-                const existing = slotCapacities.find(s => s.date_key === selectedSlotDate && s.slot_time === slotTime);
+                const existing = slotCapacities ? Object.values(slotCapacities).find((s: any) => s.date_key === selectedSlotDate && s.slot_time === slotTime) : null;
                 const maxBowls = existing ? existing.max_bowls : 20;
                 const bookedBowls = existing ? existing.booked_bowls : 0;
                 const maxSlots = existing ? existing.max_slots : 10;
