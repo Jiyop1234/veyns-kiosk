@@ -27,7 +27,7 @@ export function SiteHeader({
   const count = cart.count || 0;
   
   const isGuest = !currentUser || currentUser?.type === 'guest';
-  const nickname = currentUser?.name ? currentUser.name.split(' ')[0] : 'GUEST';
+  const nickname = currentUser?.name ? currentUser.name.split(' ')[0] : (currentUser?.email ? currentUser.email.split('@')[0].toUpperCase() : 'USER');
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [accountSubmenuOpen, setAccountSubmenuOpen] = useState(false);
