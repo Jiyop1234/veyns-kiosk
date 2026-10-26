@@ -806,7 +806,7 @@ export function App() {
                       </div>
                     )}
                     {isUpdatingIdentifier && (
-                      <form onSubmit={handleUpdateIdentifierSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
+                      <form onSubmit={handleUpdateIdentifierSubmit} className="space-y-3 pt-2">
                         <div className="space-y-1">
                           <span className="text-[10px] text-emerald-400 uppercase tracking-wider block font-bold">Your Registered Email</span>
                           <p className="text-xs font-mono font-bold text-white bg-[#041913] p-2.5 rounded-xl border border-emerald-800/80">
@@ -826,7 +826,7 @@ export function App() {
                             placeholder="Enter new email address"
                           />
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 pt-2">
                           <Button
                             type="button"
                             onClick={() => setIsUpdatingIdentifier(false)}
