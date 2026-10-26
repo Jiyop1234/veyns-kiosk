@@ -115,12 +115,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setFairPlayPenalty(profile.penalty_data || null);
   };
 
-  // SECTION 7: Merge Supabase menu records with the existing local menu data and sort the result.
-  const loadMenuFromCloud = async () => {
-    let mergedMenu = [...MENU_GRID];
-
     // Load slot capacities from Supabase
-  const loadSlotCapacities = useCallback(async () => {
+  const loadSlotCapacities = async () => {
     try {
       const { data, error } = await supabase
         .from('slot_capacities')
@@ -142,7 +138,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     } catch (err) {
       console.error('Failed to load slot capacities:', err);
     }
-  }, []);
+  };
+
+  // SECTION 7: Merge Supabase menu records with the existing local menu data and sort the result.
+  const loadMenuFromCloud = async () => {
+    let mergedMenu = [...MENU_GRID];
 
     try {
       const { data: cloudMenu, error } = await supabase.from('menu_items').select('*');
