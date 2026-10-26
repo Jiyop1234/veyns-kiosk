@@ -770,8 +770,8 @@ export function App() {
                   <div className="bg-[#051813] border border-emerald-800 rounded-2xl p-4 space-y-4 text-xs">
                     <div className="space-y-1">
                       <span className="text-[10px] text-emerald-400 uppercase tracking-wider block font-bold">Your Registered Email</span>
-                      <p className="text-sm font-mono font-bold text-white bg-[#041913] p-2.5 rounded-xl border border-emerald-800/80">
-                        {currentUser.identifier || currentUser.email}
+                      <p className="text-xs font-mono font-bold text-white bg-[#041913] p-2.5 rounded-xl border border-emerald-800/80">
+                        {currentUser?.identifier || currentUser?.email || currentUser?.userEmail || 'Connected via Supabase'}
                       </p>
                     </div>
                     {accountUpdateSuccess && (
@@ -807,6 +807,12 @@ export function App() {
                     )}
                     {isUpdatingIdentifier && (
                       <form onSubmit={handleUpdateIdentifierSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-emerald-400 uppercase tracking-wider block font-bold">Your Registered Email</span>
+                          <p className="text-xs font-mono font-bold text-white bg-[#041913] p-2.5 rounded-xl border border-emerald-800/80">
+                            {currentUser.identifier || currentUser.email}
+                          </p>
+                        </div>
                         <div className="space-y-2">
                           <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">
                             New Email Address
@@ -816,7 +822,7 @@ export function App() {
                             required
                             value={newEmailInput}
                             onChange={(e) => setNewEmailInput(e.target.value)}
-                            className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
+                            className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400 text-xs"
                             placeholder="Enter new email address"
                           />
                         </div>
@@ -837,6 +843,7 @@ export function App() {
                         </div>
                       </form>
                     )}
+
                     {isResettingPassword && (
                       <form onSubmit={handleResetPasswordSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
                         <div className="space-y-1">

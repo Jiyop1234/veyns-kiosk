@@ -162,7 +162,7 @@ export function SiteHeader({
                             }}
                             className="w-full text-left px-2.5 py-1.5 rounded-lg text-emerald-200 hover:bg-[#082d22] hover:text-lime-400 flex items-center gap-2 cursor-pointer font-medium"
                           >
-                            <Edit3 className="size-3 text-lime-400" /> Update Number/Email
+                            <Edit3 className="size-3 text-lime-400" /> Update Email
                           </button>
                           <button
                             onClick={() => {
