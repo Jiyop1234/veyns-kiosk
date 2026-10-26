@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { SiteHeader } from '@/components/site-header';
 import { OrderingCounter } from '@/components/ordering-counter';
 import { EmployeeDashboard } from '@/components/employee-dashboard';
@@ -15,13 +15,8 @@ export function App() {
   const [isSignUp, setIsSignUp] = useState(false);
 
   // Authentication & Current User State
-  const [authMode, setAuthMode] = useState<'select' | 'regular' | 'guest' | 'employee' | 'forgot'>('regular');
-  const [currentUser, setCurrentUser] = useState<any>({
-    userId: 'test-user-id-123',
-    email: 'testregular@veyns.com',
-    role: 'regular',
-    name: 'Geo Test'
-  });
+  const [authMode, setAuthMode] = useState<'select' | 'regular' | 'guest' | 'employee' | 'forgot'>('select');
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Recovery states
   const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
