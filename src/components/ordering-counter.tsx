@@ -37,7 +37,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
 
   // Slot capacities & Fully Booked states
-  const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
+  const [slotCapacities, setSlotCapacities] = useState<Record<string, any>>({});
 
   // SECTION 5: Customer type and ordering-time eligibility checks.
   const isGuest = !currentUser || currentUser.role === 'guest' || (currentUser.name && currentUser.name.toLowerCase().includes('guest')) || (currentUser.identifier && currentUser.identifier.toLowerCase().includes('guest'));
@@ -63,17 +63,24 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const orderTodayOpen = isOrderTodayAllowed();
 
   // SECTION 6: Load scheduling capacity, promotions, loyalty information, and menu configuration.
-  const loadSlotCapacities = async () => {
-    try {
-      const { data, error } = await supabase.from('slot_capacities').select('*');
-      if (data) {
-        setSlotCapacities(data);
-      }
-    } catch (e) {
-      const saved = localStorage.getItem('veyns_slot_capacities');
-      if (saved) setSlotCapacities(JSON.parse(saved));
-    }
-  };
+  // Real-time voucher expiry ticker & auto-purge task
+  const [nowTimestamp, setNowTimestamp] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const current = Date.now();
+      setNowTimestamp(current);
+
+      setAppliedPromos((prev) =>
+        prev.filter((p) => {
+          if (!p.expiryDurationMs || p.expiryDurationMs <= 0) return true;
+          const expiresAt = p.createdAt + p.expiryDurationMs;
+          return current < expiresAt;
+        })
+      );
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const loadPromosFromCloud = async () => {
     try {
@@ -111,6 +118,31 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   // SECTION 7: Merge Supabase menu records with the existing local menu data and sort the result.
   const loadMenuFromCloud = async () => {
     let mergedMenu = [...MENU_GRID];
+
+    // Load slot capacities from Supabase
+  const loadSlotCapacities = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('slot_capacities')
+        .select('*');
+
+      if (error) {
+        console.error('Error fetching slot capacities:', error);
+        return;
+      }
+
+      if (data && data.length > 0 && typeof setSlotCapacities === 'function') {
+        const capacitiesMap: Record<string, any> = {};
+        data.forEach((slot: any) => {
+          const key = `${slot.date_key}_${slot.slot_time}`;
+          capacitiesMap[key] = slot;
+        });
+        setSlotCapacities(capacitiesMap);
+      }
+    } catch (err) {
+      console.error('Failed to load slot capacities:', err);
+    }
+  };
 
     try {
       const { data: cloudMenu, error } = await supabase.from('menu_items').select('*');
@@ -154,10 +186,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // SECTION 8: Initial data loading, Supabase Realtime subscriptions, storage updates, and cleanup.
   useEffect(() => {
-    loadMenuFromCloud();
-    loadUserStampsAndPenalties();
-    loadSlotCapacities();
-    loadPromosFromCloud();
+    if (typeof loadMenuFromCloud === 'function') loadMenuFromCloud();
+    if (typeof loadUserStampsAndPenalties === 'function') loadUserStampsAndPenalties();
+    if (typeof loadSlotCapacities === 'function') loadSlotCapacities();
+    if (typeof loadPromosFromCloud === 'function') loadPromosFromCloud();
 
     const menuChannel = supabase
       .channel('public:menu_items_counter')
@@ -169,7 +201,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     const slotsChannel = supabase
       .channel('public:slot_capacities_counter')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, () => {
-        loadSlotCapacities();
+        if (typeof loadSlotCapacities === 'function') loadSlotCapacities();
       })
       .subscribe();
 
@@ -189,12 +221,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
-      supabase.removeChannel(menuChannel);
       supabase.removeChannel(slotsChannel);
-      supabase.removeChannel(promosChannel);
-      window.removeEventListener('storage', handleStorageChange);
     };
-  }, [resetKey, currentUser]);
+  }, []);
 
   // SECTION 9: State for item customization, upsells, checkout, customer details, and order scheduling.
   const [selected, setSelected] = useState(null);
@@ -755,6 +784,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const handleApplyPromoCodeString = (codeToApply: string) => {
+    if (isGuest) {
+      setPromoError('Promos and vouchers are exclusively available for registered regular customers.');
+      return;
+    }
+
     setPromoError('');
     const promos = availablePromos;
     const cleanCode = codeToApply.trim().toUpperCase();
@@ -783,16 +817,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       return;
     }
 
-    const userUsageMap = getUserVoucherUsageMap();
-    const userUses = userUsageMap[cleanCode] || 0;
-    const maxPerPerson = found.perPersonLimit || 1;
-
-    if (userUses >= maxPerPerson) {
-      setPromoError(`You have already used this voucher the maximum allowed ${maxPerPerson} time(s).`);
-      return;
-    }
-
-    setAppliedPromos(prev => [...prev, found]);
+    setAppliedPromos((prev) => [...prev, found]);
     setPromoInput('');
   };
 
@@ -801,11 +826,15 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const handleRemoveAppliedPromo = (codeToRemove: string) => {
-    setAppliedPromos(prev => prev.filter(p => p.code !== codeToRemove));
+    setAppliedPromos((prev) => prev.filter((p) => p.code !== codeToRemove));
   };
 
-  // Public vouchers auto-apply immediately upon clicking "Claim" (Stashing to appliedPromos)
   const handleClaimVoucher = (promo: any) => {
+    if (isGuest) {
+      alert('Promos and vouchers are exclusively available for registered regular customers. Please log in or create an account!');
+      return;
+    }
+
     if (promo.usageLimit && (promo.usageCount || 0) >= promo.usageLimit) {
       alert('This voucher has already reached its maximum usage limit.');
       return;
@@ -819,10 +848,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       }
     }
 
-    const expiryMs = promo.expiryDurationMs || (60 * 60 * 1000);
-    setClaimedVouchersState(prev => ({ ...prev, [promo.code]: Date.now() + expiryMs }));
-
-    // Apply or stack the claimed voucher right away
     handleApplyPromoCodeString(promo.code);
   };
 
@@ -833,7 +858,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     let foodDiscountRaw = 0;
     let deliveryDiscountRaw = 0;
 
-    appliedPromos.forEach(p => {
+    appliedPromos.forEach((p) => {
       const isDeliveryTarget = p.targetType === 'delivery' || p.target_type === 'delivery' || p.scope === 'delivery';
 
       if (isDeliveryTarget) {

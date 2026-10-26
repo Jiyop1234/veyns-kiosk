@@ -11,17 +11,15 @@ import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
 
 export function App() {
-  const [authMode, setAuthMode] = useState<'select' | 'regular' | 'guest' | 'employee' | 'forgot'>('select');
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
 
-  // Hardcode state for immediate testing
+  // Authentication & Current User State
   const [authMode, setAuthMode] = useState<'select' | 'regular' | 'guest' | 'employee' | 'forgot'>('regular');
   const [currentUser, setCurrentUser] = useState<any>({
     userId: 'test-user-id-123',
     email: 'testregular@veyns.com',
-    role: 'regular', // Change to 'admin' or 'employee' whenever needed
+    role: 'regular',
     name: 'Geo Test'
   });
 
@@ -106,7 +104,7 @@ export function App() {
     }
   };
 
-  // SECTION 1: Load loyalty data only from the authenticated profile row.
+  // Load loyalty data only from the authenticated profile row.
   const loadUserStampsAndPenalties = async (userObj: any) => {
     if (!userObj || userObj.type === 'guest' || !userObj.authUserId) { setStamps([]); setFairPlayPenalty(null); return; }
     const { data: profile, error } = await supabase.from('profiles')
@@ -123,13 +121,12 @@ export function App() {
     }
   };
 
-  // SECTION 2: Restore session and handle verification email redirects.
+  // Restore session and handle verification email redirects.
   useEffect(() => {
     let alive = true;
     const restoreAuthUser = async (session: any) => {
       if (!session?.user) return;
       
-      // Enforce email confirmation check
       if (!session.user.email_confirmed_at) {
         setLoginError('Your email address is not verified yet. Please check your inbox and confirm your account.');
         await supabase.auth.signOut();
@@ -169,11 +166,26 @@ export function App() {
     return () => { alive = false; listener.subscription.unsubscribe(); };
   }, []);
 
-  // SECTION 3: Validation Helpers
   const validateEmail = (val: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim());
   const validatePasswordStrength = (pass: string) => pass.length >= 8 && /\d/.test(pass) && /[\W_]/.test(pass);
 
-  // SECTION 4: Registration and Login with Mandatory Email Verification
+  const handleResendVerification = async () => {
+    const email = (registeredEmail || authEmailInput).trim().toLowerCase();
+    if (!email) return;
+    setIsResending(true);
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email,
+      options: { emailRedirectTo: window.location.origin }
+    });
+    setIsResending(false);
+    if (error) {
+      alert('Failed to resend email: ' + error.message);
+    } else {
+      alert(`A fresh verification link has been sent to ${email}.`);
+    }
+  };
+
   const handleRegularAuth = async (e: React.FormEvent) => {
     e.preventDefault(); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError('');
     const email = authEmailInput.trim().toLowerCase();
@@ -225,55 +237,41 @@ export function App() {
       return;
     }
 
-    // SIGN IN
-    // Inside staff sign-in submit handler
     const { data, error } = await supabase.auth.signInWithPassword({
       email: authEmailInput,
       password: authPassword,
     });
 
-    if (!error && data?.user) {
-      // Fetch profile role from profiles table
+    if (error) {
+      setLoginError(error.message);
+      return;
+    }
+
+    if (data?.user) {
       const { data: profile } = await supabase
         .from('profiles')
         .select('role, name, identifier')
         .eq('auth_user_id', data.user.id)
         .maybeSingle();
 
-      const userRole = profile?.role || 'admin';
+      const userRole = profile?.role || 'regular';
+
+      setCurrentUser({
+        userId: data.user.id,
+        email: data.user.email,
+        role: userRole,
+        name: profile?.name || 'Valued Customer'
+      });
 
       if (userRole === 'admin' || userRole === 'employee') {
-        setCurrentUser({
-          userId: data.user.id,
-          email: data.user.email,
-          role: userRole,
-          name: profile?.name || 'Admin Staff'
-        });
-        
-        // ROUTE DIRECTLY TO DASHBOARD
         setAuthMode('employee');
-        setIsEmployeeDashboardOpen(true); 
+        setIsAdminDashboardOpen(true); 
       } else {
-        setAuthError('Unauthorized access: Staff credentials required');
+        setAuthMode('regular');
       }
-    }
-
-    setIsResending(true);
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email: email,
-      options: { emailRedirectTo: window.location.origin }
-    });
-    setIsResending(false);
-
-    if (error) {
-      alert('Failed to resend email: ' + error.message);
-    } else {
-      alert(`A fresh verification link has been sent to ${email}. Check your inbox and spam folder!`);
     }
   };
 
-  // SECTION 6: Account Management Handlers
   const handleUpdateIdentifierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.type === 'guest') return;
@@ -415,13 +413,8 @@ export function App() {
             </p>
           </div>
 
-          {/* Verification Email Sent Success Banner */}
           {signUpSuccessMsg && (
-            <div
-              className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-3"
-              role="status"
-              aria-live="polite"
-            >
+            <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-3">
               <CheckCircle2 className="h-6 w-6 text-lime-400 mx-auto" />
               <p className="font-bold text-lime-400 text-xs">Account successfully created.</p>
               <p className="text-xs text-emerald-200 leading-relaxed">
@@ -535,14 +528,13 @@ export function App() {
               </div>
               {passwordError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{passwordError}</p>}
             </div>
-              <button
+            <button
               type="submit"
               className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs py-3 rounded-xl uppercase tracking-wider transition cursor-pointer"
             >
               Login to My Account
             </button>
 
-              {/* STEP 2: Quick Test Login Buttons */}
             <div className="flex gap-2 pt-3 border-t border-emerald-900/40 mt-4">
               <button
                 type="button"
@@ -805,7 +797,7 @@ export function App() {
                     <div className="space-y-1">
                       <span className="text-[10px] text-emerald-400 uppercase tracking-wider block font-bold">Your Registered Email</span>
                       <p className="text-sm font-mono font-bold text-white bg-[#041913] p-2.5 rounded-xl border border-emerald-800/80">
-                        {currentUser.identifier}
+                        {currentUser.identifier || currentUser.email}
                       </p>
                     </div>
                     {accountUpdateSuccess && (
@@ -821,7 +813,7 @@ export function App() {
                           onClick={() => {
                             setIsUpdatingIdentifier(true);
                             setIsResettingPassword(false);
-                            setNewEmailInput(currentUser.identifier || '');
+                            setNewEmailInput(currentUser.identifier || currentUser.email || '');
                           }}
                           className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-[11px] cursor-pointer flex items-center justify-center gap-1"
                         >
@@ -908,7 +900,7 @@ export function App() {
                               <Facebook className="size-3" /> Facebook
                             </a>
                             <a
-                              href="https://www.instagram.com/veyns.ubec?utm_source=ig_web_button_share_sheet&mdxt=ZDNlZDc0MzIxNw=="
+                              href="https://www.instagram.com/veyns.ubec"
                               target="_blank"
                               rel="noreferrer"
                               className="flex items-center gap-1 bg-[#061d16] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 px-2 py-1 rounded-lg font-bold text-[10px] transition-all"
@@ -946,7 +938,7 @@ export function App() {
             </Button>
           </DialogContent>
         </Dialog>
-          {/* Password Recovery Modal */}
+
         {isResetPasswordOpen && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-[#051813] border border-emerald-800/80 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
