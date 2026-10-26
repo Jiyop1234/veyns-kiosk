@@ -411,19 +411,32 @@ export function App() {
           {signUpSuccessMsg && (
             <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-3">
               <CheckCircle2 className="h-6 w-6 text-lime-400 mx-auto" />
-              <p className="font-bold text-lime-400 text-xs">Account successfully created.</p>
+              <p className="font-bold text-lime-400 text-xs">Account successfully created!</p>
               <p className="text-xs text-emerald-200 leading-relaxed">
-                We sent a confirmation email to <span className="font-bold text-white">{registeredEmail || authEmailInput.trim()}</span>. Open it and click the verification link before logging in.
+                We sent a confirmation email to <span className="font-bold text-white">{registeredEmail || authEmailInput.trim()}</span>. Please check your inbox and verify your email before logging in.
               </p>
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSignUpSuccessMsg(false);
+                    setIsSignUp(false);
+                    setAuthPassword('');
+                  }}
+                  className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs transition-all shadow cursor-pointer uppercase tracking-wider"
+                >
+                  Proceed to Login
+                </button>
+              </div>
               <div className="pt-1">
                 <button
                   type="button"
                   onClick={handleResendVerification}
                   disabled={isResending}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-lime-400 hover:text-black hover:bg-lime-400 bg-[#082d22] border border-emerald-700/80 px-3.5 py-2 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-lime-400 hover:underline cursor-pointer disabled:opacity-50 mx-auto"
                 >
                   <RefreshCw className={`size-3.5 ${isResending ? 'animate-spin' : ''}`} />
-                  {isResending ? 'Sending email...' : "Didn't receive it? Resend link"}
+                  {isResending ? 'Sending email...' : "Didn't receive verification link? Resend"}
                 </button>
               </div>
             </div>
@@ -527,7 +540,7 @@ export function App() {
               type="submit"
               className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs py-3 rounded-xl uppercase tracking-wider transition cursor-pointer"
             >
-              Login to My Account
+              {isSignUp ? 'Create an Account' : 'Login to My Account'}
             </button>
           </form>
           <div className="text-center pt-2 border-t border-emerald-900/60 space-y-2">
