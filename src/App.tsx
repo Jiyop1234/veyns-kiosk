@@ -133,7 +133,7 @@ export function App() {
       const profile = Array.isArray(data) ? data[0] : data;
       if (!profile) return;
 
-      const userObj = { id: profile.id, authUserId: session.user.id, name: profile.name || 'Valued Customer', identifier: profile.identifier, role: profile.role, type: 'regular' };
+      const userObj = { id: profile.id, authUserId: session.user.id, name: profile.name || 'Valued Customer', identifier: profile.identifier || session.user.email, email: session.user.email, role: profile.role, type: 'regular' };
       setCurrentUser(userObj);
       setAuthMode(['employee', 'admin'].includes(profile.role) ? 'employee' : 'regular');
       setIsAdminDashboardOpen(['employee', 'admin'].includes(profile.role));
@@ -223,7 +223,7 @@ export function App() {
       const profile = Array.isArray(profileData) ? profileData[0] : profileData;
       if (profileError || !profile) { setIdentifierError(profileError?.message || 'Unable to load profile.'); return; }
       
-      const userObj = { id: profile.id, authUserId: data.user.id, name: profile.name || nickname, identifier: profile.identifier, role: profile.role, type: 'regular' };
+      const userObj = { id: profile.id, authUserId: data.user.id, name: profile.name || nickname, identifier: profile.identifier || data.user.email, email: data.user.email, role: profile.role, type: 'regular' };
       setCurrentUser(userObj);
       const isStaff = ['employee', 'admin'].includes(profile.role);
       setAuthMode(isStaff ? 'employee' : 'regular'); 
