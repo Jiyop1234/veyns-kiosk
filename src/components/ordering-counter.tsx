@@ -192,25 +192,25 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     if (typeof loadPromosFromCloud === 'function') loadPromosFromCloud();
 
     const menuChannel = supabase
-      .channel('public:menu_items_counter')
+      .channel('public_menu_items_counter_' + Math.random())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => {
         loadMenuFromCloud();
-      })
-      .subscribe();
+      });
+    menuChannel.subscribe();
 
     const slotsChannel = supabase
-      .channel('public:slot_capacities_counter')
+      .channel('public_slot_capacities_counter_' + Math.random())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, () => {
         if (typeof loadSlotCapacities === 'function') loadSlotCapacities();
-      })
-      .subscribe();
+      });
+    slotsChannel.subscribe();
 
     const promosChannel = supabase
-      .channel('public:promos_counter')
+      .channel('public_promos_counter_' + Math.random())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'promos' }, () => {
         loadPromosFromCloud();
-      })
-      .subscribe();
+      });
+    promosChannel.subscribe();
 
     const handleStorageChange = () => {
       loadMenuFromCloud();
@@ -221,7 +221,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
+      supabase.removeChannel(menuChannel);
       supabase.removeChannel(slotsChannel);
+      supabase.removeChannel(promosChannel);
     };
   }, []);
 
