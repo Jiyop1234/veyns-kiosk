@@ -1840,7 +1840,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       <div className="grid grid-cols-2 gap-2">
                         {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => {
                           const slotArray = Array.isArray(slotCapacities) ? slotCapacities : (slotCapacities ? Object.values(slotCapacities) : []);
-                          const slotInfo = slotArray.find((s: any) => s.slot_time === slot && (s.date_key === 'today' || s.date_key === selectedSlotDate));
+                          const slotInfo = slotArray.find((s: any) => s.slot_time === slot && s.date_key === 'today');
                           const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_count >= slotInfo.max_slots);
                           const slotsLeft = slotInfo ? Math.max(0, slotInfo.max_slots - slotInfo.booked_count) : null;
 
