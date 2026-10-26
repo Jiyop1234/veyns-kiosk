@@ -529,40 +529,6 @@ export function App() {
             >
               Login to My Account
             </button>
-
-            <div className="flex gap-2 pt-3 border-t border-emerald-900/40 mt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setCurrentUser({
-                    userId: 'dev-regular-id',
-                    email: 'testregular@veyns.com',
-                    role: 'regular',
-                    name: 'Test Regular'
-                  });
-                  setAuthMode('regular');
-                }}
-                className="flex-1 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/50 text-[10px] font-bold py-2 rounded-lg transition cursor-pointer"
-              >
-                Login Regular Test
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCurrentUser({
-                    userId: 'dev-admin-id',
-                    email: 'admin@veyns.com',
-                    role: 'admin',
-                    name: 'Test Admin'
-                  });
-                  setAuthMode('employee');
-                  setIsAdminDashboardOpen(true);
-                }}
-                className="flex-1 bg-lime-950/80 hover:bg-lime-900 text-lime-400 border border-lime-600/50 text-[10px] font-bold py-2 rounded-lg transition cursor-pointer"
-              >
-                Login Admin Test
-              </button>
-            </div>
           </form>
           <div className="text-center pt-2 border-t border-emerald-900/60 space-y-2">
             <button
