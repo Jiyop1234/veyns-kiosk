@@ -278,7 +278,9 @@ export function App() {
         .eq('auth_user_id', data.user.id)
         .maybeSingle();
       const userRole = profile?.role || 'regular';
-      setCurrentUser({
+      // Build a COMPLETE user object so the header renders the correct nickname immediately
+      // without waiting for restoreAuthUser to fire from the auth state listener.
+      const completeUser = {
         id: profile?.id,
         userId: data.user.id,
         authUserId: data.user.id,
@@ -287,23 +289,16 @@ export function App() {
         role: userRole,
         type: 'regular',
         name: profile?.name || authName || data.user.email?.split('@')[0] || 'Valued Customer'
-      });
+      };
+      setCurrentUser(completeUser);
       if (userRole === 'admin' || userRole === 'employee') {
         setAuthMode('employee');
         setIsAdminDashboardOpen(true);
       } else {
         setAuthMode('regular');
       }
-      const userObj = {
-        id: profile?.id,
-        authUserId: data.user.id,
-        email: data.user.email,
-        identifier: profile?.identifier || data.user.email,
-        role: userRole,
-        type: 'regular',
-        name: profile?.name || authName || data.user.email?.split('@')[0] || 'Valued Customer'
-      };
-      loadUserStampsAndPenalties(userObj);
+      // Load loyalty data immediately so the stamp card is ready
+      loadUserStampsAndPenalties(completeUser);
     }
   };
 
@@ -906,12 +901,6 @@ export function App() {
                     )}
                     {isUpdatingIdentifier && (
                       <form onSubmit={handleUpdateIdentifierSubmit} className="space-y-3 pt-2">
-                        <div className="space-y-1">
-                          <span className="text-[10px] text-emerald-400 uppercase tracking-wider block font-bold">Your Registered Email</span>
-                          <p className="text-xs font-mono font-bold text-white bg-[#041913] p-2.5 rounded-xl border border-emerald-800/80">
-                            {currentUser?.email || currentUser?.identifier || 'Connected via Supabase'}
-                          </p>
-                        </div>
                         <div className="space-y-2">
                           <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">
                             New Email Address
