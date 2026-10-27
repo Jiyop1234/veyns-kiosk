@@ -13,17 +13,17 @@ import { supabase } from '@/lib/supabase';
 export function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
-
+  
   // Authentication & Current User State
   const [authMode, setAuthMode] = useState<'select' | 'regular' | 'guest' | 'employee' | 'forgot'>('select');
   const [currentUser, setCurrentUser] = useState<any>(null);
-
+  
   // Recovery states
   const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [resetError, setResetError] = useState('');
   const [resetSuccess, setResetSuccess] = useState(false);
-
+  
   // Email authentication inputs
   const [authEmailInput, setAuthEmailInput] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -32,29 +32,29 @@ export function App() {
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isResending, setIsResending] = useState(false);
-
+  
   // Forgot password state
   const [forgotEmailInput, setForgotEmailInput] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState(false);
-
+  
   // Validation & Error States
   const [nicknameError, setNicknameError] = useState('');
   const [identifierError, setIdentifierError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [loginError, setLoginError] = useState('');
-
+  
   const [showMyOrders, setShowMyOrders] = useState(false);
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [showAccountSettingsPanel, setShowAccountSettingsPanel] = useState(false);
   const [isUpdatingIdentifier, setIsUpdatingIdentifier] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
-
+  
   // Account settings update state
   const [newEmailInput, setNewEmailInput] = useState('');
   const [currentPasswordInput, setCurrentPasswordInput] = useState('');
   const [newPasswordSettingInput, setNewPasswordSettingInput] = useState('');
   const [accountUpdateSuccess, setAccountUpdateSuccess] = useState(false);
-
+  
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
   const [resetTrigger, setResetTrigger] = useState(0);
   const [stamps, setStamps] = useState<any[]>([]);
@@ -67,13 +67,11 @@ export function App() {
       alert('The password reset link has expired or was already used. Please request a new one.');
       window.history.replaceState(null, '', window.location.pathname);
     }
-
     const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setIsResetPasswordOpen(true);
       }
     });
-
     return () => {
       authListener.subscription.unsubscribe();
     };
@@ -101,10 +99,18 @@ export function App() {
 
   // Load loyalty data only from the authenticated profile row.
   const loadUserStampsAndPenalties = async (userObj: any) => {
-    if (!userObj || userObj.type === 'guest' || !userObj.authUserId) { setStamps([]); setFairPlayPenalty(null); return; }
+    if (!userObj || userObj.type === 'guest' || !userObj.authUserId) { 
+      setStamps([]); 
+      setFairPlayPenalty(null); 
+      return; 
+    }
     const { data: profile, error } = await supabase.from('profiles')
       .select('stamps_data,penalty_data').eq('auth_user_id', userObj.authUserId).single();
-    if (error || !profile) { setStamps(Array.from({ length: 12 }, () => ({ status: 'empty', date: '' }))); setFairPlayPenalty(null); return; }
+    if (error || !profile) { 
+      setStamps(Array.from({ length: 12 }, () => ({ status: 'empty', date: '' }))); 
+      setFairPlayPenalty(null); 
+      return; 
+    }
     const normalized = Array.from({ length: 12 }).map((_, idx) => profile.stamps_data?.[idx] || { status: 'empty', date: '' });
     setStamps(normalized);
     setFairPlayPenalty(profile.penalty_data || null);
@@ -129,7 +135,6 @@ export function App() {
       const { data, error } = await supabase.rpc('claim_veyns_profile');
       if (!alive || error) { 
         if (error) console.error('Unable to load profile:', error.message); 
-        // Fallback: create user object from session data
         const fallbackUser = {
           id: session.user.id,
           authUserId: session.user.id,
@@ -159,16 +164,17 @@ export function App() {
       setIsAdminDashboardOpen(['employee', 'admin'].includes(profile.role));
       loadUserStampsAndPenalties(userObj);
     };
-
     void supabase.auth.getSession().then(({ data }) => restoreAuthUser(data.session));
-
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) setTimeout(() => {
         void restoreAuthUser(session);
-        if (event === 'PASSWORD_RECOVERY') { setShowLoyaltyModal(true); setShowAccountSettingsPanel(true); setIsResettingPassword(true); }
+        if (event === 'PASSWORD_RECOVERY') { 
+          setShowLoyaltyModal(true); 
+          setShowAccountSettingsPanel(true); 
+          setIsResettingPassword(true); 
+        }
       }, 0);
     });
-
     try {
       if (localStorage.getItem('veyns_auth_mode') === 'guest') {
         setCurrentUser({ name: 'Guest Diner', identifier: 'guest_trial', role: 'guest', type: 'guest' });
@@ -177,7 +183,6 @@ export function App() {
         if (sessionOrders) setOrderHistory(JSON.parse(sessionOrders));
       }
     } catch (e) { console.error(e); }
-
     return () => { alive = false; listener.subscription.unsubscribe(); };
   }, []);
 
@@ -202,20 +207,23 @@ export function App() {
   };
 
   const handleRegularAuth = async (e: React.FormEvent) => {
-    e.preventDefault(); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError('');
+    e.preventDefault(); 
+    setNicknameError(''); 
+    setIdentifierError(''); 
+    setPasswordError(''); 
+    setLoginError('');
     const email = authEmailInput.trim().toLowerCase();
-
     if (!email || !validateEmail(email)) {
-      setIdentifierError('Enter a valid email address.'); return;
+      setIdentifierError('Enter a valid email address.'); 
+      return;
     }
     if (!authPassword || (isSignUp && !validatePasswordStrength(authPassword))) {
-      setPasswordError('Use at least 8 characters, including a number and a symbol.'); return;
+      setPasswordError('Use at least 8 characters, including a number and a symbol.'); 
+      return;
     }
-
     if (isSignUp) {
       const nickname = authName.trim();
       if (!nickname) { setNicknameError('Choose a nickname.'); return; }
-
       const { data, error } = await supabase.auth.signUp({
         email,
         password: authPassword,
@@ -224,34 +232,37 @@ export function App() {
           emailRedirectTo: window.location.origin
         }
       });
-
-      if (error) { 
-        setIdentifierError(error.message); 
-        return; 
+      if (error) {
+        setIdentifierError(error.message);
+        return;
       }
-
       if (!data.session) {
         setRegisteredEmail(email);
-        setSignUpSuccessMsg(true); 
-        setIsSignUp(false); 
-        setAuthPassword(''); 
+        setSignUpSuccessMsg(true);
+        setIsSignUp(false);
+        setAuthPassword('');
         setAuthName('');
         return;
       }
-
       const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
       const profile = Array.isArray(profileData) ? profileData[0] : profileData;
       if (profileError || !profile) { setIdentifierError(profileError?.message || 'Unable to load profile.'); return; }
-      
-      const userObj = { id: profile.id, authUserId: data.user.id, name: profile.name || nickname, identifier: profile.identifier || data.user.email, email: data.user.email, role: profile.role, type: 'regular' };
+      const userObj = { 
+        id: profile.id, 
+        authUserId: data.user.id, 
+        name: profile.name || nickname, 
+        identifier: profile.identifier || data.user.email, 
+        email: data.user.email, 
+        role: profile.role, 
+        type: 'regular' 
+      };
       setCurrentUser(userObj);
       const isStaff = ['employee', 'admin'].includes(profile.role);
-      setAuthMode(isStaff ? 'employee' : 'regular'); 
+      setAuthMode(isStaff ? 'employee' : 'regular');
       setIsAdminDashboardOpen(isStaff);
-      loadUserStampsAndPenalties(userObj); 
+      loadUserStampsAndPenalties(userObj);
       return;
     }
-
     const { data, error } = await supabase.auth.signInWithPassword({
       email: authEmailInput,
       password: authPassword,
@@ -267,8 +278,6 @@ export function App() {
         .eq('auth_user_id', data.user.id)
         .maybeSingle();
       const userRole = profile?.role || 'regular';
-      // Build a COMPLETE user object so the header renders the correct nickname immediately
-      // without waiting for restoreAuthUser to fire from the auth state listener.
       setCurrentUser({
         id: profile?.id,
         userId: data.user.id,
@@ -285,7 +294,6 @@ export function App() {
       } else {
         setAuthMode('regular');
       }
-      // Load loyalty data immediately so the stamp card is ready
       const userObj = {
         id: profile?.id,
         authUserId: data.user.id,
@@ -297,6 +305,7 @@ export function App() {
       };
       loadUserStampsAndPenalties(userObj);
     }
+  };
 
   const handleUpdateIdentifierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -312,11 +321,19 @@ export function App() {
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || currentUser.type === 'guest') return;
-    if (!validatePasswordStrength(newPasswordSettingInput)) { alert('Use at least 8 characters, including a number and a symbol.'); return; }
+    if (!validatePasswordStrength(newPasswordSettingInput)) { 
+      alert('Use at least 8 characters, including a number and a symbol.'); 
+      return; 
+    }
     const { error } = await supabase.auth.updateUser({ password: newPasswordSettingInput });
     if (error) { alert(error.message); return; }
     setAccountUpdateSuccess(true);
-    setTimeout(() => { setAccountUpdateSuccess(false); setIsResettingPassword(false); setCurrentPasswordInput(''); setNewPasswordSettingInput(''); }, 2000);
+    setTimeout(() => { 
+      setAccountUpdateSuccess(false); 
+      setIsResettingPassword(false); 
+      setCurrentPasswordInput(''); 
+      setNewPasswordSettingInput(''); 
+    }, 2000);
   };
 
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
@@ -337,10 +354,20 @@ export function App() {
     const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
     const profile = Array.isArray(profileData) ? profileData[0] : profileData;
     if (profileError || !profile || !['employee', 'admin'].includes(profile.role)) {
-      await supabase.auth.signOut(); setLoginError('This account does not have staff access.'); return;
+      await supabase.auth.signOut(); 
+      setLoginError('This account does not have staff access.'); 
+      return;
     }
-    setCurrentUser({ id: profile.id, authUserId: data.user.id, name: profile.name, identifier: profile.identifier, role: profile.role, type: 'regular' });
-    setAuthMode('employee'); setIsAdminDashboardOpen(true);
+    setCurrentUser({ 
+      id: profile.id, 
+      authUserId: data.user.id, 
+      name: profile.name, 
+      identifier: profile.identifier, 
+      role: profile.role, 
+      type: 'regular' 
+    });
+    setAuthMode('employee'); 
+    setIsAdminDashboardOpen(true);
   };
 
   const handleGuestLogin = () => {
@@ -401,7 +428,17 @@ export function App() {
           </div>
           <div className="space-y-3 pt-2">
             <Button
-              onClick={() => { setAuthEmailInput(''); setAuthPassword(''); setAuthName(''); setNicknameError(''); setIdentifierError(''); setPasswordError(''); setLoginError(''); setAuthMode('regular'); setIsSignUp(false); }}
+              onClick={() => { 
+                setAuthEmailInput(''); 
+                setAuthPassword(''); 
+                setAuthName(''); 
+                setNicknameError(''); 
+                setIdentifierError(''); 
+                setPasswordError(''); 
+                setLoginError(''); 
+                setAuthMode('regular'); 
+                setIsSignUp(false); 
+              }}
               className="w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-white border border-emerald-700/80 py-4 px-3 h-auto rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 transition-all shadow-lg cursor-pointer text-center"
             >
               <User className="size-4 text-lime-400 shrink-0" />
@@ -438,7 +475,6 @@ export function App() {
               {isSignUp ? 'Sign up with email to unlock Loyalty Stamps' : 'Access your order history and loyalty rewards'}
             </p>
           </div>
-
           {signUpSuccessMsg && (
             <div className="bg-[#061d16] border border-lime-400/60 rounded-2xl p-4 text-center space-y-3">
               <CheckCircle2 className="h-6 w-6 text-lime-400 mx-auto" />
@@ -472,7 +508,6 @@ export function App() {
               </div>
             </div>
           )}
-
           {loginError && !isSignUp && (
             <div className="bg-red-950/80 border border-red-500 rounded-xl p-3 text-center space-y-2">
               <p className="text-xs font-bold text-red-400">{loginError}</p>
@@ -487,7 +522,6 @@ export function App() {
               )}
             </div>
           )}
-
           <form onSubmit={handleRegularAuth} className="space-y-4">
             {isSignUp && (
               <div className="space-y-1">
@@ -576,11 +610,11 @@ export function App() {
           </form>
           <div className="text-center pt-2 border-t border-emerald-900/60 space-y-2">
             <button
-              onClick={() => { 
-                setIsSignUp(!isSignUp); 
+              onClick={() => {
+                setIsSignUp(!isSignUp);
                 setAuthEmailInput('');
-                setAuthPassword(''); 
-                setAuthName(''); 
+                setAuthPassword('');
+                setAuthName('');
                 setSignUpSuccessMsg(false);
                 setNicknameError('');
                 setIdentifierError('');
@@ -593,7 +627,16 @@ export function App() {
             </button>
             <div>
               <button
-                onClick={() => { setAuthEmailInput(''); setAuthPassword(''); setAuthName(''); setAuthMode('select'); setSignUpSuccessMsg(false); setNicknameError(''); setPasswordError(''); setLoginError(''); }}
+                onClick={() => { 
+                  setAuthEmailInput(''); 
+                  setAuthPassword(''); 
+                  setAuthName(''); 
+                  setAuthMode('select'); 
+                  setSignUpSuccessMsg(false); 
+                  setNicknameError(''); 
+                  setPasswordError(''); 
+                  setLoginError(''); 
+                }}
                 className="text-[11px] text-emerald-400/60 hover:text-white cursor-pointer"
               >
                 ← Back to role selection
@@ -628,9 +671,14 @@ export function App() {
             <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
               <div className="space-y-2">
                 <label className="text-[11px] font-bold text-lime-400 uppercase tracking-wider">Account email</label>
-                <input type="email" required placeholder="Enter your email address" value={forgotEmailInput}
+                <input 
+                  type="email" 
+                  required 
+                  placeholder="Enter your email address" 
+                  value={forgotEmailInput}
                   onChange={(e) => setForgotEmailInput(e.target.value)}
-                  className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400" />
+                  className="w-full rounded-xl border border-emerald-800/80 bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none focus:border-lime-400" 
+                />
               </div>
               <Button
                 type="submit"
@@ -688,10 +736,30 @@ export function App() {
           </div>
           <div className="bg-[#041913] border border-emerald-800/60 rounded-2xl p-5 text-xs text-emerald-200 space-y-3">
             <label className="font-bold text-lime-400 uppercase tracking-wider text-[11px] block text-center">staff Supabase Auth sign-in</label>
-            <input type="email" autoComplete="username" value={authEmailInput} onChange={(e) => setAuthEmailInput(e.target.value)} placeholder="Staff email" className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" />
-            <input type="password" autoComplete="current-password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void handleEmployeeAuth(); }} placeholder="Password" className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" />
+            <input 
+              type="email" 
+              autoComplete="username" 
+              value={authEmailInput} 
+              onChange={(e) => setAuthEmailInput(e.target.value)} 
+              placeholder="Staff email" 
+              className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" 
+            />
+            <input 
+              type="password" 
+              autoComplete="current-password" 
+              value={authPassword} 
+              onChange={(e) => setAuthPassword(e.target.value)} 
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleEmployeeAuth(); }} 
+              placeholder="Password" 
+              className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" 
+            />
             {loginError && <p className="text-red-400">{loginError}</p>}
-            <Button onClick={() => void handleEmployeeAuth()} className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg cursor-pointer mt-1">Sign in</Button>
+            <Button 
+              onClick={() => void handleEmployeeAuth()} 
+              className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg cursor-pointer mt-1"
+            >
+              Sign in
+            </Button>
           </div>
           <button
             onClick={() => setAuthMode('select')}
@@ -913,7 +981,11 @@ export function App() {
                         <div className="flex gap-2 pt-1">
                           <Button
                             type="button"
-                            onClick={() => { setIsResettingPassword(false); setCurrentPasswordInput(''); setNewPasswordSettingInput(''); }}
+                            onClick={() => { 
+                              setIsResettingPassword(false); 
+                              setCurrentPasswordInput(''); 
+                              setNewPasswordSettingInput(''); 
+                            }}
                             className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
                           >
                             Cancel
@@ -939,7 +1011,6 @@ export function App() {
             </Button>
           </DialogContent>
         </Dialog>
-
         {isResetPasswordOpen && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-[#051813] border border-emerald-800/80 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
@@ -949,7 +1020,6 @@ export function App() {
               <p className="text-xs text-emerald-300 text-center">
                 Enter your new password below to regain access to your VEYNS account.
               </p>
-
               {resetSuccess ? (
                 <div className="bg-lime-950/60 border border-lime-500/40 rounded-xl p-3 text-center text-xs text-lime-400 font-bold">
                   Password updated successfully! Redirecting...
@@ -969,11 +1039,9 @@ export function App() {
                       className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-400 font-bold"
                     />
                   </div>
-
                   {resetError && (
                     <p className="text-[11px] font-bold text-red-400 text-center">{resetError}</p>
                   )}
-
                   <button
                     type="submit"
                     className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs py-3 rounded-xl uppercase tracking-wider transition cursor-pointer"
