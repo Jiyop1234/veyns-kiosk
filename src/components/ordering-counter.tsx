@@ -1753,39 +1753,61 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 )}
 
                 {publicVouchersList.length > 0 && (
-                  <div className="space-y-1.5 pt-2">
-                    <span className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider flex items-center gap-1">
-                      <Ticket className="size-3 text-lime-400" /> Available Public Vouchers (Click Claim to Stack):
-                    </span>
-                    <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
-                      {publicVouchersList.map((promo, pIdx) => {
-                        const isAlreadyApplied = appliedPromos.some(p => p.code.toUpperCase() === promo.code.toUpperCase());
+                <div className="space-y-1.5 pt-2">
+                  <span className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider flex items-center gap-1">
+                    <Ticket className="size-3 text-lime-400" /> Available Public Vouchers (Click Claim to Stack):
+                  </span>
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                    {publicVouchersList.map((promo, pIdx) => {
+                      const isAlreadyApplied = appliedPromos.some(p => p.code.toUpperCase() === promo.code.toUpperCase());
 
-                        return (
-                          <div key={pIdx} className="bg-[#061d16] border border-emerald-800/70 rounded-xl p-2.5 flex items-center justify-between text-xs">
-                            <div className="space-y-0.5">
-                              <span className="font-extrabold text-lime-400 text-xs">{promo.code}</span>
-                              <p className="text-[10px] text-emerald-200">
-                                {promo.targetType === 'delivery' ? 'Delivery Discount: ' : 'Food Discount: '}
-                                {promo.type === 'peso' ? formatPeso(promo.discountValue) + ' OFF' : `${promo.discountValue}% OFF`}
-                              </p>
-                              {isAlreadyApplied && (
-                                <p className="text-[9px] text-amber-300">✓ Stacked and applied.</p>
-                              )}
-                            </div>
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => handleClaimVoucher(promo)}
-                              className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-extrabold text-[10px] px-3 py-1 rounded-lg cursor-pointer"
-                            >
-                              {isAlreadyApplied ? 'Applied ✓' : 'Claim & Stack'}
-                            </Button>
+                      // Calculate real-time countdown
+                      let timeRemainingText = 'Never expires';
+                      let isExpired = false;
+                      if (promo.expiryDurationMs && promo.expiryDurationMs > 0 && promo.createdAt) {
+                        const expiresAt = promo.createdAt + promo.expiryDurationMs;
+                        const diff = expiresAt - nowTimestamp;
+                        if (diff <= 0) {
+                          timeRemainingText = 'Expired';
+                          isExpired = true;
+                        } else {
+                          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                          const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                          const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                          const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                          timeRemainingText = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+                        }
+                      }
+
+                      return (
+                        <div key={pIdx} className="bg-[#061d16] border border-emerald-800/70 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                          <div className="space-y-0.5">
+                            <span className="font-extrabold text-lime-400 text-xs">{promo.code}</span>
+                            <p className="text-[10px] text-emerald-200">
+                              {promo.targetType === 'delivery' ? 'Delivery Discount: ' : 'Food Discount: '}
+                              {promo.type === 'peso' ? formatPeso(promo.discountValue) + ' OFF' : `${promo.discountValue}% OFF`}
+                            </p>
+                            <p className={`text-[9px] font-mono ${isExpired ? 'text-red-400 font-bold' : 'text-amber-300'}`}>
+                              ⏳ {timeRemainingText}
+                            </p>
+                            {isAlreadyApplied && (
+                              <p className="text-[9px] text-lime-300">✓ Stacked and applied.</p>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={isExpired || isAlreadyApplied}
+                            onClick={() => handleClaimVoucher(promo)}
+                            className={`bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-extrabold text-[10px] px-3 py-1 rounded-lg cursor-pointer ${isExpired ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {isExpired ? 'Expired' : isAlreadyApplied ? 'Applied ✓' : 'Claim & Stack'}
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
+                </div>
                 )}
               </div>}
 

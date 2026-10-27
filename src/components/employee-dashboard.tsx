@@ -1561,19 +1561,22 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 }
 
 // --- Reusable editor card for an individual date/time slot's bowl capacity & bookings ---
+// --- Reusable editor card for an individual date/time slot's bowl capacity & bookings ---
 function SlotCapacityCard({ slotTime, dateKey, initialMaxBowls, bookedBowls, initialMaxSlots, initialFullyBooked, onSave, onInspect }: any) {
-  const [maxBowls, setMaxBowls] = useState(10); // Strict 10 bowl cap default
+  // Use initialMaxBowls if provided, otherwise default to 10, but allow it to be changed
+  const [maxBowls, setMaxBowls] = useState(initialMaxBowls || 10);
   const [maxSlots, setMaxSlots] = useState(initialMaxSlots || 10);
   const [isFullyBooked, setIsFullyBooked] = useState(initialFullyBooked || false);
 
   useEffect(() => {
-    setMaxBowls(10);
+    setMaxBowls(initialMaxBowls || 10);
     setMaxSlots(initialMaxSlots || 10);
     setIsFullyBooked(initialFullyBooked || false);
-  }, [initialMaxSlots, initialFullyBooked]);
+  }, [initialMaxBowls, initialMaxSlots, initialFullyBooked]);
 
   const currentBookedBowls = Number(bookedBowls || 0);
-  const remainingBowls = Math.max(0, 10 - currentBookedBowls);
+  // Calculate remaining bowls dynamically based on the configurable maxBowls
+  const remainingBowls = Math.max(0, maxBowls - currentBookedBowls);
 
   return (
     <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-3 text-xs">
@@ -1594,14 +1597,16 @@ function SlotCapacityCard({ slotTime, dateKey, initialMaxBowls, bookedBowls, ini
           </Button>
         </div>
       </div>
+      
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] text-emerald-300 block mb-1">Max Bowls Cap (Strict 10):</label>
+          <label className="text-[10px] text-emerald-300 block mb-1">Max Bowls Cap (Configurable):</label>
           <input
             type="number"
-            disabled
-            value={10}
-            className="w-full bg-[#04140f] border border-emerald-800 rounded-lg p-2 text-lime-400 font-bold text-xs opacity-80 cursor-not-allowed"
+            min="1"
+            value={maxBowls}
+            onChange={(e) => setMaxBowls(Math.max(1, parseInt(e.target.value) || 1))}
+            className="w-full bg-[#04140f] border border-emerald-800 rounded-lg p-2 text-lime-400 font-bold text-xs focus:outline-none focus:border-lime-400"
           />
         </div>
         <div className="flex flex-col justify-end">
@@ -1616,11 +1621,12 @@ function SlotCapacityCard({ slotTime, dateKey, initialMaxBowls, bookedBowls, ini
           </label>
         </div>
       </div>
+      
       <div className="flex justify-between items-center pt-1 text-[11px] text-emerald-300">
-        <span>Reserved Bowls: <strong>{currentBookedBowls} / 10</strong></span>
+        <span>Reserved Bowls: <strong>{currentBookedBowls} / {maxBowls}</strong></span>
         <Button
           size="sm"
-          onClick={() => onSave(dateKey, slotTime, 10, maxSlots, isFullyBooked)}
+          onClick={() => onSave(dateKey, slotTime, maxBowls, maxSlots, isFullyBooked)}
           className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-[10px] px-3 py-1.5 rounded-lg cursor-pointer"
         >
           Save Slot
