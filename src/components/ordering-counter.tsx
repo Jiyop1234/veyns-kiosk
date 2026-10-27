@@ -587,6 +587,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       throw new Error(slotRes?.message || slotErr?.message || 'Time slot is fully booked.');
     }
 
+        // Increment usage count for each applied promo
+    if (!isGuest && newOrder.promoCodesList && newOrder.promoCodesList.length > 0) {
+      for (const code of newOrder.promoCodesList) {
+        await supabase.rpc('increment_promo_usage', { p_code: code });
+      }
+    }
+
     const savedOrder = { ...newOrder, orderNumber: orderDataRes.order_number, items: orderDataRes.items, subtotal: Number(orderDataRes.subtotal || newOrder.subtotal), promoDiscount: Number(orderDataRes.promo_discount || newOrder.promoDiscount), deliveryDiscount: Number(orderDataRes.delivery_discount || 0), deliveryFee: Number(orderDataRes.delivery_fee || newOrder.deliveryFee), total: Number(orderDataRes.total || newOrder.total) };
     
     const prior = isGuest ? sessionStorage.getItem(userHistoryStorageKey) : localStorage.getItem(userHistoryStorageKey);
@@ -1862,22 +1869,36 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         : 'Pick up today at your convenience.'}
                     </p>
 
-                    {fulfillment === 'delivery' && deliveryOption === 'our' && (
+                    {(fulfillment === 'delivery' && deliveryOption === 'our') || fulfillment === 'pickup' ? (
                       <div className="grid grid-cols-2 gap-2">
                         {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => {
                           const slotArray = Array.isArray(slotCapacities) ? slotCapacities : (slotCapacities ? Object.values(slotCapacities) : []);
                           const slotInfo = slotArray.find((s: any) => s.slot_time === slot && s.date_key === 'today');
-                          const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_count >= slotInfo.max_slots);
-                          const slotsLeft = slotInfo ? Math.max(0, slotInfo.max_slots - slotInfo.booked_count) : null;
-
+                          const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_bowls >= (slotInfo.max_bowls || 10));
+                          const bowlsLeft = slotInfo ? Math.max(0, (slotInfo.max_bowls || 10) - slotInfo.booked_bowls) : null;
+                          
+                          // Check if slot is in the past (Manila time)
+                          const isPastSlot = (() => {
+                            try {
+                              const options: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false };
+                              const currentHour = parseInt(new Intl.DateTimeFormat([], options).format(new Date()), 10);
+                              const slotStartHour = parseInt(slot.split(':')[0]);
+                              const isPM = slot.includes('PM');
+                              const slotHour24 = isPM && slotStartHour !== 12 ? slotStartHour + 12 : (isPM ? 12 : slotStartHour);
+                              return currentHour >= slotHour24 + 1;
+                            } catch { return false; }
+                          })();
+                          
+                          const isDisabled = isFullyBooked || isPastSlot;
+                          
                           return (
                             <button
                               key={slot}
                               type="button"
-                              disabled={isFullyBooked}
+                              disabled={isDisabled}
                               onClick={() => setTodayTimeSlot(slot)}
                               className={`p-2 rounded-lg border text-[11px] font-bold transition-all flex flex-col items-center justify-between ${
-                                isFullyBooked
+                                isDisabled
                                   ? 'bg-red-950/60 border-red-800 text-red-400 opacity-60 cursor-not-allowed'
                                   : todayTimeSlot === slot
                                   ? 'bg-lime-400 text-black border-lime-400 shadow-md'
@@ -1886,13 +1907,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                             >
                               <span>{slot}</span>
                               <span className="text-[9px] font-semibold mt-0.5">
-                                {isFullyBooked ? '⛔ Fully Booked' : slotsLeft !== null ? `🟢 ${slotsLeft} slots left` : 'Available'}
+                                {isPastSlot ? '⏰ Past' : isFullyBooked ? '⛔ Fully Booked' : bowlsLeft !== null ? `🟢 ${bowlsLeft} bowls left` : 'Available'}
                               </span>
                             </button>
                           );
                         })}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 ) : (
                   <div className="bg-[#061c16] border border-emerald-800/60 rounded-xl p-3 space-y-2.5 text-xs">

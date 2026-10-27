@@ -39,6 +39,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [previewSelections, setPreviewSelections] = useState<{ [groupId: string]: string[] }>({});
 
   const [promos, setPromos] = useState<any[]>([]);
+  const [nowTimestamp, setNowTimestamp] = useState(Date.now());
   const [newPromoCode, setNewPromoCode] = useState('');
   const [newPromoDiscount, setNewPromoDiscount] = useState('');
   const [newPromoType, setNewPromoType] = useState<'percentage' | 'peso'>('percentage');
@@ -94,11 +95,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     const menuChannel = supabase.channel('public:menu_items').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, fetchCloudData).subscribe();
     const slotsChannel = supabase.channel('public:slot_capacities').on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, fetchCloudData).subscribe();
     const promosChannel = supabase.channel('public:promos_dashboard').on('postgres_changes', { event: '*', schema: 'public', table: 'promos' }, fetchCloudData).subscribe();
+    const timer = setInterval(() => setNowTimestamp(Date.now()), 1000);
     return () => {
       supabase.removeChannel(orderChannel);
       supabase.removeChannel(menuChannel);
       supabase.removeChannel(slotsChannel);
       supabase.removeChannel(promosChannel);
+      clearInterval(timer);
     };
   }, []);
 
@@ -1142,28 +1145,62 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <p className="text-xs text-emerald-400/60 py-6 text-center">No active vouchers or promo codes available.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {promos.map((p, idx) => (
-                    <div key={idx} className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-4 flex items-center justify-between text-xs shadow-md">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-lime-400 text-sm tracking-wide">{p.code}</span>
-                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase ${p.visibility === 'hidden' ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'}`}>
-                            {p.visibility || 'public'}
-                          </span>
+                  {promos
+                    .filter((p) => {
+                      // Auto-filter expired vouchers
+                      if (p.expiryDurationMs && p.expiryDurationMs > 0 && p.createdAt) {
+                        const expiresAt = p.createdAt + p.expiryDurationMs;
+                        return nowTimestamp < expiresAt;
+                      }
+                      return true;
+                    })
+                    .map((p, idx) => {
+                      // Calculate live countdown
+                      let countdownText = 'Never expires';
+                      let isExpiringSoon = false;
+                      if (p.expiryDurationMs && p.expiryDurationMs > 0 && p.createdAt) {
+                        const expiresAt = p.createdAt + p.expiryDurationMs;
+                        const diff = expiresAt - nowTimestamp;
+                        if (diff <= 0) {
+                          countdownText = 'EXPIRED';
+                        } else {
+                          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                          const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                          const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                          const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                          countdownText = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+                          isExpiringSoon = diff < 5 * 60 * 1000; // Less than 5 minutes
+                        }
+                      }
+                      return (
+                        <div key={idx} className={`bg-[#061d16] border rounded-xl p-4 flex items-center justify-between text-xs shadow-md ${
+                          isExpiringSoon ? 'border-amber-500/60' : 'border-emerald-800/80'
+                        }`}>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-lime-400 text-sm tracking-wide">{p.code}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase ${
+                                p.visibility === 'hidden' ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'
+                              }`}>
+                                {p.visibility || 'public'}
+                              </span>
+                            </div>
+                            <p className="text-emerald-200 font-bold">
+                              {p.type === 'peso' ? formatPeso(p.discountValue) + ' OFF' : `${p.discountValue}% OFF`}
+                            </p>
+                            <p className={`text-[10px] font-mono ${isExpiringSoon ? 'text-amber-400 font-bold' : 'text-amber-300'}`}>
+                              {countdownText}
+                            </p>
+                            <p className="text-[10px] text-emerald-300">🔢 Usage: {p.usageCount || 0} / {p.usageLimit ? `${p.usageLimit} limit` : 'Unlimited'}</p>
+                            <p className="text-[10px] text-lime-300">Scope: {p.target_type === 'delivery' ? 'Delivery Fee' : 'Food Subtotal'}</p>
+                            <p className="text-[10px] text-blue-300">Eligibility: {p.eligibility === 'registered' ? 'Registered Only' : 'All Customers'}</p>
+                          </div>
+                          <button onClick={() => handleDeletePromo(p.code)} className="text-red-400 hover:text-red-300 p-2 rounded-lg bg-red-950/40 border border-red-900/60 cursor-pointer">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
-                        <p className="text-emerald-200 font-bold">
-                          {p.type === 'peso' ? formatPeso(p.discountValue) + ' OFF' : `${p.discountValue}% OFF`}
-                        </p>
-                        <p className="text-[10px] text-amber-300">⏱️ Expiry: {p.expiryUnitText || 'Never'}</p>
-                        <p className="text-[10px] text-emerald-300">🔢 Usage: {p.usageCount || 0} / {p.usageLimit ? `${p.usageLimit} limit` : 'Unlimited'}</p>
-                        <p className="text-[10px] text-lime-300"> Scope: {p.target_type === 'delivery' ? 'Delivery Fee' : 'Food Subtotal'}</p>
-                        <p className="text-[10px] text-blue-300"> Eligibility: {p.eligibility === 'registered' ? 'Registered Only' : 'All Customers'}</p>
-                      </div>
-                      <button onClick={() => handleDeletePromo(p.code)} className="text-red-400 hover:text-red-300 p-2 rounded-lg bg-red-950/40 border border-red-900/60 cursor-pointer">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
+                      );
+                    })}
                 </div>
               )}
             </div>
