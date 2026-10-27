@@ -870,57 +870,57 @@ export function App() {
                     )}
 
                     {isResettingPassword && (
-                    <form onSubmit={handleResetPasswordSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
-                      <div className="space-y-1">
-                        <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">New Password</label>
-                        <p className="text-[10px] text-emerald-300/80 mb-1">Minimum 8 characters, including numbers and symbols.</p>
-                        <input
-                          type="password"
-                          required
-                          value={newPasswordSettingInput}
-                          onChange={(e) => setNewPasswordSettingInput(e.target.value)}
-                          className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
-                          placeholder="Create a strong password"
-                        />
-                      </div>
-                      <div className="bg-[#03120d] border border-emerald-800/80 rounded-xl p-2.5 text-[11px] text-emerald-300 space-y-1.5">
-                        <p className="font-semibold">Forgot your current password?</p>
-                        <p className="text-[10px] text-emerald-400/80">Please contact us through our social media pages below:</p>
-                        <div className="flex gap-2 pt-0.5">
-                          <a
-                            href="https://www.facebook.com/veyns.ubec"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-1 bg-[#061d16] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 px-2 py-1 rounded-lg font-bold text-[10px] transition-all"
-                          >
-                            <Facebook className="size-3" /> Facebook
-                          </a>
-                          <a
-                            href="https://www.instagram.com/veyns.ubec"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-1 bg-[#061d16] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 px-2 py-1 rounded-lg font-bold text-[10px] transition-all"
-                          >
-                            <Instagram className="size-3" /> Instagram
-                          </a>
+                      <form onSubmit={handleResetPasswordSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
+                        <div className="space-y-1">
+                          <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">New Password</label>
+                          <p className="text-[10px] text-emerald-300/80 mb-1">Minimum 8 characters, including numbers and symbols.</p>
+                          <input
+                            type="password"
+                            required
+                            value={newPasswordSettingInput}
+                            onChange={(e) => setNewPasswordSettingInput(e.target.value)}
+                            className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400"
+                            placeholder="Create a strong password"
+                          />
                         </div>
-                      </div>
-                      <div className="flex gap-2 pt-1">
-                        <Button
-                          type="button"
-                          onClick={() => { setIsResettingPassword(false); setCurrentPasswordInput(''); setNewPasswordSettingInput(''); }}
-                          className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          type="submit"
-                          className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer shadow"
-                        >
-                          Confirm Password
-                        </Button>
-                      </div>
-                    </form>
+                        <div className="bg-[#03120d] border border-emerald-800/80 rounded-xl p-2.5 text-[11px] text-emerald-300 space-y-1.5">
+                          <p className="font-semibold">Forgot your current password?</p>
+                          <p className="text-[10px] text-emerald-400/80">Please contact us through our social media pages below:</p>
+                          <div className="flex gap-2 pt-0.5">
+                            <a
+                              href="https://www.facebook.com/veyns.ubec"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1 bg-[#061d16] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 px-2 py-1 rounded-lg font-bold text-[10px] transition-all"
+                            >
+                              <Facebook className="size-3" /> Facebook
+                            </a>
+                            <a
+                              href="https://www.instagram.com/veyns.ubec"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1 bg-[#061d16] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 px-2 py-1 rounded-lg font-bold text-[10px] transition-all"
+                            >
+                              <Instagram className="size-3" /> Instagram
+                            </a>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <Button
+                            type="button"
+                            onClick={() => { setIsResettingPassword(false); setCurrentPasswordInput(''); setNewPasswordSettingInput(''); }}
+                            className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="submit"
+                            className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer shadow"
+                          >
+                            Confirm Password
+                          </Button>
+                        </div>
+                      </form>
                     )}
                   </div>
                 </div>
