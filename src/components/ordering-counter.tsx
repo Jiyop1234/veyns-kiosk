@@ -1941,9 +1941,25 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                             const slotInfo = slotArray.find((s: any) => s.slot_time === slot && s.date_key === reservationDate);
                             const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_bowls >= (slotInfo.max_bowls || 10));
                             const bowlsLeft = slotInfo ? Math.max(0, (slotInfo.max_bowls || 10) - slotInfo.booked_bowls) : null;
-                            const labelText = `${slot} ${isFullyBooked ? '(Fully Booked)' : bowlsLeft !== null ? `(${bowlsLeft} bowls left)` : ''}`;
+                            
+                            // Check if slot is in the past (only for today's date)
+                            const isPastSlot = (() => {
+                              if (reservationDate !== new Date().toISOString().split('T')[0]) return false;
+                              try {
+                                const options: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false };
+                                const currentHour = parseInt(new Intl.DateTimeFormat([], options).format(new Date()), 10);
+                                const slotStartHour = parseInt(slot.split(':')[0]);
+                                const isPM = slot.includes('PM');
+                                const slotHour24 = isPM && slotStartHour !== 12 ? slotStartHour + 12 : (isPM ? 12 : slotStartHour);
+                                return currentHour >= slotHour24 + 1;
+                              } catch { return false; }
+                            })();
+                            
+                            const isDisabled = isFullyBooked || isPastSlot;
+                            const labelText = `${slot} ${isPastSlot ? '(Past)' : isFullyBooked ? '(Fully Booked)' : bowlsLeft !== null ? `(${bowlsLeft} bowls left)` : ''}`;
+                            
                             return (
-                              <option key={slot} value={slot} disabled={isFullyBooked}>
+                              <option key={slot} value={slot} disabled={isDisabled}>
                                 {labelText}
                               </option>
                             );
