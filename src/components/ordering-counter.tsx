@@ -28,20 +28,16 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const { add, lines, setLineQty, remove, clear, total } = useCart();
   const [category, setCategory] = useState('All items');
   const [search, setSearch] = useState('');
-
   const [currentMenuGrid, setCurrentMenuGrid] = useState<any[]>([]);
   const [availablePromos, setAvailablePromos] = useState<any[]>([]);
-
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [stamps, setStamps] = useState<any[]>([]);
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
-
   // Slot capacities & Fully Booked states
   const [slotCapacities, setSlotCapacities] = useState<Record<string, any>>({});
 
   // SECTION 5: Customer type and ordering-time eligibility checks.
   const isGuest = !currentUser || currentUser.role === 'guest' || (currentUser.name && currentUser.name.toLowerCase().includes('guest')) || (currentUser.identifier && currentUser.identifier.toLowerCase().includes('guest'));
-
   // Helper to check if "Order Today" is allowed in Philippine Time (Asia/Manila)
   // Closed from 12:00 AM (00:00) until 12:00 PM (12:00)
   const isOrderTodayAllowed = () => {
@@ -59,8 +55,35 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       return !(currentHour >= 0 && currentHour < 12);
     }
   };
-
   const orderTodayOpen = isOrderTodayAllowed();
+
+  // --- Phase 3: Milestone loyalty status, wallet claiming, Platinum weekly claims ---
+  const [loyaltyStatus, setLoyaltyStatus] = useState<any>(null);
+  const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+  const loadLoyaltyStatus = async () => {
+    if (!currentUser || isGuest || !currentUser.authUserId) { setLoyaltyStatus(null); return; }
+    setLoyaltyLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('get_loyalty_status', { p_user_id: currentUser.authUserId });
+      if (!error && data) setLoyaltyStatus(data);
+    } catch (e) { console.error('Loyalty status load failed:', e); }
+    setLoyaltyLoading(false);
+  };
+  useEffect(() => { if (showLoyaltyModal) loadLoyaltyStatus(); }, [showLoyaltyModal]);
+  const handleClaimReward = async (rewardId: string) => {
+    const { data, error } = await supabase.rpc('claim_loyalty_reward', { p_reward_id: rewardId });
+    if (error || !data?.success) { alert(error?.message || data?.message || 'Unable to claim reward.'); return; }
+    alert(`Reward claimed! Voucher code: ${data.promo_code} (single-use, valid 7 days). It appears in your checkout voucher list.`);
+    await loadLoyaltyStatus();
+    await loadPromosFromCloud();
+  };
+  const handleClaimPlatinumDiscount = async () => {
+    const { data, error } = await supabase.rpc('claim_platinum_weekly_discount');
+    if (error || !data?.success) { alert(error?.message || data?.message || 'No allowance left this week.'); return; }
+    alert(`Your Platinum 10% code: ${data.promo_code} (${data.claims_remaining} claim(s) left this week).`);
+    await loadLoyaltyStatus();
+    await loadPromosFromCloud();
+  };
 
   // SECTION 6: Load scheduling capacity, promotions, loyalty information, and menu configuration.
   // Real-time voucher expiry ticker & auto-purge task
@@ -1022,7 +1045,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
               }}
               className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold text-xs px-4 py-2.5 rounded-full transition-all shadow-lg flex items-center gap-2 cursor-pointer"
             >
-              <Award className="h-4 w-4" /> Loyalty Card ({validStampsCount}/12)
+              <Award className="h-4 w-4" /> {loyaltyStatus ? `${loyaltyStatus.tier} • ${loyaltyStatus.cumulative_stamps} Stamps` : 'Loyalty Card'}
             </Button>
           )}
 
@@ -1097,126 +1120,142 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         })}
       </div>
 
-      {/* SECTION 25: Loyalty stamp card and fair-play status modal. */}
+      {/* SECTION 25: Milestone Loyalty Card (Silver / Platinum / Diamond) + Rewards Wallet */}
       <Dialog open={showLoyaltyModal} onOpenChange={setShowLoyaltyModal}>
-        <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
-          <div className="space-y-1 text-left border-b border-emerald-900/60 pb-3">
-            <DialogTitle className="font-display text-xl font-extrabold text-white flex items-center gap-2">
-              <Award className="h-5 w-5 text-lime-400" /> VEYNS. Loyalty Stamp Card
-            </DialogTitle>
-            <DialogDescription className="text-xs text-emerald-300/80">
-              Rule: 1 order per day = 1 stamp. "To Be Cleared" slots must be stamped first before progressing.
-            </DialogDescription>
-          </div>
-
-          <div className="my-4 space-y-4">
-            <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 text-center space-y-2">
-              <p className="text-xs text-emerald-300">Active Valid Stamps:</p>
-              <p className="text-3xl font-black text-lime-400 font-display">{validStampsCount} / 12 Stamps</p>
-              
-              {fairPlayPenalty && fairPlayPenalty.appliedPenalties && fairPlayPenalty.appliedPenalties.length > 0 ? (
-                <div className="bg-red-950/80 border border-red-500/80 rounded-xl p-3 text-left space-y-1.5 mt-2">
-                  <p className="text-[10px] font-extrabold text-red-400 uppercase flex items-center gap-1">
-                    <AlertTriangle className="size-3.5" /> Fair Play Infraction Notice:
-                  </p>
-                  <p className="text-[10px] text-red-200 font-medium">
-                    Offense Recorded: <strong>{fairPlayPenalty.appliedPenalties.join(', ')}</strong>
-                  </p>
-                  <div className="text-[10px] text-amber-300 pt-1 border-t border-red-900/60 space-y-0.5">
-                    <p>• 6th Stamp Reward: <strong>{fairPlayPenalty.sixthReward}</strong></p>
-                    <p>• 9th Stamp Reward: <strong>{fairPlayPenalty.ninthReward}</strong></p>
-                    <p>• 12th Stamp Reward: <strong>{fairPlayPenalty.twelfthReward}</strong></p>
-                  </div>
+      <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
+        {loyaltyLoading && !loyaltyStatus ? (
+          <p className="text-xs text-emerald-300 text-center py-10">Loading your loyalty card…</p>
+        ) : !loyaltyStatus ? (
+          <p className="text-xs text-emerald-300 text-center py-10">Loyalty data unavailable. Please log in as a registered customer.</p>
+        ) : (() => {
+          const tier = loyaltyStatus.tier || 'SILVER';
+          const block = loyaltyStatus.block || 1;
+          const blockSizes = [4, 10, 15, 20, 10];
+          const size = blockSizes[block - 1] || 10;
+          const pos = loyaltyStatus.position_in_block || 0;
+          const cum = loyaltyStatus.cumulative_stamps || 0;
+          const isDiamond = tier === 'DIAMOND';
+          const isPlatinum = tier === 'PLATINUM';
+          const cardSkin = isDiamond
+            ? 'bg-[#050505] border-2 border-sky-400/80 shadow-[0_0_28px_rgba(56,189,248,0.45)]'
+            : isPlatinum
+            ? 'bg-[#0a0a0c] border-2 border-slate-300/80 shadow-[0_0_28px_rgba(226,232,240,0.4)]'
+            : 'bg-[#061d16] border-2 border-emerald-500/80 shadow-[0_0_22px_rgba(16,185,129,0.35)]';
+          const milestoneRewards: Record<number, Record<number, string>> = {
+            1: { 4: '10% OFF' },
+            2: { 5: '10% OFF', 10: '15% OFF' },
+            3: { 5: '10% OFF', 10: '15% OFF', 15: '20% OFF' },
+            4: { 5: '10% OFF', 10: '15% OFF', 15: '25% OFF', 20: '50% OFF' },
+            5: { 5: '50% OFF', 10: 'FREE MEAL → PLATINUM' }
+          };
+          const nextEntry = Object.entries(milestoneRewards[block] || {}).find(([p]) => Number(p) > pos);
+          const wallet: any[] = loyaltyStatus.rewards || [];
+          const weekly = loyaltyStatus.weekly;
+          const platExp = loyaltyStatus.platinum_expires_at ? new Date(loyaltyStatus.platinum_expires_at) : null;
+          return (
+            <div className="space-y-4">
+              <div className={`rounded-3xl p-5 space-y-3 ${cardSkin}`}>
+                <div className="flex items-center justify-between">
+                  <span className={`font-display text-lg font-black uppercase tracking-widest ${isDiamond ? 'text-sky-300' : isPlatinum ? 'text-slate-100' : 'text-lime-400'}`}>
+                    VEYNS. {tier} CARD
+                  </span>
+                  <Award className={`size-5 ${isDiamond ? 'text-sky-300' : isPlatinum ? 'text-slate-200' : 'text-lime-400'}`} />
                 </div>
-              ) : null}
-            </div>
-
-            <div className="grid grid-cols-4 gap-2.5">
-              {Array.from({ length: 12 }).map((_, idx) => {
-                const stampEntry = stamps[idx];
-                const status = stampEntry ? stampEntry.status : 'empty';
-                const isSixth = idx === 5;
-                const isNinth = idx === 8;
-                const isTwelfth = idx === 11;
-
-                let sixthText = '25% OFF';
-                let ninthText = '50% OFF';
-                let twelfthText = 'FREE';
-
-                if (fairPlayPenalty && fairPlayPenalty.appliedPenalties && fairPlayPenalty.appliedPenalties.length > 0) {
-                  if (fairPlayPenalty.sixthReward) sixthText = fairPlayPenalty.sixthReward;
-                  if (fairPlayPenalty.ninthReward) ninthText = fairPlayPenalty.ninthReward;
-                  if (fairPlayPenalty.twelfthReward) twelfthText = fairPlayPenalty.twelfthReward;
-                }
-
-                return (
-                  <div
-                    key={idx}
-                    className={`relative aspect-square rounded-2xl border flex flex-col items-center justify-center text-xs font-extrabold transition-all p-1 text-center ${
-                      status === 'valid'
-                        ? 'bg-[#082d22] border-lime-400 text-lime-400 shadow-md'
-                        : status === 'to_clear'
-                        ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-md animate-pulse'
-                        : status === 'invalid'
-                        ? 'bg-red-950/80 border-red-500 text-red-400 shadow-md'
-                        : 'bg-[#041913] border-emerald-800/60 text-emerald-600'
-                    }`}
-                  >
-                    {status === 'valid' && <Check className="size-5 text-lime-400 mb-0.5" />}
-                    {status === 'to_clear' && <Clock className="size-5 text-amber-400 mb-0.5" />}
-                    {status === 'invalid' && <XCircle className="size-5 text-red-400 mb-0.5" />}
-                    {status === 'empty' && <span className="text-xs font-mono">#{idx + 1}</span>}
-
-                    {fairPlayPenalty && fairPlayPenalty.appliedPenalties && fairPlayPenalty.appliedPenalties.length > 0 ? (
-                      <>
-                        {isSixth && (
-                          <span className={`absolute -top-2 -right-1 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow ${sixthText.includes('Invalid') || sixthText.includes('CANCELLED') ? 'bg-red-500 text-white' : 'bg-amber-500'}`}>
-                            {sixthText}
-                          </span>
-                        )}
-                        {isNinth && (
-                          <span className={`absolute -top-2 -right-1 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow ${ninthText.includes('Invalid') || ninthText.includes('CANCELLED') ? 'bg-red-500 text-white' : 'bg-amber-400'}`}>
-                            {ninthText}
-                          </span>
-                        )}
-                        {isTwelfth && (
-                          <span className={`absolute -top-2 -right-1 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow ${twelfthText.includes('Cancelled') || twelfthText.includes('Invalid') ? 'bg-red-500 text-white' : twelfthText === '25% OFF' ? 'bg-amber-400' : 'bg-lime-400'}`}>
-                            {twelfthText}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        {isSixth && (
-                          <span className="absolute -top-2 -right-1 bg-amber-500 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">
-                            25% OFF
-                          </span>
-                        )}
-                        {isNinth && (
-                          <span className="absolute -top-2 -right-1 bg-amber-400 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">
-                            50% OFF
-                          </span>
-                        )}
-                        {isTwelfth && (
-                          <span className="absolute -top-2 -right-1 bg-lime-400 text-black text-[8px] font-black px-1.5 py-0.5 rounded-full shadow">
-                            FREE
-                          </span>
-                        )}
-                      </>
-                    )}
+                {isDiamond ? (
+                  <div className="space-y-2 text-center py-2">
+                    <p className="text-xs text-sky-200 italic leading-relaxed">
+                      "Thank you for being a founder of our story. This card is our handshake — no quotas, no counters, just our gratitude."
+                    </p>
+                    <div className="text-[10px] text-sky-300/90 space-y-0.5 font-semibold">
+                      <p>• Priority kitchen queue, custom packaging, handwritten notes</p>
+                      <p>• Annual co-created weekend special • Monthly complimentary staple</p>
+                      <p>• Direct line for party trays & catering</p>
+                    </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                ) : (
+                  <>
+                    <div className="flex items-end justify-between">
+                      <div>
+                        <p className="text-[10px] text-emerald-300 uppercase font-bold">Block {block} of 5</p>
+                        <p className="text-3xl font-black font-display text-white">{pos}<span className="text-base text-emerald-300"> / {size} stamps</span></p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] text-emerald-300 uppercase font-bold">Lifetime</p>
+                        <p className="text-sm font-extrabold text-lime-400">{cum} stamps</p>
+                      </div>
+                    </div>
+                    <div className="h-2 rounded-full bg-black/50 overflow-hidden">
+                      <div className="h-full bg-lime-400 transition-all" style={{ width: `${Math.min(100, (pos / size) * 100)}%` }} />
+                    </div>
+                    <p className="text-[11px] text-emerald-200">
+                      {nextEntry
+                        ? <>Next reward at stamp {nextEntry[0]}: <strong className="text-lime-400">{nextEntry[1]}</strong> ({Number(nextEntry[0]) - pos} to go)</>
+                        : <>Block {block} complete — keep going!</>}
+                    </p>
+                    {isPlatinum && platExp && (
+                      <p className="text-[10px] text-slate-300 font-semibold">
+                        VIP active until {platExp.toLocaleString('en-PH', { timeZone: 'Asia/Manila' })} (Manila time)
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
 
-          <Button
-            onClick={() => setShowLoyaltyModal(false)}
-            className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg"
-          >
-            Close Loyalty Card
-          </Button>
-        </DialogContent>
+              {(isPlatinum || isDiamond) && weekly && (
+                <div className="bg-[#0a0a0c] border border-slate-500/50 rounded-2xl p-4 space-y-2 text-xs">
+                  <p className="font-extrabold text-slate-100 uppercase tracking-wider text-[10px]">Platinum Command Center (Week of {weekly.week_start})</p>
+                  <div className="flex justify-between text-slate-300">
+                    <span>Weekly qualifying orders:</span>
+                    <strong className="text-white">{weekly.qualifying_orders} / 3 {weekly.free_meal_unlocked ? '• Free meal unlocked 🎉' : ''}</strong>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-300">
+                    <span>10% discount allowance:</span>
+                    <strong className="text-white">{weekly.claims_remaining} / 2 available</strong>
+                  </div>
+                  <Button
+                    type="button"
+                    disabled={weekly.claims_remaining <= 0}
+                    onClick={handleClaimPlatinumDiscount}
+                    className="w-full bg-slate-200 hover:bg-white text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Claim a 10% Discount Code
+                  </Button>
+                  <p className="text-[9px] text-slate-400">Resets every Monday 12:00 AM (Manila). Unused claims expire.</p>
+                </div>
+              )}
+
+              <div className="bg-[#051813] border border-emerald-800 rounded-2xl p-4 space-y-2 text-xs">
+                <p className="font-extrabold text-lime-400 uppercase tracking-wider text-[10px]">My Rewards Wallet</p>
+                {wallet.length === 0 ? (
+                  <p className="text-emerald-400/70 text-[11px] py-2 text-center">No rewards yet. Earn stamps to unlock milestone rewards!</p>
+                ) : (
+                  wallet.map((r: any) => (
+                    <div key={r.id} className="flex items-center justify-between bg-[#061d16] border border-emerald-800/70 rounded-xl p-2.5">
+                      <div>
+                        <p className="font-bold text-white text-[11px] uppercase">{r.reward_type.replace(/_/g, ' ')}</p>
+                        <p className="text-[9px] text-emerald-300">
+                          {r.status === 'claimed' ? `Code: ${r.promo_code}` : r.status === 'redeemed' ? 'Redeemed ✓' : 'Ready to claim'}
+                        </p>
+                      </div>
+                      {r.status === 'unclaimed' && (
+                        <Button type="button" size="sm" onClick={() => handleClaimReward(r.id)}
+                          className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-[10px] px-3 py-1 rounded-lg cursor-pointer">
+                          Claim
+                        </Button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <Button onClick={() => setShowLoyaltyModal(false)}
+                className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg">
+                Close Loyalty Card
+              </Button>
+            </div>
+          );
+        })()}
+      </DialogContent>
       </Dialog>
 
       {/* SECTION 26: Customer order-history modal. */}
