@@ -65,10 +65,18 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setLoyaltyLoading(true);
     try {
       const { data, error } = await supabase.rpc('get_loyalty_status', { p_user_id: currentUser.authUserId });
-      if (!error && data) setLoyaltyStatus(data);
+      if (!error && data) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('created_at')
+          .eq('auth_user_id', currentUser.authUserId)
+          .maybeSingle();
+        setLoyaltyStatus({ ...data, member_since: prof?.created_at || null });
+      }
     } catch (e) { console.error('Loyalty status load failed:', e); }
     setLoyaltyLoading(false);
   };
+
   useEffect(() => { if (showLoyaltyModal) loadLoyaltyStatus(); }, [showLoyaltyModal]);
   const handleClaimReward = async (rewardId: string) => {
     const { data, error } = await supabase.rpc('claim_loyalty_reward', { p_reward_id: rewardId });
