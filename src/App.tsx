@@ -722,7 +722,7 @@ export function App() {
             if (tab === 'update') {
               setIsUpdatingIdentifier(true);
               setIsResettingPassword(false);
-              setNewEmailInput(currentUser.identifier || '');
+              setNewEmailInput('');
             } else if (tab === 'password') {
               setIsResettingPassword(true);
               setIsUpdatingIdentifier(false);
@@ -824,42 +824,36 @@ export function App() {
                       </div>
                     )}
                     {isUpdatingIdentifier && (
-                      <form onSubmit={handleUpdateIdentifierSubmit} className="space-y-3 pt-2">
-                        <div className="space-y-1">
-                          <span className="text-[10px] text-emerald-400 uppercase tracking-wider block font-bold">Your Registered Email</span>
-                          <p className="text-xs font-mono font-bold text-white bg-[#041913] p-2.5 rounded-xl border border-emerald-800/80">
-                            {currentUser?.email || currentUser?.identifier || 'perezgeoffaugustine@gmail.com'}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">
-                            New Email Address
-                          </label>
-                          <input
-                            type="email"
-                            required
-                            value={newEmailInput}
-                            onChange={(e) => setNewEmailInput(e.target.value)}
-                            className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400 text-xs"
-                            placeholder="Enter new email address"
-                          />
-                        </div>
-                        <div className="flex gap-2 pt-2">
-                          <Button
-                            type="button"
-                            onClick={() => setIsUpdatingIdentifier(false)}
-                            className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            type="submit"
-                            className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer shadow"
-                          >
-                            Save New Email
-                          </Button>
-                        </div>
-                      </form>
+                    <form onSubmit={handleUpdateIdentifierSubmit} className="space-y-3 pt-2">
+                      <div className="space-y-2">
+                        <label className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">
+                          New Email Address
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          value={newEmailInput}
+                          onChange={(e) => setNewEmailInput(e.target.value)}
+                          className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-lime-400 text-xs"
+                          placeholder="Enter new email address"
+                        />
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          type="button"
+                          onClick={() => setIsUpdatingIdentifier(false)}
+                          className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="submit"
+                          className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer shadow"
+                        >
+                          Save New Email
+                        </Button>
+                      </div>
+                    </form>
                     )}
 
                     {isResettingPassword && (
