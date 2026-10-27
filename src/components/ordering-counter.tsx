@@ -257,6 +257,37 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [reservationDate, setReservationDate] = useState('');
   const [reservationTime, setReservationTime] = useState('12:00 PM - 1:00 PM');
 
+  // Auto-select next available slot when reservation date is today
+  useEffect(() => {
+    if (!reservationDate) return;
+    const today = new Date().toISOString().split('T')[0];
+    if (reservationDate !== today) return;
+    
+    const slots = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'];
+    const options: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false };
+    const currentHour = parseInt(new Intl.DateTimeFormat([], options).format(new Date()), 10);
+    
+    // Find the next available (non-past, non-fully-booked) slot
+    for (const slot of slots) {
+      const slotStartHour = parseInt(slot.split(':')[0]);
+      const isPM = slot.includes('PM');
+      const slotHour24 = isPM && slotStartHour !== 12 ? slotStartHour + 12 : (isPM ? 12 : slotStartHour);
+      const isPast = currentHour >= slotHour24 + 1;
+      
+      if (!isPast) {
+        // Check if slot is fully booked
+        const slotArray = Array.isArray(slotCapacities) ? slotCapacities : (slotCapacities ? Object.values(slotCapacities) : []);
+        const slotInfo = slotArray.find((s: any) => s.slot_time === slot && s.date_key === today);
+        const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_bowls >= (slotInfo.max_bowls || 10));
+        
+        if (!isFullyBooked) {
+          setReservationTime(slot);
+          break;
+        }
+      }
+    }
+  }, [reservationDate, slotCapacities]);
+
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
