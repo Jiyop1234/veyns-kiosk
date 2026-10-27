@@ -121,19 +121,39 @@ export function App() {
     let alive = true;
     const restoreAuthUser = async (session: any) => {
       if (!session?.user) return;
-      
       if (!session.user.email_confirmed_at) {
         setLoginError('Your email address is not verified yet. Please check your inbox and confirm your account.');
         await supabase.auth.signOut();
         return;
       }
-
       const { data, error } = await supabase.rpc('claim_veyns_profile');
-      if (!alive || error) { if (error) console.error('Unable to load profile:', error.message); return; }
-      const profile = Array.isArray(data) ? data[0] : data;
+      if (!alive || error) { 
+        if (error) console.error('Unable to load profile:', error.message); 
+        // Fallback: create user object from session data
+        const fallbackUser = {
+          id: session.user.id,
+          authUserId: session.user.id,
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Valued Customer',
+          identifier: session.user.email,
+          email: session.user.email,
+          role: 'regular',
+          type: 'regular'
+        };
+        setCurrentUser(fallbackUser);
+        setAuthMode('regular');
+        return;
+      }
+      const profile = data;
       if (!profile) return;
-
-      const userObj = { id: profile.id, authUserId: session.user.id, name: profile.name || 'Valued Customer', identifier: profile.identifier || session.user.email, email: session.user.email, role: profile.role, type: 'regular' };
+      const userObj = { 
+        id: profile.id, 
+        authUserId: session.user.id, 
+        name: profile.name || session.user.user_metadata?.name || 'Valued Customer', 
+        identifier: profile.identifier || session.user.email, 
+        email: session.user.email, 
+        role: profile.role, 
+        type: 'regular' 
+      };
       setCurrentUser(userObj);
       setAuthMode(['employee', 'admin'].includes(profile.role) ? 'employee' : 'regular');
       setIsAdminDashboardOpen(['employee', 'admin'].includes(profile.role));
@@ -236,31 +256,29 @@ export function App() {
       email: authEmailInput,
       password: authPassword,
     });
-
     if (error) {
       setLoginError(error.message);
       return;
     }
-
     if (data?.user) {
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('auth_user_id', data.user.id)
         .maybeSingle();
-
       const userRole = profile?.role || 'regular';
-
       setCurrentUser({
         userId: data.user.id,
+        authUserId: data.user.id,
         email: data.user.email,
         role: userRole,
-        name: profile?.name || 'Valued Customer'
+        type: 'regular',
+        name: profile?.name || authName || 'Valued Customer',
+        identifier: profile?.identifier || data.user.email
       });
-
       if (userRole === 'admin' || userRole === 'employee') {
         setAuthMode('employee');
-        setIsAdminDashboardOpen(true); 
+        setIsAdminDashboardOpen(true);
       } else {
         setAuthMode('regular');
       }
