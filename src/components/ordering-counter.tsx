@@ -1162,13 +1162,16 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           const platExp = loyaltyStatus.platinum_expires_at ? new Date(loyaltyStatus.platinum_expires_at) : null;
           return (
             <div className="space-y-4">
-              <div className={`rounded-3xl p-5 space-y-3 ${cardSkin}`}>
-                <div className="flex items-center justify-between">
-                  <span className={`font-display text-lg font-black uppercase tracking-widest ${isDiamond ? 'text-sky-300' : isPlatinum ? 'text-slate-100' : 'text-lime-400'}`}>
-                    VEYNS. {tier} CARD
+              <div className={`rounded-3xl p-5 space-y-4 ${cardSkin}`}>
+                {/* Card header — reference style */}
+                <div className="relative text-center space-y-1">
+                  <span className={`absolute top-0 right-0 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${isDiamond ? 'bg-sky-400/20 text-sky-300 border border-sky-400/50' : isPlatinum ? 'bg-slate-200/20 text-slate-100 border border-slate-300/50' : 'bg-lime-400/20 text-lime-400 border border-lime-400/50'}`}>
+                    {tier}
                   </span>
-                  <Award className={`size-5 ${isDiamond ? 'text-sky-300' : isPlatinum ? 'text-slate-200' : 'text-lime-400'}`} />
+                  <p className="font-display text-2xl font-black text-white tracking-wide">Loyalty Card</p>
+                  <p className="text-[10px] text-emerald-200/80">Enjoy your rewards!</p>
                 </div>
+
                 {isDiamond ? (
                   <div className="space-y-2 text-center py-2">
                     <p className="text-xs text-sky-200 italic leading-relaxed">
@@ -1180,33 +1183,69 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       <p>• Direct line for party trays & catering</p>
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <div className="flex items-end justify-between">
-                      <div>
-                        <p className="text-[10px] text-emerald-300 uppercase font-bold">Block {block} of 5</p>
-                        <p className="text-3xl font-black font-display text-white">{pos}<span className="text-base text-emerald-300"> / {size} stamps</span></p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] text-emerald-300 uppercase font-bold">Lifetime</p>
-                        <p className="text-sm font-extrabold text-lime-400">{cum} stamps</p>
-                      </div>
-                    </div>
-                    <div className="h-2 rounded-full bg-black/50 overflow-hidden">
-                      <div className="h-full bg-lime-400 transition-all" style={{ width: `${Math.min(100, (pos / size) * 100)}%` }} />
-                    </div>
-                    <p className="text-[11px] text-emerald-200">
-                      {nextEntry
-                        ? <>Next reward at stamp {nextEntry[0]}: <strong className="text-lime-400">{nextEntry[1]}</strong> ({Number(nextEntry[0]) - pos} to go)</>
-                        : <>Block {block} complete — keep going!</>}
-                    </p>
-                    {isPlatinum && platExp && (
-                      <p className="text-[10px] text-slate-300 font-semibold">
+                ) : isPlatinum ? (
+                  <div className="space-y-2 text-center py-2">
+                    <p className="text-sm font-extrabold text-slate-100 uppercase tracking-wider">VIP Journey Complete</p>
+                    <p className="text-[11px] text-slate-300">You finished all 5 milestone blocks. Enjoy your 14-day VIP loop below.</p>
+                    {platExp && (
+                      <p className="text-[10px] text-slate-200 font-semibold">
                         VIP active until {platExp.toLocaleString('en-PH', { timeZone: 'Asia/Manila' })} (Manila time)
                       </p>
                     )}
+                  </div>
+                ) : (
+                  <>
+                    {/* Stamp circles — one circle per stamp in the milestone block */}
+                    <p className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-200 text-center">
+                      Milestone Block {block} • {pos} / {size} stamps
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-2.5">
+                      {Array.from({ length: size }).map((_, idx) => {
+                        const cellNum = idx + 1;
+                        const isStamped = cellNum <= pos;
+                        const milestoneLabel = (milestoneRewards[block] || {})[cellNum];
+                        const shortLabel = milestoneLabel
+                          ? milestoneLabel.replace(' OFF', '%').replace('FREE MEAL → PLATINUM', 'FREE')
+                          : null;
+                        return (
+                          <div
+                            key={idx}
+                            className={`size-10 rounded-full flex items-center justify-center border-2 ${
+                              isStamped
+                                ? 'bg-lime-400 border-lime-300 text-black shadow-md'
+                                : 'bg-transparent border-white/70 text-lime-300'
+                            }`}
+                          >
+                            {shortLabel ? (
+                              <span className="text-[8px] font-black">{shortLabel}</span>
+                            ) : isStamped ? (
+                              <Star className="size-4 fill-black" />
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Reference-style reward tagline */}
+                    <p className="text-[11px] text-emerald-100 text-center font-semibold">
+                      {nextEntry
+                        ? Number(nextEntry[0]) === size
+                          ? `Enjoy ${nextEntry[1]} at the last stamp`
+                          : `Enjoy ${nextEntry[1]} at stamp ${nextEntry[0]} of this block`
+                        : 'Milestone complete — advancing to the next block!'}
+                    </p>
                   </>
                 )}
+              </div>
+
+              {/* Card footer (member since + lifetime stamps) */}
+              <div className="flex items-center justify-between px-2 text-[10px] text-emerald-200/90">
+                <span className="flex items-center gap-1.5">
+                  <CreditCard className="size-3.5 text-lime-400" />
+                  {loyaltyStatus.member_since
+                    ? `Member since ${new Date(loyaltyStatus.member_since).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}`
+                    : 'VEYNS. member'}
+                </span>
+                <span className="font-extrabold text-lime-400">{cum} lifetime stamps</span>
               </div>
 
               {(isPlatinum || isDiamond) && weekly && (
