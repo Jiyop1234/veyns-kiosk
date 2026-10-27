@@ -818,7 +818,7 @@ export function App() {
                           onClick={() => {
                             setIsUpdatingIdentifier(true);
                             setIsResettingPassword(false);
-                            setNewEmailInput(currentUser.identifier || currentUser.email || '');
+                            setNewEmailInput('');
                           }}
                           className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-[11px] cursor-pointer flex items-center justify-center gap-1"
                         >
@@ -841,7 +841,7 @@ export function App() {
                         <div className="space-y-1">
                           <span className="text-[10px] text-emerald-400 uppercase tracking-wider block font-bold">Your Registered Email</span>
                           <p className="text-xs font-mono font-bold text-white bg-[#041913] p-2.5 rounded-xl border border-emerald-800/80">
-                            {currentUser?.email || currentUser?.identifier || 'perezgeoffaugustine@gmail.com'}
+                            {currentUser?.email || currentUser?.identifier || 'Connected via Supabase'}
                           </p>
                         </div>
                         <div className="space-y-2">
