@@ -1561,9 +1561,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 }
 
 // --- Reusable editor card for an individual date/time slot's bowl capacity & bookings ---
-// --- Reusable editor card for an individual date/time slot's bowl capacity & bookings ---
 function SlotCapacityCard({ slotTime, dateKey, initialMaxBowls, bookedBowls, initialMaxSlots, initialFullyBooked, onSave, onInspect }: any) {
-  // Use initialMaxBowls if provided, otherwise default to 10, but allow it to be changed
+  // Use initialMaxBowls if provided, otherwise default to 10 (configurable, not hardcoded)
   const [maxBowls, setMaxBowls] = useState(initialMaxBowls || 10);
   const [maxSlots, setMaxSlots] = useState(initialMaxSlots || 10);
   const [isFullyBooked, setIsFullyBooked] = useState(initialFullyBooked || false);
@@ -1597,7 +1596,7 @@ function SlotCapacityCard({ slotTime, dateKey, initialMaxBowls, bookedBowls, ini
           </Button>
         </div>
       </div>
-      
+
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="text-[10px] text-emerald-300 block mb-1">Max Bowls Cap (Configurable):</label>
@@ -1621,7 +1620,7 @@ function SlotCapacityCard({ slotTime, dateKey, initialMaxBowls, bookedBowls, ini
           </label>
         </div>
       </div>
-      
+
       <div className="flex justify-between items-center pt-1 text-[11px] text-emerald-300">
         <span>Reserved Bowls: <strong>{currentBookedBowls} / {maxBowls}</strong></span>
         <Button
