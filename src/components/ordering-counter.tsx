@@ -1923,6 +1923,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         <label className="text-[10px] text-emerald-300 block mb-1">Reservation Date *</label>
                         <input
                           type="date"
+                          min={new Date().toISOString().split('T')[0]}
                           value={reservationDate}
                           onChange={(e) => setReservationDate(e.target.value)}
                           className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white text-xs focus:outline-none focus:border-lime-400"
@@ -1938,10 +1939,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                           {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => {
                             const slotArray = Array.isArray(slotCapacities) ? slotCapacities : (slotCapacities ? Object.values(slotCapacities) : []);
                             const slotInfo = slotArray.find((s: any) => s.slot_time === slot && s.date_key === reservationDate);
-                            const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_count >= slotInfo.max_slots);
-                            const slotsLeft = slotInfo ? Math.max(0, slotInfo.max_slots - slotInfo.booked_count) : null;
-                            const labelText = `${slot} ${isFullyBooked ? '(Fully Booked)' : slotsLeft !== null ? `(${slotsLeft} slots left)` : ''}`;
-
+                            const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_bowls >= (slotInfo.max_bowls || 10));
+                            const bowlsLeft = slotInfo ? Math.max(0, (slotInfo.max_bowls || 10) - slotInfo.booked_bowls) : null;
+                            const labelText = `${slot} ${isFullyBooked ? '(Fully Booked)' : bowlsLeft !== null ? `(${bowlsLeft} bowls left)` : ''}`;
                             return (
                               <option key={slot} value={slot} disabled={isFullyBooked}>
                                 {labelText}
