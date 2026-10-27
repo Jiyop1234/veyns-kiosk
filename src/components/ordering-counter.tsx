@@ -1761,7 +1761,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     {publicVouchersList.map((promo, pIdx) => {
                       const isAlreadyApplied = appliedPromos.some(p => p.code.toUpperCase() === promo.code.toUpperCase());
 
-                      // Calculate real-time countdown
+                      // Calculate real-time countdown using the existing nowTimestamp state
                       let timeRemainingText = 'Never expires';
                       let isExpired = false;
                       if (promo.expiryDurationMs && promo.expiryDurationMs > 0 && promo.createdAt) {
@@ -1799,7 +1799,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                             size="sm"
                             disabled={isExpired || isAlreadyApplied}
                             onClick={() => handleClaimVoucher(promo)}
-                            className={`bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-extrabold text-[10px] px-3 py-1 rounded-lg cursor-pointer ${isExpired ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            className={`bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-extrabold text-[10px] px-3 py-1 rounded-lg cursor-pointer ${
+                              isExpired ? 'opacity-50 cursor-not-allowed bg-red-950/40 text-red-400 border-red-800 hover:bg-red-950/40 hover:text-red-400' : ''
+                            }`}
                           >
                             {isExpired ? 'Expired' : isAlreadyApplied ? 'Applied ✓' : 'Claim & Stack'}
                           </Button>
