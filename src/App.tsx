@@ -177,7 +177,15 @@ export function App() {
     });
     try {
       if (localStorage.getItem('veyns_auth_mode') === 'guest') {
-        setCurrentUser({ name: 'Guest Diner', identifier: 'guest_trial', role: 'guest', type: 'guest' });
+        const userObj = {
+          id: profile?.id,
+          authUserId: data.user.id,
+          email: data.user.email,
+          identifier: profile?.identifier || data.user.email,
+          role: userRole,
+          type: 'regular',
+          name: profile?.name || authName || data.user.email?.split('@')[0] || 'Valued Customer'
+        };
         setAuthMode('guest');
         const sessionOrders = sessionStorage.getItem('veyns_guest_order_history');
         if (sessionOrders) setOrderHistory(JSON.parse(sessionOrders));
@@ -280,17 +288,16 @@ export function App() {
       const userRole = profile?.role || 'regular';
       // Build a COMPLETE user object so the header renders the correct nickname immediately
       // without waiting for restoreAuthUser to fire from the auth state listener.
-      const completeUser = {
+      const userObj = {
         id: profile?.id,
-        userId: data.user.id,
         authUserId: data.user.id,
         email: data.user.email,
         identifier: profile?.identifier || data.user.email,
         role: userRole,
         type: 'regular',
-        name: profile?.name || authName || data.user.email?.split('@')[0] || 'Valued Customer'
+        name: profile?.name || data.user.user_metadata?.name || authName || data.user.email?.split('@')[0] || 'Valued Customer'
       };
-      setCurrentUser(completeUser);
+      setCurrentUser(userObj);
       if (userRole === 'admin' || userRole === 'employee') {
         setAuthMode('employee');
         setIsAdminDashboardOpen(true);
@@ -353,14 +360,16 @@ export function App() {
       setLoginError('This account does not have staff access.'); 
       return;
     }
-    setCurrentUser({ 
-      id: profile.id, 
-      authUserId: data.user.id, 
-      name: profile.name, 
-      identifier: profile.identifier, 
-      role: profile.role, 
-      type: 'regular' 
-    });
+
+    const userObj = {
+      id: profile?.id,
+      authUserId: data.user.id,
+      email: data.user.email,
+      identifier: profile?.identifier || data.user.email,
+      role: userRole,
+      type: 'regular',
+      name: profile?.name || authName || data.user.email?.split('@')[0] || 'Valued Customer'
+    };
     setAuthMode('employee'); 
     setIsAdminDashboardOpen(true);
   };
