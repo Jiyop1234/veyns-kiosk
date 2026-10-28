@@ -1294,16 +1294,16 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
                     {/* BACK */}
                     <div className="absolute inset-0 [transform:rotateY(180deg)] [backface-visibility:hidden] overflow-y-auto space-y-3">
-                      <div className="flex items-start justify-between">
-                        <p className="font-display text-lg font-black text-white uppercase tracking-wide">Thank You!</p>
+                      <div className="relative">
+                        <p className="font-display text-lg font-black text-white uppercase tracking-wide text-center">Thank You!</p>
                         <button
                           type="button"
                           onClick={() => setLoyaltyCardFlipped(false)}
-                          className="size-8 rounded-full bg-black/30 border border-white/30 text-white hover:bg-lime-400 hover:text-black transition-all cursor-pointer flex items-center justify-center text-sm font-black shrink-0"
+                          className="absolute top-0 right-0 size-8 rounded-full bg-black/30 border border-white/30 text-white hover:bg-lime-400 hover:text-black transition-all cursor-pointer flex items-center justify-center text-sm font-black"
                           title="Flip back"
                         >⟳</button>
                       </div>
-                      <p className="text-[11px] text-emerald-100 italic leading-relaxed">
+                      <p className="text-[11px] text-emerald-100 italic leading-relaxed text-center px-2">
                         "Thank you for supporting VEYNS. Every stamp on this card is a meal you shared with us — we're grateful for every single one."
                       </p>
                       <div className="bg-black/25 rounded-2xl p-3 space-y-1.5">
