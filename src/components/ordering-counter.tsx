@@ -60,7 +60,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   // --- Phase 3: Milestone loyalty status, wallet claiming, Platinum weekly claims ---
   const [loyaltyStatus, setLoyaltyStatus] = useState<any>(null);
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
-  const loadLoyaltyStatus = async () => {
+  const loadLoyaltyStatus = async (notify = false) => {
     if (!currentUser || isGuest || !currentUser.authUserId) { setLoyaltyStatus(null); return; }
     setLoyaltyLoading(true);
     try {
@@ -71,7 +71,16 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           .select('created_at')
           .eq('auth_user_id', currentUser.authUserId)
           .maybeSingle();
-        setLoyaltyStatus({ ...data, member_since: prof?.created_at || null });
+        const next = { ...data, member_since: prof?.created_at || null };
+        if (notify) {
+          const prevCodes = (loyaltyStatus?.rewards || []).map((r: any) => r.promo_code).filter(Boolean);
+          (next.rewards || []).forEach((r: any) => {
+            if (r.promo_code && !prevCodes.includes(r.promo_code)) {
+              alert(`🎉 You earned a ${String(r.reward_type).replace(/_/g, ' ')} voucher: ${r.promo_code} — type it at checkout! (single-use, 14 days)`);
+            }
+          });
+        }
+        setLoyaltyStatus(next);
       }
     } catch (e) { console.error('Loyalty status load failed:', e); }
     setLoyaltyLoading(false);
@@ -123,7 +132,14 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         virtualMilestone: true
       }];
     });
-  }, [milestonePreview]);
+  }, [milestonePreview, appliedPromos]);
+
+  // --- Phase 3c: alert the customer when a new voucher (free meal) is earned ---
+  const [prevOrderCount, setPrevOrderCount] = useState(orderHistory.length);
+  useEffect(() => {
+    if (orderHistory.length > prevOrderCount) { void loadLoyaltyStatus(true); }
+    setPrevOrderCount(orderHistory.length);
+  }, [orderHistory.length]);
 
   // SECTION 6: Load scheduling capacity, promotions, loyalty information, and menu configuration.
   // Real-time voucher expiry ticker & auto-purge task
@@ -1190,6 +1206,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           };
           const nextEntry = Object.entries(milestoneRewards[block] || {}).find(([p]) => Number(p) > pos);
           const wallet: any[] = loyaltyStatus.rewards || [];
+          const activeVouchers = wallet.filter((w: any) => w.status === 'claimed' && w.promo_code);
           const weekly = loyaltyStatus.weekly;
           const platExp = loyaltyStatus.platinum_expires_at ? new Date(loyaltyStatus.platinum_expires_at) : null;
           return (
@@ -1355,29 +1372,28 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
               )}
 
               <div className="bg-[#051813] border border-emerald-800 rounded-2xl p-4 space-y-2 text-xs">
-                <p className="font-extrabold text-lime-400 uppercase tracking-wider text-[10px]">My Rewards Wallet</p>
-                {wallet.length === 0 ? (
-                  <p className="text-emerald-400/70 text-[11px] py-2 text-center">No rewards yet. Earn stamps to unlock milestone rewards!</p>
-                ) : (
-                  wallet.map((r: any) => (
-                    <div key={r.id} className="flex items-center justify-between bg-[#061d16] border border-emerald-800/70 rounded-xl p-2.5">
-                      <div>
-                        <p className="font-bold text-white text-[11px] uppercase">{r.reward_type.replace(/_/g, ' ')}</p>
-                        <p className="text-[9px] text-emerald-300">
-                          {r.status === 'claimed' ? `Code: ${r.promo_code}` : r.status === 'redeemed' ? (r.block_number > 0 ? 'Auto-applied at checkout ✓' : 'Redeemed ✓') : 'Ready to claim'}
-                        </p>
+                <p className="font-extrabold text-lime-400 uppercase tracking-wider text-[10px]">How It Works</p>
+                <div className="text-[10px] text-emerald-200/90 space-y-1">
+                  <p>• 1 stamp per completed order per day (Manila time).</p>
+                  <p>• Percentage rewards (10–50%) apply automatically to the order that completes them — nothing to claim.</p>
+                  <p>• FREE MEAL rewards arrive as single-use vouchers (FM- code, ₱150, 14 days) — type the code at checkout.</p>
+                  <p>• Platinum members: claim your 2 weekly 10% codes from the VIP panel above.</p>
+                </div>
+                {activeVouchers.length > 0 && (
+                  <div className="space-y-1.5 pt-2 border-t border-emerald-900/60">
+                    <p className="font-extrabold text-lime-400 uppercase tracking-wider text-[10px]">Your Active Vouchers</p>
+                    {activeVouchers.map((v: any) => (
+                      <div key={v.id} className="flex items-center justify-between bg-[#061d16] border border-lime-400/40 rounded-xl p-2.5">
+                        <div>
+                          <p className="font-bold text-lime-400 text-[11px] font-mono">{v.promo_code}</p>
+                          <p className="text-[9px] text-emerald-300">{String(v.reward_type).replace(/_/g, ' ')} • single-use • type at checkout</p>
+                        </div>
+                        <Ticket className="size-4 text-lime-400" />
                       </div>
-                      {r.status === 'unclaimed' && (
-                        <Button type="button" size="sm" onClick={() => handleClaimReward(r.id)}
-                          className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-[10px] px-3 py-1 rounded-lg cursor-pointer">
-                          Claim
-                        </Button>
-                      )}
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
-
               <Button onClick={() => setShowLoyaltyModal(false)}
                 className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg">
                 Close Loyalty Card
