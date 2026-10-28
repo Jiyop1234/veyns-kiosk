@@ -105,9 +105,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
   useEffect(() => { if (!showLoyaltyModal) setLoyaltyCardFlipped(false); }, [showLoyaltyModal]);
   useEffect(() => {
-    if (showCheckoutModal) { void loadMilestonePreview(); }
-    else { setAppliedPromos((prev) => prev.filter((p) => !p.code.startsWith('MILESTONE-'))); setMilestonePreview(null); }
-  }, [showCheckoutModal]);
+    const cartCount = lines.reduce((sum: number, l: any) => sum + (l.qty || 0), 0);
+    if (cartCount > 0) { void loadMilestonePreview(); }
+    else { setMilestonePreview(null); setAppliedPromos((prev) => prev.filter((p) => !p.code.startsWith('MILESTONE-'))); }
+  }, [lines, currentUser]);
   useEffect(() => {
     if (!milestonePreview?.applies) return;
     setAppliedPromos((prev) => {
