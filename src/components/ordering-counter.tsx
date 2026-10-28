@@ -1085,7 +1085,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
               }}
               className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold text-xs px-4 py-2.5 rounded-full transition-all shadow-lg flex items-center gap-2 cursor-pointer"
             >
-              <Award className="h-4 w-4" /> {loyaltyStatus ? `${loyaltyStatus.tier} • ${loyaltyStatus.cumulative_stamps} Stamps` : 'Loyalty Card'}
+              <Award className="h-4 w-4" /> {loyaltyStatus ? (['PLATINUM', 'DIAMOND'].includes(loyaltyStatus.tier) ? `${loyaltyStatus.tier} • ${loyaltyStatus.cumulative_stamps} Stamps` : `Loyalty • ${loyaltyStatus.cumulative_stamps} Stamps`) : 'Loyalty Card'}
             </Button>
           )}
 
