@@ -1276,9 +1276,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     </div>
 
                     {/* BACK */}
-                    <div className="absolute inset-0 [transform:rotateY(180deg)] [backface-visibility:hidden] overflow-y-auto space-y-2">
+                    <div className="absolute inset-0 [transform:rotateY(180deg)] [backface-visibility:hidden] overflow-y-auto space-y-3">
                       <div className="flex items-start justify-between">
-                        <p className="font-display text-lg font-black text-white uppercase tracking-wide">Card Details</p>
+                        <p className="font-display text-lg font-black text-white uppercase tracking-wide">Thank You!</p>
                         <button
                           type="button"
                           onClick={() => setLoyaltyCardFlipped(false)}
@@ -1286,22 +1286,34 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                           title="Flip back"
                         >⟳</button>
                       </div>
-                      <div className="text-[10px] space-y-1 text-emerald-100">
-                        <p>• Tier: <strong className="text-lime-400">{tier}</strong></p>
-                        <p>• Lifetime stamps: <strong className="text-lime-400">{cum}</strong></p>
-                        {loyaltyStatus.member_since && (
-                          <p>• Member since <strong className="text-lime-400">{new Date(loyaltyStatus.member_since).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}</strong></p>
+                      <p className="text-[11px] text-emerald-100 italic leading-relaxed">
+                        "Thank you for supporting VEYNS. Every stamp on this card is a meal you shared with us — we're grateful for every single one."
+                      </p>
+                      <div className="bg-black/25 rounded-2xl p-3 space-y-1.5">
+                        <p className="text-[10px] font-extrabold uppercase tracking-wider text-lime-400">
+                          {isDiamond ? 'Diamond Benefits' : isPlatinum ? 'Platinum VIP Benefits' : `Milestone Block ${block} Benefits`}
+                        </p>
+                        {isDiamond ? (
+                          <div className="text-[10px] text-sky-200 space-y-1">
+                            <p>• Priority kitchen queue, custom packaging, handwritten notes</p>
+                            <p>• Annual co-created weekend special</p>
+                            <p>• Monthly complimentary staple</p>
+                            <p>• Direct line for party trays & catering</p>
+                          </div>
+                        ) : isPlatinum ? (
+                          <div className="text-[10px] text-slate-200 space-y-1">
+                            <p>• 14-day VIP loop with weekly resets (Monday, Manila time)</p>
+                            <p>• 2× 10% discount claims per week</p>
+                            <p>• Free meal after 3 qualifying orders in a week</p>
+                            <p>• Priority queue, custom packaging, handwritten notes</p>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-emerald-100 space-y-1">
+                            {Object.entries(milestoneRewards[block] || {}).map(([posLabel, reward]) => (
+                              <p key={posLabel}>• Stamp {posLabel}: <strong className="text-lime-400">{reward}</strong></p>
+                            ))}
+                          </div>
                         )}
-                        {isPlatinum && platExp && (
-                          <p>• VIP active until <strong className="text-lime-400">{platExp.toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}</strong></p>
-                        )}
-                      </div>
-                      <div className="text-[10px] space-y-1 text-emerald-200/90 border-t border-white/10 pt-2">
-                        <p className="font-extrabold uppercase tracking-wider text-lime-400">How it works</p>
-                        <p>• 1 stamp per completed order per day (Manila time).</p>
-                        <p>• The 1st stamp of Block 1 is your welcome stamp.</p>
-                        <p>• Milestone rewards auto-apply at checkout on the order that completes them.</p>
-                        <p>• Finish Block 5 to unlock 14 days of Platinum VIP.</p>
                       </div>
                     </div>
                   </div>
