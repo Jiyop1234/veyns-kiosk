@@ -1372,12 +1372,22 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
               )}
 
               <div className="bg-[#051813] border border-emerald-800 rounded-2xl p-4 space-y-2 text-xs">
-                <p className="font-extrabold text-lime-400 uppercase tracking-wider text-[10px]">How It Works</p>
-                <div className="text-[10px] text-emerald-200/90 space-y-1">
-                  <p>• 1 stamp per completed order per day (Manila time).</p>
-                  <p>• Percentage rewards (10–50%) apply automatically to the order that completes them — nothing to claim.</p>
-                  <p>• FREE MEAL rewards arrive as single-use vouchers (FM- code, ₱150, 14 days) — type the code at checkout.</p>
-                  <p>• Platinum members: claim your 2 weekly 10% codes from the VIP panel above.</p>
+                <div className="text-[10px] space-y-1 text-emerald-200/90 border-t border-white/10 pt-2">
+                  <p className="font-extrabold uppercase tracking-wider text-lime-400">How it works</p>
+                  {isPlatinum ? (
+                    <>
+                      <p>• 14-day VIP loop with weekly resets (Monday, Manila time).</p>
+                      <p>• 2× 10% discount claims per week.</p>
+                      <p>• Free meal after 3 qualifying orders in a week.</p>
+                      <p>• Priority queue, custom packaging, handwritten notes.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p>• 1 stamp per completed order per day (Manila time).</p>
+                      <p>• Percentage rewards apply automatically to the order that completes them — nothing to claim.</p>
+                      <p>• FREE MEAL rewards arrive as single-use vouchers with a 1-week expiry — type the code at checkout. FREE MEAL covers 1 item entirely (e.g., use it on Pork Sugba for ₱99 or Buldak Loaded for ₱179 — both become free).</p>
+                    </>
+                  )}
                 </div>
                 {activeVouchers.length > 0 && (
                   <div className="space-y-1.5 pt-2 border-t border-emerald-900/60">
