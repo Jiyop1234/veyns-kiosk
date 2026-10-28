@@ -215,23 +215,26 @@ export function App() {
   };
 
   const handleRegularAuth = async (e: React.FormEvent) => {
-    e.preventDefault(); 
-    setNicknameError(''); 
-    setIdentifierError(''); 
-    setPasswordError(''); 
+    e.preventDefault();
+    setNicknameError('');
+    setIdentifierError('');
+    setPasswordError('');
     setLoginError('');
     const email = authEmailInput.trim().toLowerCase();
     if (!email || !validateEmail(email)) {
-      setIdentifierError('Enter a valid email address.'); 
+      setIdentifierError('Enter a valid email address.');
       return;
     }
     if (!authPassword || (isSignUp && !validatePasswordStrength(authPassword))) {
-      setPasswordError('Use at least 8 characters, including a number and a symbol.'); 
+      setPasswordError('Use at least 8 characters, including a number and a symbol.');
       return;
     }
     if (isSignUp) {
       const nickname = authName.trim();
-      if (!nickname) { setNicknameError('Choose a nickname.'); return; }
+      if (!nickname) {
+        setNicknameError('Choose a nickname.');
+        return;
+      }
       const { data, error } = await supabase.auth.signUp({
         email,
         password: authPassword,
@@ -254,15 +257,18 @@ export function App() {
       }
       const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
       const profile = Array.isArray(profileData) ? profileData[0] : profileData;
-      if (profileError || !profile) { setIdentifierError(profileError?.message || 'Unable to load profile.'); return; }
-      const userObj = { 
-        id: profile.id, 
-        authUserId: data.user.id, 
-        name: profile.name || nickname, 
-        identifier: profile.identifier || data.user.email, 
-        email: data.user.email, 
-        role: profile.role, 
-        type: 'regular' 
+      if (profileError || !profile) {
+        setIdentifierError(profileError?.message || 'Unable to load profile.');
+        return;
+      }
+      const userObj = {
+        id: profile.id,
+        authUserId: data.user.id,
+        name: profile.name || nickname,
+        identifier: profile.identifier || data.user.email,
+        email: data.user.email,
+        role: profile.role,
+        type: 'regular'
       };
       setCurrentUser(userObj);
       const isStaff = ['employee', 'admin'].includes(profile.role);
@@ -290,6 +296,7 @@ export function App() {
       // without waiting for restoreAuthUser to fire from the auth state listener.
       const userObj = {
         id: profile?.id,
+        userId: data.user.id,
         authUserId: data.user.id,
         email: data.user.email,
         identifier: profile?.identifier || data.user.email,
@@ -305,7 +312,7 @@ export function App() {
         setAuthMode('regular');
       }
       // Load loyalty data immediately so the stamp card is ready
-      loadUserStampsAndPenalties(completeUser);
+      loadUserStampsAndPenalties(userObj);
     }
   };
 
