@@ -132,7 +132,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         virtualMilestone: true
       }];
     });
-  }, [milestonePreview, appliedPromos]);
+  });
 
   // --- Phase 3c: alert the customer when a new voucher (free meal) is earned ---
   const [prevOrderCount, setPrevOrderCount] = useState(orderHistory.length);
