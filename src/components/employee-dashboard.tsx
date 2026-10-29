@@ -550,7 +550,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     });
     setLoyaltyBusy(false);
     if (error || !data?.success) { alert(error?.message || data?.message || 'Change failed.'); return; }
-    alert(data.tier ? `${data.tier} applied. Stamps: ${data.cumulative}.` : `Moved to Milestone Block ${data.block} (position 1 of the block). Stamps: ${data.cumulative}.`);
+    alert(data.tier ? `${data.tier} applied. Stamps: ${data.cumulative}.` : `Moved to Milestone Block ${data.block} (no circles filled yet). Stamps: ${data.cumulative}.`);
     setLoyaltyTierReason('');
     fetchCloudData();
     await openLoyaltyManager(loyaltyTargetUser);
@@ -1644,16 +1644,16 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               <div className="flex gap-2">
                 <select value={loyaltyTier} onChange={(e) => setLoyaltyTier(e.target.value as any)} className="flex-1 bg-[#04140f] border border-emerald-800 rounded-xl p-2 text-xs text-lime-300 font-bold focus:outline-none focus:border-lime-400">
                   <option value="CLEAR">Clear VIP (keep stamps)</option>
-                  <option value="B1">Milestone Block 1 (teleport to stamp 1)</option>
-                  <option value="B2">Milestone Block 2 (teleport to stamp 6)</option>
-                  <option value="B3">Milestone Block 3 (teleport to stamp 16)</option>
-                  <option value="B4">Milestone Block 4 (teleport to stamp 31)</option>
+                  <option value="B1">Milestone Block 1 (welcome stamp only)</option>
+                  <option value="B2">Milestone Block 2 (starts empty)</option>
+                  <option value="B3">Milestone Block 3 (starts empty)</option>
+                  <option value="B4">Milestone Block 4 (starts empty)</option>
                   <option value="PLATINUM">Platinum (2-week trial)</option>
                   <option value="DIAMOND">Diamond (invitation only)</option>
                 </select>
                 <Button onClick={handleLoyaltySetTier} disabled={loyaltyBusy} className="bg-sky-400 hover:bg-sky-300 text-black font-extrabold px-4 py-2 rounded-xl text-xs cursor-pointer disabled:opacity-40">Apply</Button>
               </div>
-              <p className="text-[9px] text-emerald-400/80">Has its <strong>own</strong> reason field (separate from stamp add/remove). A <em>Block</em> choice <strong>teleports</strong> the customer to that block's <strong>first</strong> stamp and clears any VIP — it does <strong>not</strong> fill the block and issues no rewards. To give them the whole block, use <em>Add / Remove Stamps</em> above. <em>Platinum</em> starts a fresh 2-week trial (when it ends the customer returns to Block 2); <em>Diamond</em> is invitation only. Both leave the stamp count untouched.</p>
+              <p className="text-[9px] text-emerald-400/80">Has its <strong>own</strong> reason field (separate from stamp add/remove). A <em>Block</em> choice <strong>teleports</strong> the customer to the <strong>start</strong> of that block (all circles empty; only Block 1 keeps its welcome stamp) and clears any VIP — it does <strong>not</strong> fill the block and issues no rewards. To give them the whole block, use <em>Add / Remove Stamps</em> above. <em>Platinum</em> starts a fresh 2-week trial (when it ends the customer returns to Block 2); <em>Diamond</em> is invitation only. Both leave the stamp count untouched.</p>
             </div>
 
             <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">

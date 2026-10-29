@@ -1304,11 +1304,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                             strokeDasharray={ringC} strokeDashoffset={ringC * (1 - ordersThisWeek / 3)} style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className="text-2xl font-black text-white leading-none">{ordersThisWeek}<span className="text-sm text-slate-400">/3</span></span>
+                          <span className="text-2xl font-black text-white leading-none">{ordersThisWeek}</span>
                           <span className="text-[8px] uppercase tracking-wider text-slate-300 font-bold">orders</span>
                         </div>
                       </div>
-                      <p className="text-[10px] text-slate-200 font-semibold text-center leading-tight">Orders this week<br /><span className="text-slate-400 font-normal">resets Monday</span></p>
+                      <p className="text-[10px] text-slate-200 font-semibold text-center leading-tight">Total orders</p>
                     </div>
 
                     {/* CIRCLE 2 — FREE MEAL: locked / unlocked (claim) / claimed */}
