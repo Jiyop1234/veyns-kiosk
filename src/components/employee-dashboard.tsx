@@ -72,21 +72,14 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [transferringReservation, setTransferringReservation] = useState<any>(null);
   const [transferTargetSlot, setTransferTargetSlot] = useState(timeSlotsList[0]);
 
-  const [stampTargetUser, setStampTargetUser] = useState<any>(null);
-  const [customerStampsDetailed, setCustomerStampsDetailed] = useState<{ status: 'valid' | 'invalid' | 'to_clear' | 'empty'; date: string; penaltyReason?: string }[]>([]);
-  const [selectedInfractionPreset, setSelectedInfractionPreset] = useState('Active Account');
-  const infractionPresets = [
-    { label:  "Active Account ", sixthReward:  "25% OFF ", ninthReward:  "50% OFF ", twelfthReward:  "FREE ", desc:  "Active Account: Normal standing. " },
-    { label:  "Penalties Waived ", sixthReward:  "25% OFF ", ninthReward:  "50% OFF ", twelfthReward:  "FREE ", desc:  "Penalties Waived: All penalties cleared and notices removed. " },
-    { label:  "No Violation till card clears ", sixthReward:  "25% OFF ", ninthReward:  "50% OFF ", twelfthReward:  "FREE ", desc:  "No Violation till card clears: Card successfully cleared without violations; reset back to start. " },
-    { label:  "1st offense False Stamping (At/Near Milestones) ", sixthReward:  "Invalidated ", ninthReward:  "25% OFF ", twelfthReward:  "50% OFF ", desc:  "1st offense False Stamping (At/Near Milestones): 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%. " },
-    { label:  "1st offense Early False Stamping (Early Stage Padding) ", sixthReward:  "Invalidated ", ninthReward:  "25% OFF ", twelfthReward:  "50% OFF ", desc:  "1st offense Early False Stamping (Early Stage Padding): 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%. " },
-    { label:  "1st offense False Claims: ", sixthReward:  "Invalidated ", ninthReward:  "25% OFF ", twelfthReward:  "50% OFF ", desc:  "1st offense False Claims: 6th stamp reward invalidated; 9th reward drops to 25%; 12th reward drops to 50%. " },
-    { label:  "2nd offense False Stamping (At/Near Milestones) ", sixthReward:  "Invalidated ", ninthReward:  "Invalidated ", twelfthReward:  "25% OFF ", desc:  "2nd offense False Stamping (At/Near Milestones): 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF. " },
-    { label:  "2nd offense Early False Stamping (Early Stage Padding) ", sixthReward:  "Invalidated ", ninthReward:  "Invalidated ", twelfthReward:  "25% OFF ", desc:  "2nd offense Early False Stamping (Early Stage Padding): 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF. " },
-    { label:  "2nd offense False Claims: ", sixthReward:  "Invalidated ", ninthReward:  "Invalidated ", twelfthReward:  "25% OFF ", desc:  "2nd offense False Claims: 6th and 9th rewards invalidated; 12th reward downgraded to 25% OFF. " },
-    { label:  "Multiple Offense : Severe or repeated false stamps ", sixthReward:  "Invalidated ", ninthReward:  "Invalidated ", twelfthReward:  "Cancelled (No Promos Left) ", desc:  "Multiple Offense : Severe or repeated false stamps. All remaining loyalty rewards cancelled. " }
-  ];
+  // --- Phase 4: Loyalty Manager state (replaces old Fair Play penalty system) ---
+  const [loyaltyTargetUser, setLoyaltyTargetUser] = useState<any>(null);
+  const [loyaltyStatus, setLoyaltyStatus] = useState<any>(null);
+  const [loyaltyHistory, setLoyaltyHistory] = useState<any[]>([]);
+  const [loyaltyStampDelta, setLoyaltyStampDelta] = useState(0);
+  const [loyaltyReason, setLoyaltyReason] = useState('');
+  const [loyaltyTier, setLoyaltyTier] = useState<'NONE' | 'PLATINUM' | 'DIAMOND'>('NONE');
+  const [loyaltyBusy, setLoyaltyBusy] = useState(false);
 
   // --- Initial cloud data load and Supabase Realtime subscriptions ---
   useEffect(() => {
@@ -164,7 +157,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           } else {
             localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
           }
-          return { id: p.id, name: p.name || 'Valued Regular', identifier: p.identifier, type: p.role || 'regular', stamps_data: p.stamps_data, penalty_data: p.penalty_data };
+          return { id: p.id, name: p.name || 'Valued Regular', identifier: p.identifier, type: p.role || 'regular', auth_user_id: p.auth_user_id, created_at: p.created_at };
         });
         setCustomers(formattedProfiles);
       } else {
@@ -514,72 +507,45 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     fetchCloudData();
   };
 
-  // --- Load a customer's loyalty stamps and penalty state into the stamp editor ---
-  const openStampManager = (cust: any) => {
-    setStampTargetUser(cust);
+  // --- Phase 4: open the Loyalty Manager, load live status + audit history ---
+  const openLoyaltyManager = async (cust: any) => {
+    setLoyaltyTargetUser(cust);
+    setLoyaltyStampDelta(0);
+    setLoyaltyReason('');
+    setLoyaltyBusy(true);
     try {
-      const identifierKey = cust.identifier.toLowerCase().trim();
-      const detailedSaved = localStorage.getItem(`veyns_detailed_stamps_${identifierKey}`);
-      const penaltySaved = localStorage.getItem(`veyns_fair_play_penalty_${identifierKey}`);
-      if (penaltySaved) {
-         try {
-           const parsedPenalty = JSON.parse(penaltySaved);
-           if (parsedPenalty?.appliedPenalties?.length > 0) {
-             setSelectedInfractionPreset(parsedPenalty.appliedPenalties[0]);
-           } else {
-             setSelectedInfractionPreset('Active Account');
-           }
-         } catch (e) {
-           setSelectedInfractionPreset('Active Account');
-         }
-       } else {
-         setSelectedInfractionPreset('Active Account');
-       }
-       if (detailedSaved) {
-         setCustomerStampsDetailed(JSON.parse(detailedSaved));
-       } else if (cust.stamps_data && Array.isArray(cust.stamps_data)) {
-         setCustomerStampsDetailed(cust.stamps_data);
-       } else {
-         const userStamps = localStorage.getItem(`veyns_stamps_${identifierKey}`);
-         const parsedStamps: string[] = userStamps ? JSON.parse(userStamps) : [];
-         setCustomerStampsDetailed(Array.from({ length: 12 }).map((_, idx) => (parsedStamps[idx] ? { status: 'valid', date: parsedStamps[idx] } : { status: 'empty', date: '' })));
-       }
-     } catch (e) {
-       setCustomerStampsDetailed(Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })));
-       setSelectedInfractionPreset('Active Account');
-     }
+      const { data: status } = await supabase.rpc('get_loyalty_status', { p_user_id: cust.auth_user_id });
+      setLoyaltyStatus(status);
+      setLoyaltyTier(status?.tier === 'DIAMOND' ? 'DIAMOND' : status?.tier === 'PLATINUM' ? 'PLATINUM' : 'NONE');
+      const { data: hist } = await supabase.rpc('get_stamp_history', { p_user_id: cust.auth_user_id });
+      setLoyaltyHistory(hist || []);
+    } catch (e) { console.error('Loyalty load failed:', e); }
+    setLoyaltyBusy(false);
   };
-
-  // --- Save loyalty stamp statuses and applicable penalty/reward settings ---
-  const handleSaveStamps = async () => {
-    if (!stampTargetUser) return;
-    try {
-      const identifierKey = stampTargetUser.identifier.toLowerCase().trim();
-      const isCleanPreset = ['Active Account', 'Penalties Waived', 'No Violation till card clears'].includes(selectedInfractionPreset);
-      let slotsToSave = selectedInfractionPreset === 'No Violation till card clears' 
-         ? Array.from({ length: 12 }).map(() => ({ status: 'empty', date: '' })) 
-         : customerStampsDetailed;
-       const matchedPreset = !isCleanPreset && Array.isArray(infractionPresets) 
-          ? infractionPresets.find((p: any) => p.label === selectedInfractionPreset) 
-          : null;
-       const penaltyStatus = matchedPreset ? { sixthReward: matchedPreset.sixthReward, ninthReward: matchedPreset.ninthReward, twelfthReward: matchedPreset.twelfthReward, appliedPenalties: [matchedPreset.label] } : null;
-       if (isCleanPreset) {
-         slotsToSave = slotsToSave.map(s => (s.status === 'invalid' || s.status === 'to_clear' ? { status: 'empty', date: '' } : s));
-       }
-       localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(slotsToSave));
-       if (penaltyStatus) {
-         localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(penaltyStatus));
-       } else {
-         localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
-       }
-       const validStamps = slotsToSave.filter(s => s.status === 'valid').map(s => s.date);
-       localStorage.setItem(`veyns_stamps_${identifierKey}`, JSON.stringify(validStamps));
-       await supabase.from('profiles').update({ stamps_data: slotsToSave, penalty_data: penaltyStatus }).eq('identifier', identifierKey);
-       window.dispatchEvent(new Event('storage'));
-       alert(`Stamp card & penalties successfully synced for ${stampTargetUser.name}!`);
-       fetchCloudData();
-     } catch (e) {}
-     setStampTargetUser(null);
+  const handleLoyaltyAdjustStamps = async () => {
+    if (!loyaltyTargetUser) return;
+    if (!loyaltyStampDelta) { alert('Enter a non-zero stamp amount (positive to add, negative to remove).'); return; }
+    if (!loyaltyReason.trim()) { alert('A reason is required for every stamp change.'); return; }
+    setLoyaltyBusy(true);
+    const { data, error } = await supabase.rpc('admin_adjust_stamps', {
+      p_user_id: loyaltyTargetUser.auth_user_id, p_delta: loyaltyStampDelta, p_reason: loyaltyReason.trim()
+    });
+    setLoyaltyBusy(false);
+    if (error || !data?.success) { alert(error?.message || data?.message || 'Stamp adjustment failed.'); return; }
+    alert(`Stamps adjusted by ${loyaltyStampDelta}. New total: ${data.new_cumulative}.`);
+    await openLoyaltyManager(loyaltyTargetUser);
+  };
+  const handleLoyaltySetTier = async () => {
+    if (!loyaltyTargetUser) return;
+    if (!loyaltyReason.trim()) { alert('A reason is required for every tier change.'); return; }
+    setLoyaltyBusy(true);
+    const { data, error } = await supabase.rpc('admin_set_tier', {
+      p_user_id: loyaltyTargetUser.auth_user_id, p_tier: loyaltyTier, p_reason: loyaltyReason.trim()
+    });
+    setLoyaltyBusy(false);
+    if (error || !data?.success) { alert(error?.message || data?.message || 'Tier change failed.'); return; }
+    alert(`Tier set to ${loyaltyTier}.`);
+    await openLoyaltyManager(loyaltyTargetUser);
   };
 
   // --- Return from the dashboard to the customer-facing store ---
@@ -983,8 +949,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             >
                               <Edit2 className="h-3.5 w-3.5 mr-1" /> Edit
                             </Button>
-                            <Button onClick={() => openStampManager(cust)} size="sm" className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
-                              <Award className="h-3.5 w-3.5 mr-1" /> Stamps
+                            <Button onClick={() => openLoyaltyManager(cust)} size="sm" className="bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer">
+                              <Award className="h-3.5 w-3.5 mr-1" /> Loyalty
                             </Button>
                           </td>
                         </tr>
@@ -1544,53 +1510,99 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </DialogContent>
         </Dialog>
 
-        {/* Loyalty stamp and penalty management modal */}
-        <Dialog open={!!stampTargetUser} onOpenChange={(open) => !open && setStampTargetUser(null)}>
-          {stampTargetUser && (
-            <DialogContent className="max-w-xl w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
-              <div className="space-y-1 border-b border-emerald-900/60 pb-3">
-                <DialogTitle className="font-display text-xl font-extrabold text-white flex items-center gap-2">
-                  <Award className="h-5 w-5 text-lime-400" /> Fair Play Stamp Manager: {stampTargetUser.name}
-                </DialogTitle>
+        {/* Loyalty Manager modal (replaces Fair Play stamp/penalty system) */}
+        <Dialog open={!!loyaltyTargetUser} onOpenChange={(open) => !open && setLoyaltyTargetUser(null)}>
+        {loyaltyTargetUser && (
+        <DialogContent className="max-w-xl w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
+        <div className="space-y-1 border-b border-emerald-900/60 pb-3">
+        <DialogTitle className="font-display text-xl font-extrabold text-white flex items-center gap-2">
+        <Award className="h-5 w-5 text-lime-400" /> Loyalty Manager: {loyaltyTargetUser.name}
+        </DialogTitle>
+        <p className="text-[10px] text-emerald-300 font-mono">{loyaltyTargetUser.identifier}</p>
+        </div>
+        {loyaltyBusy && !loyaltyStatus ? (
+        <p className="text-xs text-emerald-300 text-center py-8">Loading loyalty data…</p>
+        ) : !loyaltyStatus ? (
+        <p className="text-xs text-red-300 text-center py-8">No loyalty record (unlinked account?).</p>
+        ) : (() => {
+          const tier = loyaltyStatus.tier || 'NONE';
+          const block = loyaltyStatus.block || 1;
+          const sizes = [4, 10, 15, 20, 10];
+          const size = sizes[block - 1] || 10;
+          const pos = loyaltyStatus.position_in_block || 0;
+          const cum = loyaltyStatus.cumulative_stamps || 0;
+          const platExp = loyaltyStatus.platinum_expires_at ? new Date(loyaltyStatus.platinum_expires_at) : null;
+          const weekly = loyaltyStatus.weekly;
+          return (
+          <div className="my-4 space-y-4 text-xs">
+            <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-300">Current Status</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${tier === 'DIAMOND' ? 'bg-sky-400/20 text-sky-300 border border-sky-400/50' : tier === 'PLATINUM' ? 'bg-slate-200/20 text-slate-100 border border-slate-300/50' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'}`}>{tier}</span>
               </div>
-              <div className="my-4 space-y-4 text-xs">
-                <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
-                  <label className="font-bold text-lime-400 uppercase tracking-wider block text-[11px]">📋 Select Status / Infraction Rule:</label>
-                  <select value={selectedInfractionPreset} onChange={(e) => setSelectedInfractionPreset(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-3 text-xs text-white font-medium focus:outline-none focus:border-lime-400">
-                    {infractionPresets.map((preset, pIdx) => <option key={pIdx} value={preset.label}>{preset.label}</option>)}
-                  </select>
-                </div>
-                <div className="grid grid-cols-4 gap-2.5">
-                  {Array.from({ length: 12 }).map((_, idx) => {
-                    const stampEntry = customerStampsDetailed[idx];
-                    const status = stampEntry ? stampEntry.status : 'empty';
-                    return (
-                      <div key={idx} className={`relative aspect-square rounded-xl border flex flex-col items-center justify-between p-1.5 text-center transition-all ${status === 'valid' ? 'bg-[#082d22] border-lime-400 text-lime-400 shadow-md' : status === 'to_clear' ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-md' : status === 'invalid' ? 'bg-red-950/90 border-red-500 text-red-300 shadow-md' : 'bg-[#041913] border-emerald-800/60 text-emerald-600'}`}>
-                        <span className="text-[9px] font-mono opacity-80">#{idx + 1}</span>
-                        <select value={status} onChange={(e) => {
-                          const val = e.target.value;
-                          const updated = [...customerStampsDetailed];
-                          const todayStr = new Date().toISOString().split('T')[0];
-                          while (updated.length <= idx) updated.push({ status: 'empty', date: '' });
-                          updated[idx] = val === 'valid' ? { status: 'valid', date: todayStr } : val === 'to_clear' ? { status: 'to_clear', date: todayStr, penaltyReason: 'To Be Cleared' } : val === 'invalid' ? { status: 'invalid', date: todayStr, penaltyReason: 'Invalidated' } : { status: 'empty', date: '' };
-                          setCustomerStampsDetailed(updated);
-                        }} className="w-full bg-black/80 border border-emerald-800 text-[10px] text-lime-300 rounded px-1 py-0.5 focus:outline-none cursor-pointer text-center font-bold">
-                          <option value="empty">EMPTY</option>
-                          <option value="valid">ADD</option>
-                          <option value="to_clear">TO CLEAR</option>
-                          <option value="invalid">INVALID</option>
-                        </select>
-                      </div>
-                    );
-                  })}
-                </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-emerald-200">
+                <p>Milestone Block: <strong className="text-white">{block} of 5</strong></p>
+                <p>Position in block: <strong className="text-white">{pos} / {size}</strong></p>
+                <p>Cumulative stamps: <strong className="text-lime-400">{cum}</strong></p>
+                <p>Member since: <strong className="text-white">{loyaltyTargetUser.created_at ? new Date(loyaltyTargetUser.created_at).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' }) : '—'}</strong></p>
               </div>
-              <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
-                <Button onClick={() => setStampTargetUser(null)} className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2.5 rounded-xl text-xs cursor-pointer">Cancel</Button>
-                <Button onClick={handleSaveStamps} className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg">Save & Sync Account Views</Button>
+              {platExp && <p className="text-[10px] text-slate-300">Platinum VIP until <strong>{platExp.toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}</strong></p>}
+              {weekly && <p className="text-[10px] text-slate-300">This week: <strong>{weekly.qualifying_orders}/3</strong> orders • <strong>{weekly.claims_remaining}/2</strong> claims • free meal {weekly.free_meal_unlocked ? 'unlocked ✓' : '—'}</p>}
+            </div>
+
+            <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-lime-400">Add / Remove Stamps</span>
+              <div className="flex gap-2">
+                <input type="number" value={loyaltyStampDelta || ''} onChange={(e) => setLoyaltyStampDelta(parseInt(e.target.value) || 0)} placeholder="+5 or -2" className="w-28 bg-[#04140f] border border-emerald-800 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
+                <input type="text" value={loyaltyReason} onChange={(e) => setLoyaltyReason(e.target.value)} placeholder="Reason (required)" className="flex-1 bg-[#04140f] border border-emerald-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
               </div>
-            </DialogContent>
-          )}
+              <Button onClick={handleLoyaltyAdjustStamps} disabled={loyaltyBusy} className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-xs cursor-pointer disabled:opacity-40">Apply Stamp Change</Button>
+            </div>
+
+            <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-lime-400">Set Tier</span>
+              <div className="flex gap-2">
+                <select value={loyaltyTier} onChange={(e) => setLoyaltyTier(e.target.value as any)} className="flex-1 bg-[#04140f] border border-emerald-800 rounded-xl p-2 text-xs text-lime-300 font-bold focus:outline-none focus:border-lime-400">
+                  <option value="NONE">None (milestone / Silver)</option>
+                  <option value="PLATINUM">Platinum (14-day VIP)</option>
+                  <option value="DIAMOND">Diamond (invitation)</option>
+                </select>
+                <Button onClick={handleLoyaltySetTier} disabled={loyaltyBusy} className="bg-sky-400 hover:bg-sky-300 text-black font-extrabold px-4 py-2 rounded-xl text-xs cursor-pointer disabled:opacity-40">Apply Tier</Button>
+              </div>
+              <p className="text-[9px] text-emerald-400/80">Uses the Reason field above. "None" clears Platinum/Diamond and deactivates any VIP period; the stamp count is preserved.</p>
+            </div>
+
+            <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-lime-400">Stamp History (audit)</span>
+              <div className="max-h-56 overflow-y-auto">
+                <table className="w-full text-left text-[10px] text-emerald-200">
+                  <thead className="sticky top-0 bg-[#061d16] text-emerald-300 uppercase">
+                    <tr className="border-b border-emerald-800"><th className="p-1">Date</th><th className="p-1">Type</th><th className="p-1">Blk</th><th className="p-1">Total</th><th className="p-1">Reason</th></tr>
+                  </thead>
+                  <tbody>
+                    {loyaltyHistory.length === 0 ? (<tr><td colSpan={5} className="text-center p-2 text-emerald-400/60">No stamps recorded.</td></tr>) : (
+                      loyaltyHistory.map((h) => (
+                        <tr key={h.id} className="border-b border-emerald-900/40">
+                          <td className="p-1">{new Date(h.created_at).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}</td>
+                          <td className="p-1 font-bold text-lime-300">{h.stamp_type}</td>
+                          <td className="p-1">B{h.block_number}#{h.stamps_in_block}</td>
+                          <td className="p-1">{h.cumulative_stamps}</td>
+                          <td className="p-1 text-emerald-300/80 italic">{h.reason || '—'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          );
+        })()}
+        <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
+        <Button onClick={() => setLoyaltyTargetUser(null)} className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2.5 rounded-xl text-xs cursor-pointer">Close</Button>
+        </div>
+        </DialogContent>
+        )}
         </Dialog>
       </div>
     </div>
