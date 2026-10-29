@@ -78,7 +78,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [loyaltyHistory, setLoyaltyHistory] = useState<any[]>([]);
   const [loyaltyStampDelta, setLoyaltyStampDelta] = useState(0);
   const [loyaltyReason, setLoyaltyReason] = useState('');
-  const [loyaltyTier, setLoyaltyTier] = useState<'NONE' | 'PLATINUM' | 'DIAMOND'>('NONE');
+  const [loyaltyTier, setLoyaltyTier] = useState<string>('B1');
+  const [loyaltyTierReason, setLoyaltyTierReason] = useState('');
   const [loyaltyBusy, setLoyaltyBusy] = useState(false);
 
   // --- Initial cloud data load and Supabase Realtime subscriptions ---
@@ -516,7 +517,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     try {
       const { data: status } = await supabase.rpc('get_loyalty_status', { p_user_id: cust.auth_user_id });
       setLoyaltyStatus(status);
-      setLoyaltyTier(status?.tier === 'DIAMOND' ? 'DIAMOND' : status?.tier === 'PLATINUM' ? 'PLATINUM' : 'NONE');
+      setLoyaltyTier(status?.tier === 'DIAMOND' ? 'DIAMOND' : status?.tier === 'PLATINUM' ? 'PLATINUM' : 'B' + (status?.block || 1));
+      setLoyaltyTierReason('');
       const { data: hist } = await supabase.rpc('get_stamp_history', { p_user_id: cust.auth_user_id });
       setLoyaltyHistory(hist || []);
     } catch (e) { console.error('Loyalty load failed:', e); }
@@ -533,18 +535,23 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     setLoyaltyBusy(false);
     if (error || !data?.success) { alert(error?.message || data?.message || 'Stamp adjustment failed.'); return; }
     alert(`Stamps adjusted by ${loyaltyStampDelta}. New total: ${data.new_cumulative}.`);
+    setLoyaltyReason('');
+    fetchCloudData();
     await openLoyaltyManager(loyaltyTargetUser);
   };
+
   const handleLoyaltySetTier = async () => {
     if (!loyaltyTargetUser) return;
-    if (!loyaltyReason.trim()) { alert('A reason is required for every tier change.'); return; }
+    if (!loyaltyTierReason.trim()) { alert('A reason is required for every tier / block change.'); return; }
     setLoyaltyBusy(true);
-    const { data, error } = await supabase.rpc('admin_set_tier', {
-      p_user_id: loyaltyTargetUser.auth_user_id, p_tier: loyaltyTier, p_reason: loyaltyReason.trim()
+    const { data, error } = await supabase.rpc('admin_set_loyalty_state', {
+      p_user_id: loyaltyTargetUser.auth_user_id, p_action: loyaltyTier, p_reason: loyaltyTierReason.trim()
     });
     setLoyaltyBusy(false);
-    if (error || !data?.success) { alert(error?.message || data?.message || 'Tier change failed.'); return; }
-    alert(`Tier set to ${loyaltyTier}.`);
+    if (error || !data?.success) { alert(error?.message || data?.message || 'Change failed.'); return; }
+    alert(data.tier ? `${data.tier} applied. Stamps: ${data.cumulative}.` : `Moved to Milestone Block ${data.block} (position 1 of the block). Stamps: ${data.cumulative}.`);
+    setLoyaltyTierReason('');
+    fetchCloudData();
     await openLoyaltyManager(loyaltyTargetUser);
   };
 
@@ -1551,7 +1558,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             setLoyaltyBusy(false);
             const d = res.data;
             if (res.error || !d?.success) { alert(res.error?.message || d?.message || 'Stamp change failed.'); }
-            else { if (d.voided_vouchers && d.voided_vouchers.length) alert(`Removed. Voided unused voucher(s): ${d.voided_vouchers.join(', ')}`); setLoyaltyReason(''); }
+            else { if (d.voided_vouchers && d.voided_vouchers.length) alert(`Removed. Voided unused voucher(s): ${d.voided_vouchers.join(', ')}`); setLoyaltyReason(''); fetchCloudData(); }
             await openLoyaltyManager(loyaltyTargetUser);
           };
           return (
@@ -1573,7 +1580,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
             <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-3">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-lime-400">Add / Remove Stamps (per circle)</span>
-              <input type="text" value={loyaltyReason} onChange={(e) => setLoyaltyReason(e.target.value)} placeholder="Reason (required for any change below)" className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+              <input type="text" value={loyaltyReason} onChange={(e) => setLoyaltyReason(e.target.value)} placeholder="Reason for stamp add/remove (required)" className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
               <div className="flex flex-wrap justify-center gap-2.5">
                 {Array.from({ length: size }).map((_, idx) => {
                   const k = idx + 1;
@@ -1603,20 +1610,21 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
             <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-lime-400">Set Tier / Milestone Block</span>
+              <input type="text" value={loyaltyTierReason} onChange={(e) => setLoyaltyTierReason(e.target.value)} placeholder="Reason for tier / block change (required)" className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
               <div className="flex gap-2">
                 <select value={loyaltyTier} onChange={(e) => setLoyaltyTier(e.target.value as any)} className="flex-1 bg-[#04140f] border border-emerald-800 rounded-xl p-2 text-xs text-lime-300 font-bold focus:outline-none focus:border-lime-400">
                   <option value="CLEAR">Clear VIP (keep stamps)</option>
-                  <option value="B1">Milestone Block 1</option>
-                  <option value="B2">Milestone Block 2</option>
-                  <option value="B3">Milestone Block 3</option>
-                  <option value="B4">Milestone Block 4</option>
-                  <option value="B5">Milestone Block 5</option>
+                  <option value="B1">Milestone Block 1 (teleport to stamp 1)</option>
+                  <option value="B2">Milestone Block 2 (teleport to stamp 5)</option>
+                  <option value="B3">Milestone Block 3 (teleport to stamp 15)</option>
+                  <option value="B4">Milestone Block 4 (teleport to stamp 30)</option>
+                  <option value="B5">Milestone Block 5 (teleport to stamp 50)</option>
                   <option value="PLATINUM">Platinum (14-day VIP)</option>
                   <option value="DIAMOND">Diamond (invitation)</option>
                 </select>
                 <Button onClick={handleLoyaltySetTier} disabled={loyaltyBusy} className="bg-sky-400 hover:bg-sky-300 text-black font-extrabold px-4 py-2 rounded-xl text-xs cursor-pointer disabled:opacity-40">Apply</Button>
               </div>
-              <p className="text-[9px] text-emerald-400/80">Uses the Reason field above. A <em>Block</em> choice relocates the count to that block's first stamp and clears any VIP (no reward spam; stale unused rewards expired, used rewards kept). <em>Platinum/Diamond</em> change the tier without touching the count.</p>
+              <p className="text-[9px] text-emerald-400/80">Has its <strong>own</strong> reason field (separate from stamp add/remove). A <em>Block</em> choice <strong>teleports</strong> the customer to that block's <strong>first</strong> stamp and clears any VIP — it does <strong>not</strong> fill the block and issues no rewards. To give them the whole block, use <em>Add / Remove Stamps</em> above. <em>Platinum/Diamond</em> change the tier without touching the stamp count.</p>
             </div>
 
             <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
