@@ -1525,7 +1525,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         ) : !loyaltyStatus ? (
         <p className="text-xs text-red-300 text-center py-8">No loyalty record (unlinked account?).</p>
         ) : (() => {
-          const tier = loyaltyStatus.tier || 'NONE';
+          const tier = loyaltyStatus.tier || null;
           const block = loyaltyStatus.block || 1;
           const sizes = [4, 10, 15, 20, 10];
           const size = sizes[block - 1] || 10;
@@ -1533,12 +1533,33 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           const cum = loyaltyStatus.cumulative_stamps || 0;
           const platExp = loyaltyStatus.platinum_expires_at ? new Date(loyaltyStatus.platinum_expires_at) : null;
           const weekly = loyaltyStatus.weekly;
+          const badgeText = tier === 'DIAMOND' ? 'DIAMOND' : tier === 'PLATINUM' ? 'PLATINUM' : `BLOCK ${block}`;
+          const badgeSkin = tier === 'DIAMOND' ? 'bg-sky-400/20 text-sky-300 border-sky-400/50' : tier === 'PLATINUM' ? 'bg-slate-200/20 text-slate-100 border-slate-300/50' : 'bg-lime-400/20 text-lime-400 border-lime-400/40';
+          const onCircleChange = async (val: string) => {
+            if (!val) return;
+            if (!loyaltyReason.trim()) { alert('Enter a reason first (required for every stamp change).'); await openLoyaltyManager(loyaltyTargetUser); return; }
+            const k = parseInt(val.slice(1));
+            let res: any;
+            if (val[0] === 'A') {
+              const delta = k - pos; if (!delta) { await openLoyaltyManager(loyaltyTargetUser); return; }
+              setLoyaltyBusy(true);
+              res = await supabase.rpc('admin_adjust_stamps', { p_user_id: loyaltyTargetUser.auth_user_id, p_delta: delta, p_reason: loyaltyReason.trim() });
+            } else {
+              setLoyaltyBusy(true);
+              res = await supabase.rpc('admin_remove_stamp_to', { p_user_id: loyaltyTargetUser.auth_user_id, p_new_cum: k - 1, p_reason: loyaltyReason.trim() });
+            }
+            setLoyaltyBusy(false);
+            const d = res.data;
+            if (res.error || !d?.success) { alert(res.error?.message || d?.message || 'Stamp change failed.'); }
+            else { if (d.voided_vouchers && d.voided_vouchers.length) alert(`Removed. Voided unused voucher(s): ${d.voided_vouchers.join(', ')}`); setLoyaltyReason(''); }
+            await openLoyaltyManager(loyaltyTargetUser);
+          };
           return (
           <div className="my-4 space-y-4 text-xs">
             <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-300">Current Status</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${tier === 'DIAMOND' ? 'bg-sky-400/20 text-sky-300 border border-sky-400/50' : tier === 'PLATINUM' ? 'bg-slate-200/20 text-slate-100 border border-slate-300/50' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'}`}>{tier}</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${badgeSkin}`}>{badgeText}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-[11px] text-emerald-200">
                 <p>Milestone Block: <strong className="text-white">{block} of 5</strong></p>
@@ -1550,26 +1571,52 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               {weekly && <p className="text-[10px] text-slate-300">This week: <strong>{weekly.qualifying_orders}/3</strong> orders • <strong>{weekly.claims_remaining}/2</strong> claims • free meal {weekly.free_meal_unlocked ? 'unlocked ✓' : '—'}</p>}
             </div>
 
-            <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-lime-400">Add / Remove Stamps</span>
-              <div className="flex gap-2">
-                <input type="number" value={loyaltyStampDelta || ''} onChange={(e) => setLoyaltyStampDelta(parseInt(e.target.value) || 0)} placeholder="+5 or -2" className="w-28 bg-[#04140f] border border-emerald-800 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
-                <input type="text" value={loyaltyReason} onChange={(e) => setLoyaltyReason(e.target.value)} placeholder="Reason (required)" className="flex-1 bg-[#04140f] border border-emerald-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+            <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-3">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-lime-400">Add / Remove Stamps (per circle)</span>
+              <input type="text" value={loyaltyReason} onChange={(e) => setLoyaltyReason(e.target.value)} placeholder="Reason (required for any change below)" className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+              <div className="flex flex-wrap justify-center gap-2.5">
+                {Array.from({ length: size }).map((_, idx) => {
+                  const k = idx + 1;
+                  const filled = k <= pos;
+                  const isWelcome = k === 1;
+                  return (
+                    <div key={idx} className="flex flex-col items-center gap-1">
+                      <div className={`size-10 rounded-full flex items-center justify-center border-2 ${filled ? 'bg-lime-400 border-lime-300 text-black shadow-md' : 'bg-transparent border-white/70 text-lime-300'}`}>
+                        {filled ? <Star className="size-4 fill-black" /> : <span className="text-[10px] font-bold">{k}</span>}
+                      </div>
+                      {isWelcome ? (
+                        <span className="text-[8px] font-black uppercase tracking-wider text-lime-400/80 px-1 py-0.5 rounded bg-black/30 border border-lime-400/30">🔒 Welcome</span>
+                      ) : (
+                        <select value="" onChange={(e) => onCircleChange(e.target.value)} disabled={loyaltyBusy}
+                          className="bg-[#04140f] border border-emerald-800 rounded-lg px-1 py-0.5 text-[9px] text-emerald-200 font-bold focus:outline-none focus:border-lime-400 cursor-pointer disabled:opacity-40">
+                          {filled
+                            ? (<><option value="">✓ Stamped</option><option value={'RM' + k}>− Remove to {k - 1}</option></>)
+                            : (<><option value="">○ Empty</option><option value={'AD' + k}>＋ Add to {k}</option></>)}
+                        </select>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <Button onClick={handleLoyaltyAdjustStamps} disabled={loyaltyBusy} className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-xs cursor-pointer disabled:opacity-40">Apply Stamp Change</Button>
+              <p className="text-[9px] text-emerald-400/80">Circle 1 = welcome stamp, <strong>locked</strong>. Empty circle → <em>Add</em> extends the count (crossing a milestone credits its reward). Filled circle → <em>Remove</em> lowers the count and claws back the discount <strong>only if it was unused</strong>; if the reward/voucher was already spent, the removal is refused and the stamp stays valid.</p>
             </div>
 
             <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-lime-400">Set Tier</span>
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-lime-400">Set Tier / Milestone Block</span>
               <div className="flex gap-2">
                 <select value={loyaltyTier} onChange={(e) => setLoyaltyTier(e.target.value as any)} className="flex-1 bg-[#04140f] border border-emerald-800 rounded-xl p-2 text-xs text-lime-300 font-bold focus:outline-none focus:border-lime-400">
-                  <option value="NONE">None (milestone / Silver)</option>
+                  <option value="CLEAR">Clear VIP (keep stamps)</option>
+                  <option value="B1">Milestone Block 1</option>
+                  <option value="B2">Milestone Block 2</option>
+                  <option value="B3">Milestone Block 3</option>
+                  <option value="B4">Milestone Block 4</option>
+                  <option value="B5">Milestone Block 5</option>
                   <option value="PLATINUM">Platinum (14-day VIP)</option>
                   <option value="DIAMOND">Diamond (invitation)</option>
                 </select>
-                <Button onClick={handleLoyaltySetTier} disabled={loyaltyBusy} className="bg-sky-400 hover:bg-sky-300 text-black font-extrabold px-4 py-2 rounded-xl text-xs cursor-pointer disabled:opacity-40">Apply Tier</Button>
+                <Button onClick={handleLoyaltySetTier} disabled={loyaltyBusy} className="bg-sky-400 hover:bg-sky-300 text-black font-extrabold px-4 py-2 rounded-xl text-xs cursor-pointer disabled:opacity-40">Apply</Button>
               </div>
-              <p className="text-[9px] text-emerald-400/80">Uses the Reason field above. "None" clears Platinum/Diamond and deactivates any VIP period; the stamp count is preserved.</p>
+              <p className="text-[9px] text-emerald-400/80">Uses the Reason field above. A <em>Block</em> choice relocates the count to that block's first stamp and clears any VIP (no reward spam; stale unused rewards expired, used rewards kept). <em>Platinum/Diamond</em> change the tier without touching the count.</p>
             </div>
 
             <div className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-2">
