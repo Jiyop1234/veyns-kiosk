@@ -1,11 +1,12 @@
 // @ts-nocheck
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star, Calendar, Search, Ticket, Layers, ChevronUp, ChevronDown, ArrowRightLeft } from 'lucide-react';
+import { ArrowLeft, Edit2, Plus, Trash2, Tag, DollarSign, ShoppingBag, BarChart2, Users, KeyRound, Eye, EyeOff, Award, CheckCircle2, AlertTriangle, XCircle, Clock, Upload, Star, Calendar, Search, Ticket, Layers, ChevronUp, ChevronDown, ArrowRightLeft, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
 import { menuImages } from '@/lib/menu-images';
 import { supabase } from '@/lib/supabase';
+import { AdminOrderProcessing } from '@/components/admin-order-processing';
 
 // --- Menu image display helper: renders an image or the VEYNS fallback ---
 function Photo({ src, alt, className }: { src?: string; alt: string; className: string }) {
@@ -43,7 +44,7 @@ const slotHasEnded = (dateKey: string, slot: string) => {
 };
 
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots'>('sales');
+  const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots' | 'process'>('sales');
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isAddingNewItem, setIsAddingNewItem] = useState(false);
@@ -675,6 +676,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           <button onClick={() => setActiveTab('promos')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'promos' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
             <Ticket className="h-4 w-4" /> Vouchers & Promos ({promos.length})
           </button>
+          <button onClick={() => setActiveTab('process')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'process' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
+            <UserPlus className="h-4 w-4" /> Process Customer Order
+          </button>
         </div>
 
         {/* Sales analytics and order transaction log */}
@@ -812,6 +816,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               )}
             </div>
           </div>
+        )}
+
+        {/* Admin order processing: place an order on behalf of an existing or new customer */}
+        {activeTab === 'process' && (
+          <AdminOrderProcessing onOrdersChanged={fetchCloudData} onViewSales={() => setActiveTab('sales')} />
         )}
 
         {/* Scheduling slot capacity & bowl inventory controls */}
