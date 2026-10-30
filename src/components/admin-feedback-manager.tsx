@@ -21,13 +21,14 @@ const STATUS_SKIN: Record<string, string> = {
 const chip = (on: boolean) =>
   `px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${on ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`;
 
-function FeedbackRow({ post, urlMap, onOpenPhoto, onChanged }: any) {
+function FeedbackRow({ post, urlMap, onOpenPhoto, onChanged, onDeleted }: any) {
   const reply = Array.isArray(post.feedback_replies) ? post.feedback_replies[0] : post.feedback_replies;
   const photos = [...(post.feedback_photos || [])].sort((a, b) => (a.created_at > b.created_at ? 1 : -1));
   const urls = photos.map((p) => urlMap[p.storage_path]);
   const [draft, setDraft] = useState(reply?.body || '');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [confirmDel, setConfirmDel] = useState(false);
 
   useEffect(() => { setDraft(reply?.body || ''); }, [reply?.body]);
 
@@ -55,6 +56,33 @@ function FeedbackRow({ post, urlMap, onOpenPhoto, onChanged }: any) {
     }
     onChanged({ ...post, feedback_replies: [res.data[0]] });
     setMsg({ ok: true, text: reply ? `Reply updated as ${OFFICIAL_NAME}.` : `Reply published as ${OFFICIAL_NAME}.` });
+  };
+
+  const deleteReply = async () => {
+    if (!reply) return;
+    setBusy(true); setMsg(null);
+    const { data, error } = await supabase.from('feedback_replies').delete().eq('id', reply.id).select('id');
+    setBusy(false);
+    if (error || !data?.length) { setMsg({ ok: false, text: 'Reply was not deleted (not authorized or a network error).' }); return; }
+    setDraft('');
+    onChanged({ ...post, feedback_replies: [] });
+    setMsg({ ok: true, text: 'Official reply deleted.' });
+  };
+
+  const deletePost = async () => {
+    setBusy(true); setMsg(null);
+    // 1) delete the database row first (food rows, photo rows and reply cascade); if this fails nothing is lost
+    const { data, error } = await supabase.from('feedback_posts').delete().eq('id', post.id).select('id');
+    if (error || !data?.length) {
+      setBusy(false); setConfirmDel(false);
+      setMsg({ ok: false, text: 'Post was not deleted (not authorized or a network error).' });
+      return;
+    }
+    // 2) then remove its image files from Storage
+    const paths = photos.map((p) => p.storage_path);
+    if (paths.length) await supabase.storage.from(FEEDBACK_BUCKET).remove(paths);
+    setBusy(false);
+    onDeleted(post.id);
   };
 
   return (
@@ -89,7 +117,12 @@ function FeedbackRow({ post, urlMap, onOpenPhoto, onChanged }: any) {
         </div>
         <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder="Write the official response…" className="w-full resize-y rounded-lg border border-emerald-800/60 bg-[#061c16] p-2.5 text-sm text-white outline-none focus:border-lime-400/60" />
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[11px] text-emerald-300/70">{draft.length} / {MAX_COMMENT}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-emerald-300/70">{draft.length} / {MAX_COMMENT}</span>
+            {reply && (
+              <button type="button" disabled={busy} onClick={deleteReply} className="text-[11px] font-extrabold text-red-400 underline disabled:opacity-40 cursor-pointer">Delete reply</button>
+            )}
+          </div>
           <button type="button" disabled={busy} onClick={saveReply} className="inline-flex items-center gap-1.5 rounded-xl bg-lime-400 px-4 py-2 text-xs font-extrabold text-black disabled:opacity-60 cursor-pointer">
             {busy && <Loader2 className="animate-spin" width={14} height={14} />} {reply ? 'Update reply' : 'Publish reply'}
           </button>
@@ -101,6 +134,15 @@ function FeedbackRow({ post, urlMap, onOpenPhoto, onChanged }: any) {
         <button type="button" disabled={busy || post.status === 'published'} onClick={() => setStatus('published')} className="inline-flex items-center gap-1.5 rounded-lg border border-lime-400/50 px-3 py-1.5 text-[11px] font-extrabold text-lime-300 disabled:opacity-40 cursor-pointer"><Eye width={13} height={13} /> Publish</button>
         <button type="button" disabled={busy || post.status === 'pending'} onClick={() => setStatus('pending')} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/50 px-3 py-1.5 text-[11px] font-extrabold text-amber-300 disabled:opacity-40 cursor-pointer"><Clock width={13} height={13} /> Pending review</button>
         <button type="button" disabled={busy || post.status === 'hidden'} onClick={() => setStatus('hidden')} className="inline-flex items-center gap-1.5 rounded-lg border border-red-800 px-3 py-1.5 text-[11px] font-extrabold text-red-400 disabled:opacity-40 cursor-pointer"><EyeOff width={13} height={13} /> Hide (spam / inappropriate)</button>
+        {!confirmDel ? (
+          <button type="button" disabled={busy} onClick={() => setConfirmDel(true)} className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-red-800 bg-red-950/60 px-3 py-1.5 text-[11px] font-extrabold text-red-300 disabled:opacity-40 cursor-pointer"><Trash2 width={13} height={13} /> Delete post</button>
+        ) : (
+          <span className="ml-auto inline-flex flex-wrap items-center gap-2 rounded-lg border border-red-800 bg-red-950/60 px-3 py-1.5 text-[11px] text-red-200">
+            Permanently delete this post, its photos and reply?
+            <button type="button" disabled={busy} onClick={deletePost} className="rounded-md bg-red-600 px-2.5 py-1 font-extrabold text-white disabled:opacity-60 cursor-pointer">{busy ? 'Deleting…' : 'Yes, delete'}</button>
+            <button type="button" disabled={busy} onClick={() => setConfirmDel(false)} className="rounded-md border border-red-800 px-2.5 py-1 font-extrabold cursor-pointer">Cancel</button>
+          </span>
+        )}
       </div>
     </div>
   );
@@ -148,6 +190,7 @@ export function AdminFeedbackManager() {
   };
 
   const replace = (updated: any) => setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+  const removeRow = (id: string) => setRows((prev) => prev.filter((r) => r.id !== id));
 
   const cleanOrphans = async () => {
     setCleanMsg('Checking…');
@@ -192,7 +235,7 @@ export function AdminFeedbackManager() {
         <div className="rounded-2xl border border-dashed border-emerald-800/60 py-12 text-center text-sm text-emerald-200"><MessageSquare className="mx-auto mb-2 text-emerald-700" width={26} height={26} />No feedback matches these filters.</div>
       ) : (
         <>
-          {visible.map((p) => <FeedbackRow key={p.id} post={p} urlMap={urlMap} onOpenPhoto={(urls, index) => setLightbox({ urls, index })} onChanged={replace} />)}
+          {visible.map((p) => <FeedbackRow key={p.id} post={p} urlMap={urlMap} onOpenPhoto={(urls, index) => setLightbox({ urls, index })} onChanged={replace} onDeleted={removeRow} />)}
           {hasMore && (
             <button type="button" onClick={loadMore} disabled={loadingMore} className="mx-auto flex items-center gap-2 rounded-xl border border-emerald-800/60 bg-[#061c16] px-5 py-2.5 text-xs font-extrabold text-emerald-200 disabled:opacity-60 cursor-pointer">
               {loadingMore && <Loader2 className="animate-spin" width={14} height={14} />} Load more
