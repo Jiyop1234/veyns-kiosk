@@ -706,7 +706,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     onClick={async () => {
                       if (!confirm('Are you sure you want to clear all sales logs? Customer order histories will remain untouched.')) return;
                       try {
-                        const { error } = await supabase.from('orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+                        const { error } = await supabase.rpc('admin_clear_sales_log');
                         if (error) throw error;
                         setOrders([]);
                         alert('Sales transaction logs successfully cleared for admin.');
