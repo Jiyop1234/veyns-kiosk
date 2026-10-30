@@ -5,6 +5,7 @@ import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Min
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
+import { getPromoStatus, getPromoEndMs } from '@/lib/promo-campaigns';
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
@@ -155,9 +156,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
       setAppliedPromos((prev) =>
         prev.filter((p) => {
-          if (!p.expiryDurationMs || p.expiryDurationMs <= 0) return true;
-          const expiresAt = p.createdAt + p.expiryDurationMs;
-          return current < expiresAt;
+          const endMs = getPromoEndMs(p);
+          return endMs === null || current < endMs;
         })
       );
     }, 1000);
@@ -178,7 +178,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           expiryDurationMs: Number(p.expiry_duration_ms),
           usageLimit: p.usage_limit ? Number(p.usage_limit) : null,
           usageCount: Number(p.usage_count || 0),
-          createdAt: Number(p.created_at || Date.now())
+          createdAt: Number(p.created_at || Date.now()),
+          name: p.name || '',
+          description: p.description || '',
+          startDate: p.start_date ? Date.parse(p.start_date) : null,
+          expiresAt: p.expires_at ? Date.parse(p.expires_at) : null,
+          minPurchase: Number(p.min_purchase || 0),
+          isEnabled: p.is_enabled !== false
         }));
         setAvailablePromos(formatted);
       } else {
@@ -302,8 +308,10 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       loadPromosFromCloud();
     };
     window.addEventListener('storage', handleStorageChange);
+    const promoRefreshTimer = setInterval(() => loadPromosFromCloud(), 60000);
 
     return () => {
+      clearInterval(promoRefreshTimer);
       supabase.removeChannel(menuChannel);
       supabase.removeChannel(slotsChannel);
       supabase.removeChannel(promosChannel);
@@ -327,6 +335,15 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [appliedPromos, setAppliedPromos] = useState<any[]>([]); // Stacking multiple vouchers
   const [promoError, setPromoError] = useState('');
   const [claimedVouchersState, setClaimedVouchersState] = useState<{ [code: string]: number }>({});
+
+  // If the cart shrinks below a voucher's minimum purchase, remove it so checkout never submits a promo the server will reject.
+  useEffect(() => {
+    const belowMin = appliedPromos.filter((p) => Number(p.minPurchase || 0) > 0 && total < Number(p.minPurchase));
+    if (belowMin.length > 0) {
+      setAppliedPromos((prev) => prev.filter((p) => !belowMin.some((b) => b.code === p.code)));
+      setPromoError(`Removed ${belowMin.map((b) => b.code).join(', ')}: the order is below its minimum purchase.`);
+    }
+  }, [total, appliedPromos]);
 
   const isOrdersOpen = showMyOrders !== undefined ? showMyOrders : internalShowMyOrders;
   const setIsOrdersOpen = setShowMyOrders || setInternalShowMyOrders;
@@ -911,12 +928,22 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       return;
     }
 
-    if (found.expiryDurationMs && found.expiryDurationMs > 0 && found.createdAt) {
-      const expiresAt = found.createdAt + found.expiryDurationMs;
-      if (Date.now() > expiresAt) {
-        setPromoError('This voucher code has expired.');
-        return;
-      }
+    const promoStatus = getPromoStatus(found, Date.now());
+    if (promoStatus === 'disabled') {
+      setPromoError('This promo is not currently available.');
+      return;
+    }
+    if (promoStatus === 'scheduled') {
+      setPromoError('This promo has not started yet.');
+      return;
+    }
+    if (promoStatus === 'expired') {
+      setPromoError('This voucher code has expired.');
+      return;
+    }
+    if (found.minPurchase > 0 && total < found.minPurchase) {
+      setPromoError(`This promo needs a minimum order of ${formatPeso(found.minPurchase)}.`);
+      return;
     }
 
     if (found.usageLimit && (found.usageCount || 0) >= found.usageLimit) {
@@ -1056,7 +1083,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // SECTION 22: Derived values used by the rendered menu, loyalty, and checkout interface.
   const validStampsCount = stamps.filter(s => s.status === 'valid').length;
-  const publicVouchersList = availablePromos.filter(p => p.visibility !== 'hidden');
+  const publicVouchersList = availablePromos.filter(p => p.visibility !== 'hidden' && getPromoStatus(p, nowTimestamp) === 'active');
 
   const isStoreClosedForToday = orderType === 'today' && !orderTodayOpen;
 
@@ -2050,9 +2077,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       // Calculate real-time countdown using the existing nowTimestamp state
                       let timeRemainingText = 'Never expires';
                       let isExpired = false;
-                      if (promo.expiryDurationMs && promo.expiryDurationMs > 0 && promo.createdAt) {
-                        const expiresAt = promo.createdAt + promo.expiryDurationMs;
-                        const diff = expiresAt - nowTimestamp;
+                      const promoEndMs = getPromoEndMs(promo);
+                      if (promoEndMs !== null) {
+                        const diff = promoEndMs - nowTimestamp;
                         if (diff <= 0) {
                           timeRemainingText = 'Expired';
                           isExpired = true;
@@ -2069,10 +2096,14 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         <div key={pIdx} className="bg-[#061d16] border border-emerald-800/70 rounded-xl p-2.5 flex items-center justify-between text-xs">
                           <div className="space-y-0.5">
                             <span className="font-extrabold text-lime-400 text-xs">{promo.code}</span>
+                            {promo.name && <span className="ml-1.5 text-[10px] font-bold text-white">{promo.name}</span>}
                             <p className="text-[10px] text-emerald-200">
                               {promo.targetType === 'delivery' ? 'Delivery Discount: ' : 'Food Discount: '}
                               {promo.type === 'peso' ? formatPeso(promo.discountValue) + ' OFF' : `${promo.discountValue}% OFF`}
                             </p>
+                            {promo.minPurchase > 0 && (
+                              <p className="text-[9px] text-emerald-300">Min. order {formatPeso(promo.minPurchase)}</p>
+                            )}
                             <p className={`text-[9px] font-mono ${isExpired ? 'text-red-400 font-bold' : 'text-amber-300'}`}>
                               ⏳ {timeRemainingText}
                             </p>
