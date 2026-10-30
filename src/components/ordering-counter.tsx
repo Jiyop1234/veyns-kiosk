@@ -635,10 +635,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   }, [resetKey]);
 
   // SECTION 15: Create orders only through the server-validated Supabase RPC.
+  const orderIdempotencyKeyRef = useRef<string>((typeof crypto !== 'undefined' && (crypto as any).randomUUID) ? (crypto as any).randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2));
+  const placingOrderRef = useRef(false);
   const saveOrderToHistory = async (newOrder: any) => {
     // Calculate total quantity of bowls ordered across all cart lines
     const totalBowlsCount = lines.reduce((sum, line) => sum + (line.qty || 1), 0);
-    const targetDateKey = newOrder.orderType === 'reservation' ? reservationDate : new Date().toISOString().split('T')[0];
+    const targetDateKey = newOrder.orderType === 'reservation' ? reservationDate : new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
     const targetSlotTime = newOrder.orderType === 'reservation' ? reservationTime : todayTimeSlot;
 
     const payload = {
@@ -664,51 +666,33 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       })),
     };
 
-    // 1. Insert order and get order id
-    const { data: orderDataRes, error: orderErr } = await supabase.from('orders').insert({
-      user_id: isGuest ? null : currentUser?.authUserId,
-      account_nickname: isGuest ? 'Guest' : (currentUser?.name || 'User'),
-      customer_name: payload.name,
-      email: payload.email,
-      phone: payload.phone,
-      fulfillment: payload.fulfillment,
-      location: payload.location,
-      landmark: payload.landmark,
-      order_type: payload.orderType,
-      schedule_info: payload.scheduleInfo,
-      delivery_fee: payload.deliveryFee,
-      promo_code: newOrder.promoCode,
-      total: newOrder.total,
-      items: payload.items
-    }).select().single();
-
-    if (orderErr || !orderDataRes) throw new Error(orderErr?.message || 'Order could not be saved.');
-
-    // 2. Securely reserve slot and deduct total bowls
-    const { data: slotRes, error: slotErr } = await supabase.rpc('reserve_slot_capacity_v2', {
-      p_date_key: targetDateKey,
-      p_slot_time: targetSlotTime,
-      p_bowls_requested: totalBowlsCount,
-      p_order_id: orderDataRes.id,
-      p_user_id: isGuest ? null : currentUser?.authUserId,
-      p_customer_name: payload.name,
-      p_customer_phone: payload.phone
+    // Atomic server-side placement: order is numbered, priced, promo-validated and its slot reserved
+    // in ONE database transaction. If anything fails nothing is saved (no orphan orders).
+    // The idempotency key makes double-clicks / network retries return the same order.
+    const { data: orderDataRes, error: orderErr } = await supabase.rpc('place_order', {
+      p_order: {
+        name: payload.name,
+        email: payload.email,
+        phone: payload.phone,
+        fulfillment: payload.fulfillment,
+        location: payload.location,
+        landmark: payload.landmark,
+        orderType: payload.orderType,
+        scheduleInfo: payload.scheduleInfo,
+        deliveryFee: payload.deliveryFee,
+        promoCodesList: payload.promoCodesList,
+        items: payload.items,
+        dateKey: targetDateKey,
+        slotTime: targetSlotTime,
+        accountNickname: isGuest ? 'Guest' : (currentUser?.name || 'User'),
+        idempotencyKey: orderIdempotencyKeyRef.current
+      }
     });
 
-    if (slotErr || (slotRes && slotRes.success === false)) {
-      // Rollback order if slot is fully booked
-      await supabase.from('orders').delete().eq('id', orderDataRes.id);
-      throw new Error(slotRes?.message || slotErr?.message || 'Time slot is fully booked.');
-    }
+    if (orderErr || !orderDataRes) throw new Error(orderErr?.message || 'Order could not be saved.');
+    orderIdempotencyKeyRef.current = (typeof crypto !== 'undefined' && (crypto as any).randomUUID) ? (crypto as any).randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
 
-        // Increment usage count for each applied promo
-    if (!isGuest && newOrder.promoCodesList && newOrder.promoCodesList.length > 0) {
-      for (const code of newOrder.promoCodesList) {
-        await supabase.rpc('increment_promo_usage', { p_code: code });
-      }
-    }
-
-    const savedOrder = { ...newOrder, orderNumber: orderDataRes.order_number, items: orderDataRes.items, subtotal: Number(orderDataRes.subtotal || newOrder.subtotal), promoDiscount: Number(orderDataRes.promo_discount || newOrder.promoDiscount), deliveryDiscount: Number(orderDataRes.delivery_discount || 0), deliveryFee: Number(orderDataRes.delivery_fee || newOrder.deliveryFee), total: Number(orderDataRes.total || newOrder.total) };
+    const savedOrder = { ...newOrder, orderNumber: orderDataRes.order_number, items: orderDataRes.items, subtotal: Number(orderDataRes.subtotal || newOrder.subtotal), promoDiscount: Number(orderDataRes.promo_discount || 0), promoCode: orderDataRes.promo_code || null, promoCodesList: orderDataRes.promo_code ? String(orderDataRes.promo_code).split(',').map((c: string) => c.trim()) : [], deliveryDiscount: Number(orderDataRes.delivery_discount || 0), deliveryFee: Number(orderDataRes.delivery_fee || newOrder.deliveryFee), total: Number(orderDataRes.total || newOrder.total) };
     
     const prior = isGuest ? sessionStorage.getItem(userHistoryStorageKey) : localStorage.getItem(userHistoryStorageKey);
     let previous: any[] = [];
@@ -1017,6 +1001,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   const handleConfirmOrder = async () => {
+    if (placingOrderRef.current) return; // ignore double-clicks while an order is being saved
     if (orderType === 'today' && !isOrderTodayAllowed()) {
       alert('Store is closed until 12 noon. Select a reservation time instead.'); return;
     }
@@ -1038,6 +1023,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       promoCode: promoCodesList.length ? promoCodesList.join(', ') : null,
       promoCodesList, promoDiscount: foodDiscountAmount + deliveryDiscountAmount, total: finalCartTotal, date: new Date().toLocaleString(),
     };
+    placingOrderRef.current = true;
     try {
       const savedOrder = await saveOrderToHistory(orderData);
       setPlacedOrderDetails(savedOrder);
@@ -1046,6 +1032,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     } catch (error: any) {
       console.error('Order submission failed:', error);
       alert(error?.message || 'Unable to place this order. Please try again.');
+    } finally {
+      placingOrderRef.current = false;
     }
   };
 
@@ -1922,6 +1910,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     <span>Food Subtotal:</span>
                     <span className="font-bold text-white">{formatPeso(placedOrderDetails.subtotal)}</span>
                   </div>
+                  {!placedOrderDetails.promoCode && (
+                    <div className="flex justify-between text-emerald-200">
+                      <span>Promo:</span>
+                      <span className="font-bold text-white">NA</span>
+                    </div>
+                  )}
                   {placedOrderDetails.promoDiscount > 0 && (
                     <div className="flex justify-between text-amber-400 font-semibold">
                       <span>Promo Discount ({placedOrderDetails.promoCode}):</span>

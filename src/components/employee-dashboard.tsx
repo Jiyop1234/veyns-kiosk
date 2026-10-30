@@ -20,6 +20,28 @@ function Photo({ src, alt, className }: { src?: string; alt: string; className: 
 }
 
 // --- Main employee/admin dashboard component ---
+// ---- order display helpers (work for normalised items AND old raw items) ----
+const itemQty = (it: any) => Number(it?.qty ?? it?.quantity ?? 1);
+const itemName = (it: any) => it?.name || it?.item?.name || 'Item';
+const itemUnit = (it: any) => Number(it?.unitPrice ?? it?.price ?? it?.item?.price ?? 0);
+
+// ---- schedule-transfer helpers (Asia/Manila, real timestamps) ----
+const todayManila = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+const slotEndsAt = (dateKey: string, slot: string): number | null => {
+  const m = (slot || '').match(/^\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])\s*-\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])\s*$/);
+  if (!m || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey || '')) return null;
+  const mins = (h: string, mi: string, ap: string) => ((parseInt(h, 10) % 12) + (ap.toUpperCase() === 'PM' ? 12 : 0)) * 60 + parseInt(mi, 10);
+  const s = mins(m[1], m[2], m[3]);
+  let e = mins(m[4], m[5], m[6]);
+  if (e <= s) e += 1440;
+  const [y, mo, d] = dateKey.split('-').map(Number);
+  return Date.UTC(y, mo - 1, d, 0, e, 0) - 8 * 3600 * 1000; // Manila = UTC+8
+};
+const slotHasEnded = (dateKey: string, slot: string) => {
+  const end = slotEndsAt(dateKey, slot);
+  return end === null ? true : end <= Date.now();
+};
+
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
   const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots'>('sales');
   const [menuItems, setMenuItems] = useState<any[]>([]);
@@ -71,6 +93,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [slotReservationsList, setSlotReservationsList] = useState<any[]>([]);
   const [transferringReservation, setTransferringReservation] = useState<any>(null);
   const [transferTargetSlot, setTransferTargetSlot] = useState(timeSlotsList[0]);
+  const [transferTargetDate, setTransferTargetDate] = useState<string>(todayManila());
 
   // --- Phase 4: Loyalty Manager state (replaces old Fair Play penalty system) ---
   const [loyaltyTargetUser, setLoyaltyTargetUser] = useState<any>(null);
@@ -136,8 +159,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           fulfillment: o.fulfillment || 'delivery',
           location: o.location || o.address || '',
           landmark: o.landmark || '',
-          items: o.items || [],
-          total: o.total || 0,
+          items: Array.isArray(o.items) ? o.items : [],
+          subtotal: Number(o.subtotal ?? 0),
+          promoDiscount: Number(o.promo_discount || 0),
+          deliveryDiscount: Number(o.delivery_discount || 0),
+          deliveryFee: Number(o.delivery_fee || 0),
+          total: Number(o.total || 0),
           date: new Date(o.created_at).toLocaleString(),
           promoCode: o.promo_code || '',
           orderType: o.order_type || 'today',
@@ -241,7 +268,20 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   };
 
   // --- Execute Admin Slot Transfer ---
+  const openTransfer = (res: any) => {
+    const base = inspectingSlot?.dateKey || selectedSlotDate || todayManila();
+    const date = base < todayManila() ? todayManila() : base;
+    setTransferTargetDate(date);
+    const firstOpen = timeSlotsList.find((s) => !slotHasEnded(date, s) && !(date === res.date_key && s === res.slot_time));
+    setTransferTargetSlot(firstOpen || timeSlotsList[0]);
+    setTransferringReservation(res);
+  };
+
   const handleExecuteTransfer = async (reservationId: string, newDateKey: string, newSlotTime: string) => {
+    if (slotHasEnded(newDateKey, newSlotTime)) {
+      alert('That time slot has already passed. Choose a future date or a later time slot.');
+      return;
+    }
     try {
       const { data, error } = await supabase.rpc('admin_transfer_slot', {
         p_reservation_id: reservationId,
@@ -249,6 +289,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         p_new_slot_time: newSlotTime
       });
       if (error) throw error;
+      if (data && data.success === false) throw new Error(data.message || 'Transfer failed.');
       alert('Slot successfully transferred!');
       setTransferringReservation(null);
       if (inspectingSlot) {
@@ -734,12 +775,25 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                           <td className="p-3 space-y-0.5 max-w-xs">
                             {order.items.map((it: any, i: number) => (
                               <div key={i} className="text-emerald-200">
-                                {it.qty}x {it.item?.name || it.name}
+                                {itemQty(it)}x {itemName(it)}
                                 {it.customizationsSummary && <span className="block text-[10px] text-lime-300 font-mono">↳ {it.customizationsSummary}</span>}
                               </div>
                             ))}
                           </td>
-                          <td className="p-3 font-semibold text-amber-400">{order.promoCode || '—'}</td>
+                          <td className="p-3 font-semibold text-amber-400">
+                            {order.promoCode ? (
+                              <div className="space-y-0.5">
+                                <span>{order.promoCode}</span>
+                                {(order.promoDiscount > 0 || order.deliveryDiscount > 0) && (
+                                  <span className="block text-[10px] text-amber-300/80 font-medium">
+                                    {order.promoDiscount > 0 && `Food −${formatPeso(order.promoDiscount)}`}
+                                    {order.promoDiscount > 0 && order.deliveryDiscount > 0 && ' • '}
+                                    {order.deliveryDiscount > 0 && `Delivery −${formatPeso(order.deliveryDiscount)}`}
+                                  </span>
+                                )}
+                              </div>
+                            ) : 'NA'}
+                          </td>
                           <td className="p-3 font-extrabold text-lime-400 text-sm">{formatPeso(order.total)}</td>
                           <td className="p-3 text-right">
                             <Button
@@ -842,7 +896,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         <span className="text-[10px] text-emerald-400 uppercase font-bold">Ordered Items & Customizations:</span>
                         {res.orders?.items?.map((it: any, i: number) => (
                           <div key={i} className="text-emerald-200 text-[11px] pl-2 border-l-2 border-lime-400/40">
-                            <span>{it.qty}x {it.item?.name || it.name}</span>
+                            <span>{itemQty(it)}x {itemName(it)}</span>
                             {it.customizationsSummary && <span className="block text-[10px] text-lime-300 font-mono">↳ {it.customizationsSummary}</span>}
                           </div>
                         ))}
@@ -850,7 +904,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                       <div className="flex justify-end pt-2 border-t border-emerald-900/40">
                         <Button
                           size="sm"
-                          onClick={() => setTransferringReservation(res)}
+                          onClick={() => openTransfer(res)}
                           className="bg-[#082a20] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1.5"
                         >
                           <ArrowRightLeft className="size-3.5" /> Transfer Schedule
@@ -873,10 +927,28 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   Transfer Reservation for {transferringReservation.customer_name}
                 </DialogTitle>
                 <DialogDescription className="text-xs text-emerald-300">
-                  Select a new time slot to move this customer's {transferringReservation.bowls_reserved} bowls into.
+                  Move this customer's {transferringReservation.bowls_reserved} bowls to another date and time. Past time slots cannot be selected.
                 </DialogDescription>
               </div>
               <div className="my-4 space-y-3 text-xs">
+                <div>
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Target Date</label>
+                  <input
+                    type="date"
+                    min={todayManila()}
+                    value={transferTargetDate}
+                    onChange={(e) => {
+                      const d = e.target.value;
+                      if (!d) return;
+                      setTransferTargetDate(d);
+                      if (slotHasEnded(d, transferTargetSlot)) {
+                        const next = timeSlotsList.find((s) => !slotHasEnded(d, s));
+                        if (next) setTransferTargetSlot(next);
+                      }
+                    }}
+                    className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-xs text-white font-bold focus:outline-none focus:border-lime-400"
+                  />
+                </div>
                 <div>
                   <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Target Time Slot</label>
                   <select
@@ -884,15 +956,25 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     onChange={(e) => setTransferTargetSlot(e.target.value)}
                     className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-xs text-white font-bold focus:outline-none focus:border-lime-400"
                   >
-                    {timeSlotsList.map((slot) => (
-                      <option key={slot} value={slot}>{slot}</option>
-                    ))}
+                    {timeSlotsList.map((slot) => {
+                      const ended = slotHasEnded(transferTargetDate, slot);
+                      const same = transferTargetDate === transferringReservation.date_key && slot === transferringReservation.slot_time;
+                      return (
+                        <option key={slot} value={slot} disabled={ended || same}>
+                          {slot}{ended ? ' (already passed)' : same ? ' (current slot)' : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>
               <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
                 <Button onClick={() => setTransferringReservation(null)} className="flex-1 bg-emerald-950 text-emerald-200 font-bold py-2.5 rounded-xl text-xs cursor-pointer">Cancel</Button>
-                <Button onClick={() => handleExecuteTransfer(transferringReservation.id, inspectingSlot?.dateKey || selectedSlotDate, transferTargetSlot)} className="flex-1 bg-lime-400 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg">Confirm Transfer</Button>
+                <Button
+                  disabled={slotHasEnded(transferTargetDate, transferTargetSlot)}
+                  onClick={() => handleExecuteTransfer(transferringReservation.id, transferTargetDate, transferTargetSlot)}
+                  className="flex-1 bg-lime-400 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                >Confirm Transfer</Button>
               </div>
             </DialogContent>
           )}
@@ -1216,24 +1298,44 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <div className="bg-[#061d16] border border-emerald-800/80 rounded-xl p-3 text-xs space-y-2">
                   <p className="font-bold text-lime-400 uppercase text-[10px] tracking-wider">Order Summary:</p>
                   <div className="space-y-1 border-b border-emerald-900/60 pb-2">
-                    {selectedInvoice.items?.map((it: any, i: number) => (
+                    {(selectedInvoice.items || []).length === 0 && (
+                      <p className="text-emerald-400 text-[11px]">No item details were saved for this order.</p>
+                    )}
+                    {(selectedInvoice.items || []).map((it: any, i: number) => (
                       <div key={i} className="flex justify-between text-white">
                         <div>
-                          <span>{it.qty}x {it.item?.name || it.name}</span>
+                          <span>{itemQty(it)}x {itemName(it)}</span>
+                          <span className="text-emerald-400 text-[10px]"> @ {formatPeso(itemUnit(it))}</span>
                           {it.customizationsSummary && (
                             <p className="text-[10px] text-lime-300 font-mono pl-2">↳ {it.customizationsSummary}</p>
                           )}
                         </div>
-                        <span className="font-bold text-lime-400">{formatPeso((it.item?.price || it.price || 0) * it.qty)}</span>
+                        <span className="font-bold text-lime-400">{formatPeso(itemUnit(it) * itemQty(it))}</span>
                       </div>
                     ))}
                   </div>
-                  {selectedInvoice.promoCode && (
-                    <div className="flex justify-between text-amber-400 text-xs font-semibold">
-                      <span>Promo Applied ({selectedInvoice.promoCode}):</span>
-                      <span>Applied</span>
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between text-emerald-200">
+                      <span>Food Subtotal:</span>
+                      <span>{formatPeso(selectedInvoice.subtotal || (selectedInvoice.items || []).reduce((s: number, it: any) => s + itemUnit(it) * itemQty(it), 0))}</span>
                     </div>
-                  )}
+                    <div className="flex justify-between text-amber-400 font-semibold">
+                      <span>Promo: {selectedInvoice.promoCode || 'NA'}</span>
+                      <span>{selectedInvoice.promoDiscount > 0 ? `−${formatPeso(selectedInvoice.promoDiscount)} (food)` : selectedInvoice.promoCode ? '' : 'NA'}</span>
+                    </div>
+                    {selectedInvoice.deliveryFee > 0 && (
+                      <div className="flex justify-between text-emerald-200">
+                        <span>Delivery Fee:</span>
+                        <span>{formatPeso(selectedInvoice.deliveryFee)}</span>
+                      </div>
+                    )}
+                    {selectedInvoice.deliveryDiscount > 0 && (
+                      <div className="flex justify-between text-amber-400 font-semibold">
+                        <span>Delivery Discount:</span>
+                        <span>−{formatPeso(selectedInvoice.deliveryDiscount)}</span>
+                      </div>
+                    )}
+                  </div>
                   <div className="flex justify-between text-sm font-extrabold text-white pt-1">
                     <span>Total Amount Due:</span>
                     <span className="text-lime-400 text-base">{formatPeso(selectedInvoice.total)}</span>
