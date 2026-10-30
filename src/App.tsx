@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, XCircle, KeyRound, Tag, AlertTriangle, Clock, Settings, Edit3, Facebook, Instagram, Eye, EyeOff, ChevronDown, Mail, RefreshCw } from 'lucide-react';
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
+import { FeedbackPage } from '@/components/feedback-page';
 
 export function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
@@ -44,6 +45,7 @@ export function App() {
   const [loginError, setLoginError] = useState('');
   
   const [showMyOrders, setShowMyOrders] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [showAccountSettingsPanel, setShowAccountSettingsPanel] = useState(false);
   const [isUpdatingIdentifier, setIsUpdatingIdentifier] = useState(false);
@@ -833,6 +835,7 @@ export function App() {
             setLoginError('');
           }}
           onExitGuest={handleLogout}
+          onOpenFeedback={() => setShowFeedback(true)}
         />
         <main className="flex-1">
           <OrderingCounter
@@ -864,6 +867,7 @@ export function App() {
             }}
           />
         </main>
+        {showFeedback && <FeedbackPage onBack={() => setShowFeedback(false)} currentUser={currentUser} />}
         <Dialog open={showLoyaltyModal} onOpenChange={setShowLoyaltyModal}>
           <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
             <div className="space-y-1 text-left border-b border-emerald-900/60 pb-3">

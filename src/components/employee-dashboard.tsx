@@ -7,6 +7,8 @@ import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
 import { menuImages } from '@/lib/menu-images';
 import { supabase } from '@/lib/supabase';
 import { AdminOrderProcessing } from '@/components/admin-order-processing';
+import { AdminFeedbackManager } from '@/components/admin-feedback-manager';
+import { MessageSquare } from 'lucide-react';
 
 // --- Menu image display helper: renders an image or the VEYNS fallback ---
 function Photo({ src, alt, className }: { src?: string; alt: string; className: string }) {
@@ -57,7 +59,7 @@ const payableAmount = (o: any) => (o?.pwdApplied ? Number(o.pwdFinal || 0) : Num
 const RESCHEDULE_SLOTS = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'];
 
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots' | 'process'>('sales');
+  const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots' | 'process' | 'feedback'>('sales');
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isAddingNewItem, setIsAddingNewItem] = useState(false);
@@ -800,6 +802,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           <button onClick={() => setActiveTab('process')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'process' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
             <UserPlus className="h-4 w-4" /> Process Customer Order
           </button>
+          <button onClick={() => setActiveTab('feedback')} className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${activeTab === 'feedback' ? 'bg-lime-400 text-black shadow-lg' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60 hover:border-lime-400/50'}`}>
+            <MessageSquare className="h-4 w-4" /> Feedback
+          </button>
         </div>
 
         {/* Sales analytics and order transaction log */}
@@ -995,6 +1000,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         {activeTab === 'process' && (
           <AdminOrderProcessing onOrdersChanged={fetchCloudData} onViewSales={() => setActiveTab('sales')} />
         )}
+
+        {/* Customer feedback management */}
+        {activeTab === 'feedback' && <AdminFeedbackManager />}
 
         {/* Scheduling slot capacity & bowl inventory controls */}
         {activeTab === 'slots' && (
