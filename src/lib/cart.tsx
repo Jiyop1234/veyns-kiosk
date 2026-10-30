@@ -26,7 +26,7 @@ export function CartProvider({ children }) {
     const customizationsKey = JSON.stringify(customizations || []);
 
     setLines((prev) => {
-      // Combine quantities only when the same item and same options are already in the cart.
+      // Combine quantities only when the same item and options already match.
       const existingIndex = prev.findIndex(
         (l) =>
           l.item.id === item.id &&
