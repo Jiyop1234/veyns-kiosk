@@ -22,7 +22,7 @@ function Photo({ src, alt, className }: { src?: string; alt: string; className: 
 // --- Main employee/admin dashboard component ---
 // ---- order display helpers (work for normalised items AND old raw items) ----
 const itemQty = (it: any) => Number(it?.qty ?? it?.quantity ?? 1);
-const itemName = (it: any) => it?.name || it?.item?.name || 'Item';
+const lineItemName = (it: any) => it?.name || it?.item?.name || 'Item';
 const itemUnit = (it: any) => Number(it?.unitPrice ?? it?.price ?? it?.item?.price ?? 0);
 
 // ---- schedule-transfer helpers (Asia/Manila, real timestamps) ----
@@ -775,7 +775,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                           <td className="p-3 space-y-0.5 max-w-xs">
                             {order.items.map((it: any, i: number) => (
                               <div key={i} className="text-emerald-200">
-                                {itemQty(it)}x {itemName(it)}
+                                {itemQty(it)}x {lineItemName(it)}
                                 {it.customizationsSummary && <span className="block text-[10px] text-lime-300 font-mono">↳ {it.customizationsSummary}</span>}
                               </div>
                             ))}
@@ -896,7 +896,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         <span className="text-[10px] text-emerald-400 uppercase font-bold">Ordered Items & Customizations:</span>
                         {res.orders?.items?.map((it: any, i: number) => (
                           <div key={i} className="text-emerald-200 text-[11px] pl-2 border-l-2 border-lime-400/40">
-                            <span>{itemQty(it)}x {itemName(it)}</span>
+                            <span>{itemQty(it)}x {lineItemName(it)}</span>
                             {it.customizationsSummary && <span className="block text-[10px] text-lime-300 font-mono">↳ {it.customizationsSummary}</span>}
                           </div>
                         ))}
@@ -1304,7 +1304,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     {(selectedInvoice.items || []).map((it: any, i: number) => (
                       <div key={i} className="flex justify-between text-white">
                         <div>
-                          <span>{itemQty(it)}x {itemName(it)}</span>
+                          <span>{itemQty(it)}x {lineItemName(it)}</span>
                           <span className="text-emerald-400 text-[10px]"> @ {formatPeso(itemUnit(it))}</span>
                           {it.customizationsSummary && (
                             <p className="text-[10px] text-lime-300 font-mono pl-2">↳ {it.customizationsSummary}</p>
