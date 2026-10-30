@@ -43,6 +43,19 @@ const slotHasEnded = (dateKey: string, slot: string) => {
   return end === null ? true : end <= Date.now();
 };
 
+// ---- order status + PWD helpers ----
+const ORDER_STATUSES = ['pending', 'completed', 'cancelled', 'rescheduled'] as const;
+const STATUS_LABEL: Record<string, string> = { pending: 'Pending', completed: 'Completed', cancelled: 'Cancelled', rescheduled: 'Rescheduled' };
+const STATUS_SKIN: Record<string, string> = {
+  pending: 'bg-amber-400/15 text-amber-300 border-amber-400/50',
+  completed: 'bg-lime-400/15 text-lime-300 border-lime-400/50',
+  cancelled: 'bg-red-950 text-red-400 border-red-800',
+  rescheduled: 'bg-sky-400/15 text-sky-300 border-sky-400/50'
+};
+// Amount actually payable/collected: PWD orders use the discounted final amount.
+const payableAmount = (o: any) => (o?.pwdApplied ? Number(o.pwdFinal || 0) : Number(o?.total || 0));
+const RESCHEDULE_SLOTS = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'];
+
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
   const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots' | 'process'>('sales');
   const [menuItems, setMenuItems] = useState<any[]>([]);
@@ -75,6 +88,15 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+
+  // --- Order status / PWD / reschedule state ---
+  const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
+  const [pwdConfirmOrder, setPwdConfirmOrder] = useState<any>(null);
+  const [pwdIdChecked, setPwdIdChecked] = useState(false);
+  const [rescheduleOrder, setRescheduleOrder] = useState<any>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<string>('');
+  const [rescheduleSlot, setRescheduleSlot] = useState<string>('');
+  const [statusMsg, setStatusMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const [customers, setCustomers] = useState<any[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -169,7 +191,21 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           date: new Date(o.created_at).toLocaleString(),
           promoCode: o.promo_code || '',
           orderType: o.order_type || 'today',
-          scheduleInfo: o.schedule_info || 'Immediate / Today'
+          scheduleInfo: o.schedule_info || 'Immediate / Today',
+          status: (o.status || 'pending').toLowerCase(),
+          statusUpdatedAt: o.status_updated_at || null,
+          completedAt: o.completed_at || null,
+          slotDate: o.slot_date || '',
+          slotTime: o.slot_time || '',
+          rescheduledToDate: o.rescheduled_to_date || '',
+          rescheduledToTime: o.rescheduled_to_time || '',
+          pwdApplied: !!o.pwd_applied,
+          pwdOriginal: Number(o.pwd_original_amount || 0),
+          pwdPercent: Number(o.pwd_discount_percent || 0),
+          pwdDiscount: Number(o.pwd_discount_amount || 0),
+          pwdFinal: Number(o.pwd_final_amount || 0),
+          pwdAppliedByName: o.pwd_applied_by_name || '',
+          pwdAppliedAt: o.pwd_applied_at || null
         })));
       }
 
@@ -598,6 +634,88 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     await openLoyaltyManager(loyaltyTargetUser);
   };
 
+  // keep an open invoice in sync with refreshed order data (so PWD / status show immediately)
+  useEffect(() => {
+    setSelectedInvoice((prev: any) => (prev ? (orders.find((o) => o.id === prev.id) || prev) : prev));
+  }, [orders]);
+
+  const flash = (kind: 'ok' | 'err', text: string) => {
+    setStatusMsg({ kind, text });
+    setTimeout(() => setStatusMsg((cur) => (cur && cur.text === text ? null : cur)), 6000);
+  };
+
+  // --- Change an order status (all validation happens in the database RPC) ---
+  const handleStatusChange = async (order: any, next: string) => {
+    if (next === 'rescheduled') { openReschedule(order); return; }
+    if (next === order.status) return;
+    if (next === 'completed' && !confirm(`Mark ${order.orderNumber} as COMPLETED?\n\nThe customer received the order. ${formatPeso(payableAmount(order))} will be counted in Gross Sales.`)) return;
+    if (next === 'cancelled' && !confirm(`CANCEL ${order.orderNumber}?\n\nIt will be excluded from sales and its reserved slot will be released. This cannot be undone.`)) return;
+    setBusyOrderId(order.id);
+    const { data, error } = await supabase.rpc('admin_set_order_status', { p_order_id: order.id, p_status: next, p_note: null });
+    setBusyOrderId(null);
+    if (error || data?.success === false) { flash('err', error?.message || data?.message || 'Status change failed.'); return; }
+    flash('ok', `${order.orderNumber} is now ${STATUS_LABEL[next]}.`);
+    fetchCloudData();
+  };
+
+  // --- Manual PWD discount (employee has physically inspected the ID) ---
+  const openPwdConfirm = (order: any) => { setPwdIdChecked(false); setPwdConfirmOrder(order); };
+  const handleApplyPwd = async () => {
+    if (!pwdConfirmOrder || !pwdIdChecked) return;
+    const order = pwdConfirmOrder;
+    setBusyOrderId(order.id);
+    const { data, error } = await supabase.rpc('admin_apply_pwd_discount', { p_order_id: order.id });
+    setBusyOrderId(null);
+    setPwdConfirmOrder(null);
+    if (error || data?.success === false) { flash('err', error?.message || data?.message || 'Could not apply the PWD discount.'); return; }
+    flash('ok', data?.already_applied
+      ? `${order.orderNumber} already has the PWD discount — nothing was deducted again.`
+      : `PWD 20% applied to ${order.orderNumber}: −${formatPeso(data.discount)}, final ${formatPeso(data.final)}.`);
+    fetchCloudData();
+  };
+  const handleRemovePwd = async (order: any) => {
+    if (!confirm(`Remove the PWD discount from ${order.orderNumber}? (Administrators only; the removal is logged.)`)) return;
+    setBusyOrderId(order.id);
+    const { data, error } = await supabase.rpc('admin_remove_pwd_discount', { p_order_id: order.id });
+    setBusyOrderId(null);
+    if (error || data?.success === false) { flash('err', error?.message || data?.message || 'Could not remove the PWD discount.'); return; }
+    flash('ok', `PWD discount removed from ${order.orderNumber}.`);
+    fetchCloudData();
+  };
+
+  // --- Reschedule (moves the existing reservation; old slot released, new slot reserved atomically) ---
+  const openReschedule = (order: any) => {
+    const today = todayManila();
+    const base = order.slotDate && order.slotDate >= today ? order.slotDate : today;
+    setRescheduleDate(base);
+    const first = RESCHEDULE_SLOTS.find((s) => !slotHasEnded(base, s) && !(base === order.slotDate && s === order.slotTime));
+    setRescheduleSlot(first || '');
+    setRescheduleOrder(order);
+  };
+  const slotAvailability = (dateKey: string, slot: string, order: any) => {
+    const cap: any = Object.values(slotCapacities || {}).find((s: any) => s.date_key === dateKey && s.slot_time === slot);
+    const max = cap ? Number(cap.max_bowls) : 10;
+    const booked = cap ? Number(cap.booked_bowls) : 0;
+    const need = Number((order?.items || []).reduce((s: number, it: any) => s + itemQty(it), 0)) || 1;
+    const same = dateKey === order?.slotDate && slot === order?.slotTime;
+    const ended = slotHasEnded(dateKey, slot);
+    const closed = !!cap && (cap.is_manually_fully_booked || cap.is_fully_booked);
+    const full = closed || booked + need > max;
+    return { ended, full, same, left: Math.max(0, max - booked), disabled: ended || full || same };
+  };
+  const handleConfirmReschedule = async () => {
+    if (!rescheduleOrder || !rescheduleDate || !rescheduleSlot) return;
+    setBusyOrderId(rescheduleOrder.id);
+    const { data, error } = await supabase.rpc('admin_reschedule_order', {
+      p_order_id: rescheduleOrder.id, p_new_date_key: rescheduleDate, p_new_slot_time: rescheduleSlot
+    });
+    setBusyOrderId(null);
+    if (error || data?.success === false) { flash('err', error?.message || data?.message || 'Reschedule failed.'); return; }
+    flash('ok', `${rescheduleOrder.orderNumber} moved to ${rescheduleDate} (${rescheduleSlot}).`);
+    setRescheduleOrder(null);
+    fetchCloudData();
+  };
+
   // --- Return from the dashboard to the customer-facing store ---
   const handleExitStore = () => {
     if (onBackToStore) {
@@ -615,9 +733,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     c.identifier.toLowerCase().includes(customerSearch.toLowerCase())
   );
 
-  const totalGrossSales = orders.reduce((acc, o) => acc + (o.total || 0), 0);
+  // Recognised sales: ONLY completed orders, using the amount actually payable (PWD orders = discounted final amount).
+  const completedOrders = orders.filter((o) => o.status === 'completed');
+  const totalGrossSales = completedOrders.reduce((acc, o) => acc + payableAmount(o), 0);
   const totalOrdersCount = orders.length;
-  const averageOrderValue = totalOrdersCount > 0 ? totalGrossSales / totalOrdersCount : 0;
+  const averageOrderValue = completedOrders.length > 0 ? totalGrossSales / completedOrders.length : 0;
+  const pendingCount = orders.filter((o) => o.status === 'pending').length;
 
   // --- Derived option dependencies and live customization preview pricing ---
   const allAvailableOptions = itemOptionGroups.flatMap(g =>
@@ -686,15 +807,16 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-2 shadow-xl">
-                <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Total Gross Sales</span>
+                <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Total Gross Sales (Completed only)</span>
                 <p className="text-3xl font-extrabold text-lime-400 font-display">{formatPeso(totalGrossSales)}</p>
               </div>
               <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-2 shadow-xl">
                 <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Total Orders Placed</span>
                 <p className="text-3xl font-extrabold text-white font-display">{totalOrdersCount} Orders</p>
+                <p className="text-[10px] text-emerald-300/80 font-semibold">{completedOrders.length} completed • {pendingCount} pending</p>
               </div>
               <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-2 shadow-xl">
-                <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Average Order Value</span>
+                <span className="text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block">Average Completed Order Value</span>
                 <p className="text-3xl font-extrabold text-amber-400 font-display">{formatPeso(averageOrderValue)}</p>
               </div>
             </div>
@@ -702,7 +824,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
               <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="h-5 w-5 text-lime-400" />
-                  <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Completed Order Transactions Log</h3>
+                  <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Order Transactions Log</h3>
                 </div>
                 {orders.length > 0 && (
                   <Button
@@ -724,6 +846,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </Button>
                 )}
               </div>
+              {statusMsg && (
+                <div className={`rounded-xl border p-3 text-xs font-bold ${statusMsg.kind === 'ok' ? 'bg-lime-950/60 border-lime-500/40 text-lime-300' : 'bg-red-950/70 border-red-700 text-red-300'}`}>
+                  {statusMsg.text}
+                </div>
+              )}
               {orders.length === 0 ? (
                 <div className="text-center py-16 space-y-3">
                   <ShoppingBag className="h-12 w-12 text-emerald-700 mx-auto opacity-50" />
@@ -740,8 +867,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         <th className="p-3">Delivery Address & Landmark</th>
                         <th className="p-3">Items Summary</th>
                         <th className="p-3">Promo</th>
+                        <th className="p-3">Discount</th>
                         <th className="p-3">Total (₱)</th>
-                        <th className="p-3 text-right">Invoice</th>
+                        <th className="p-3">Order Status</th>
+                        <th className="p-3 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-emerald-950">
@@ -798,8 +927,42 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                               </div>
                             ) : 'NA'}
                           </td>
-                          <td className="p-3 font-extrabold text-lime-400 text-sm">{formatPeso(order.total)}</td>
-                          <td className="p-3 text-right">
+                          <td className="p-3">
+                            {order.pwdApplied ? (
+                              <span className="inline-block bg-sky-400/15 text-sky-300 border border-sky-400/50 px-2 py-0.5 rounded-full font-extrabold text-[10px] uppercase">PWD 20%</span>
+                            ) : <span className="text-emerald-300/70 font-semibold">NA</span>}
+                          </td>
+                          <td className="p-3">
+                            {order.pwdApplied ? (
+                              <div className="space-y-0.5">
+                                <span className="block text-[10px] text-emerald-400 line-through">{formatPeso(order.pwdOriginal)}</span>
+                                <span className="block font-extrabold text-lime-400 text-sm">{formatPeso(order.pwdFinal)}</span>
+                              </div>
+                            ) : <span className="font-extrabold text-lime-400 text-sm">{formatPeso(order.total)}</span>}
+                          </td>
+                          <td className="p-3">
+                            <div className="space-y-1 min-w-[130px]">
+                              <span className={`inline-block px-2.5 py-0.5 rounded-full border font-extrabold text-[10px] uppercase ${STATUS_SKIN[order.status] || STATUS_SKIN.pending}`}>
+                                {STATUS_LABEL[order.status] || order.status}
+                              </span>
+                              <select
+                                value={order.status}
+                                disabled={busyOrderId === order.id || order.status === 'cancelled'}
+                                onChange={(e) => handleStatusChange(order, e.target.value)}
+                                className="block w-full bg-[#04140f] border border-emerald-800 rounded-lg px-2 py-1 text-[11px] text-lime-300 font-bold focus:outline-none focus:border-lime-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                {ORDER_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                              </select>
+                              {busyOrderId === order.id && <span className="block text-[10px] text-amber-300 animate-pulse">Saving…</span>}
+                              {order.status === 'rescheduled' && order.rescheduledToDate && (
+                                <span className="block text-[10px] text-sky-300">→ {order.rescheduledToDate} ({order.rescheduledToTime})</span>
+                              )}
+                              {order.status === 'completed' && order.completedAt && (
+                                <span className="block text-[10px] text-emerald-400">{new Date(order.completedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3 text-right space-y-1.5">
                             <Button
                               size="sm"
                               onClick={() => setSelectedInvoice(order)}
@@ -807,6 +970,16 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             >
                               See Invoice
                             </Button>
+                            {!order.pwdApplied && (order.status === 'pending' || order.status === 'rescheduled') && (
+                              <Button
+                                size="sm"
+                                disabled={busyOrderId === order.id}
+                                onClick={() => openPwdConfirm(order)}
+                                className="block ml-auto bg-sky-950 hover:bg-sky-400 hover:text-black text-sky-300 border border-sky-700 font-extrabold text-[10px] px-3 py-1.5 rounded-xl transition-all cursor-pointer disabled:opacity-40"
+                              >
+                                Apply PWD (20%)
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1272,6 +1445,87 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </div>
         )}
 
+        {/* PWD confirmation */}
+        <Dialog open={!!pwdConfirmOrder} onOpenChange={(open) => !open && setPwdConfirmOrder(null)}>
+          {pwdConfirmOrder && (
+            <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
+              <div className="space-y-1 border-b border-emerald-900/60 pb-3">
+                <DialogTitle className="font-display text-lg font-extrabold text-white">Apply PWD Discount (20%)</DialogTitle>
+                <DialogDescription className="text-xs text-emerald-300">Order {pwdConfirmOrder.orderNumber}. Ask the customer to show their physical PWD ID and inspect it first. No copy of the ID is stored.</DialogDescription>
+              </div>
+              <div className="my-3 space-y-2 text-xs">
+                <div className="flex justify-between text-emerald-200"><span>Order total</span><span className="font-bold text-white">{formatPeso(pwdConfirmOrder.total)}</span></div>
+                <div className="flex justify-between text-sky-300"><span>PWD discount (20%)</span><span className="font-bold">−{formatPeso(Math.round(pwdConfirmOrder.total * 20) / 100)}</span></div>
+                <div className="flex justify-between border-t border-emerald-900/60 pt-2 text-sm font-extrabold"><span>Final amount</span><span className="text-lime-400">{formatPeso(pwdConfirmOrder.total - Math.round(pwdConfirmOrder.total * 20) / 100)}</span></div>
+                <label className="flex items-start gap-2 rounded-xl border border-emerald-800 bg-[#041913] p-3 cursor-pointer">
+                  <input type="checkbox" checked={pwdIdChecked} onChange={(e) => setPwdIdChecked(e.target.checked)} className="mt-0.5 h-4 w-4" />
+                  <span className="text-emerald-100 font-semibold">I personally inspected the customer's valid PWD ID.</span>
+                </label>
+                <p className="text-[10px] text-emerald-400/80">Preview only — the database computes and saves the real amount, and a second click can never deduct another 20%.</p>
+              </div>
+              <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
+                <Button onClick={() => setPwdConfirmOrder(null)} className="flex-1 bg-emerald-950 text-emerald-200 font-bold py-2.5 rounded-xl text-xs cursor-pointer">Cancel</Button>
+                <Button disabled={!pwdIdChecked || busyOrderId === pwdConfirmOrder.id} onClick={handleApplyPwd}
+                  className="flex-1 bg-lime-400 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed">
+                  {busyOrderId === pwdConfirmOrder.id ? 'Applying…' : 'Confirm & Apply'}
+                </Button>
+              </div>
+            </DialogContent>
+          )}
+        </Dialog>
+
+        {/* Reschedule modal */}
+        <Dialog open={!!rescheduleOrder} onOpenChange={(open) => !open && setRescheduleOrder(null)}>
+          {rescheduleOrder && (
+            <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
+              <div className="space-y-1 border-b border-emerald-900/60 pb-3">
+                <DialogTitle className="font-display text-lg font-extrabold text-white">Reschedule {rescheduleOrder.orderNumber}</DialogTitle>
+                <DialogDescription className="text-xs text-emerald-300">
+                  Current slot: {rescheduleOrder.slotDate ? `${rescheduleOrder.slotDate} (${rescheduleOrder.slotTime})` : 'unknown'}. Past and fully booked slots cannot be chosen.
+                </DialogDescription>
+              </div>
+              <div className="my-3 space-y-3 text-xs">
+                <div>
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">New Date</label>
+                  <input type="date" min={todayManila()} value={rescheduleDate}
+                    onChange={(e) => {
+                      const d = e.target.value; if (!d) return;
+                      setRescheduleDate(d);
+                      const next = RESCHEDULE_SLOTS.find((s) => !slotAvailability(d, s, rescheduleOrder).disabled);
+                      setRescheduleSlot(next || '');
+                    }}
+                    className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block">New Time Slot</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {RESCHEDULE_SLOTS.map((slot) => {
+                      const a = slotAvailability(rescheduleDate, slot, rescheduleOrder);
+                      return (
+                        <button key={slot} type="button" disabled={a.disabled} onClick={() => setRescheduleSlot(slot)}
+                          className={`p-2 rounded-lg border text-[11px] font-bold flex flex-col items-center transition-all ${
+                            a.disabled ? 'bg-red-950/50 border-red-900 text-red-400 opacity-60 cursor-not-allowed'
+                            : rescheduleSlot === slot ? 'bg-lime-400 text-black border-lime-400 shadow-md'
+                            : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50 cursor-pointer'}`}>
+                          <span>{slot}</span>
+                          <span className="text-[9px] font-semibold mt-0.5">{a.same ? 'Current slot' : a.ended ? '⏰ Past' : a.full ? '⛔ Fully Booked' : `🟢 ${a.left} bowls left`}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
+                <Button onClick={() => setRescheduleOrder(null)} className="flex-1 bg-emerald-950 text-emerald-200 font-bold py-2.5 rounded-xl text-xs cursor-pointer">Cancel</Button>
+                <Button disabled={!rescheduleSlot || busyOrderId === rescheduleOrder.id} onClick={handleConfirmReschedule}
+                  className="flex-1 bg-lime-400 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed">
+                  {busyOrderId === rescheduleOrder.id ? 'Moving…' : 'Confirm Reschedule'}
+                </Button>
+              </div>
+            </DialogContent>
+          )}
+        </Dialog>
+
         {/* See Invoice Modal */}
         <Dialog open={!!selectedInvoice} onOpenChange={(open) => !open && setSelectedInvoice(null)}>
           {selectedInvoice && (
@@ -1346,11 +1600,50 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     )}
                   </div>
                   <div className="flex justify-between text-sm font-extrabold text-white pt-1">
-                    <span>Total Amount Due:</span>
-                    <span className="text-lime-400 text-base">{formatPeso(selectedInvoice.total)}</span>
+                    <span>{selectedInvoice.pwdApplied ? 'Original Order Total:' : 'Total Amount Due:'}</span>
+                    <span className={selectedInvoice.pwdApplied ? 'text-emerald-200 text-base' : 'text-lime-400 text-base'}>{formatPeso(selectedInvoice.pwdApplied ? selectedInvoice.pwdOriginal : selectedInvoice.total)}</span>
                   </div>
+                  {selectedInvoice.pwdApplied && (
+                    <div className="space-y-1 text-xs rounded-lg border border-sky-400/50 bg-sky-400/10 p-2.5">
+                      <div className="flex justify-between text-sky-300 font-extrabold">
+                        <span>♿ PWD Discount ({selectedInvoice.pwdPercent}%):</span>
+                        <span>−{formatPeso(selectedInvoice.pwdDiscount)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-extrabold text-white">
+                        <span>Final Amount:</span>
+                        <span className="text-lime-400 text-base">{formatPeso(selectedInvoice.pwdFinal)}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-xs text-emerald-200 pt-1">
+                    <span>Order Status:</span>
+                    <span className={`px-2 py-0.5 rounded-full border font-extrabold uppercase text-[10px] ${STATUS_SKIN[selectedInvoice.status] || STATUS_SKIN.pending}`}>{STATUS_LABEL[selectedInvoice.status] || selectedInvoice.status}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-emerald-200">
+                    <span>Discount Type:</span>
+                    <span className="font-bold text-white">{selectedInvoice.pwdApplied ? 'PWD' : 'NA'}</span>
+                  </div>
+                  {selectedInvoice.pwdApplied && (
+                    <p className="text-[10px] text-sky-300/80">ID manually checked by {selectedInvoice.pwdAppliedByName || 'staff'}{selectedInvoice.pwdAppliedAt ? ` on ${new Date(selectedInvoice.pwdAppliedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}` : ''}</p>
+                  )}
                 </div>
               </div>
+              {(selectedInvoice.status === 'pending' || selectedInvoice.status === 'rescheduled') && (
+                <div className="flex gap-2 pt-3 border-t border-emerald-900/60">
+                  {!selectedInvoice.pwdApplied && (
+                    <Button onClick={() => openPwdConfirm(selectedInvoice)} disabled={busyOrderId === selectedInvoice.id}
+                      className="flex-1 bg-sky-950 hover:bg-sky-400 hover:text-black text-sky-300 border border-sky-700 font-extrabold py-2 rounded-xl text-xs cursor-pointer disabled:opacity-40">
+                      Apply PWD Discount (20%)
+                    </Button>
+                  )}
+                  {selectedInvoice.pwdApplied && (
+                    <Button onClick={() => handleRemovePwd(selectedInvoice)} disabled={busyOrderId === selectedInvoice.id}
+                      className="flex-1 bg-red-950 hover:bg-red-900 text-red-300 border border-red-800 font-bold py-2 rounded-xl text-xs cursor-pointer disabled:opacity-40">
+                      Remove PWD (admin)
+                    </Button>
+                  )}
+                </div>
+              )}
               <div className="flex gap-2 pt-3 border-t border-emerald-900/60">
                 <Button
                   onClick={() => {
