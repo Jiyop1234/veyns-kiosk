@@ -10,6 +10,7 @@ import { User, ShieldAlert, Award, ShoppingBag, Sparkles, LogOut, CheckCircle2, 
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
 import { FeedbackPage } from '@/components/feedback-page';
+import { FloatingSupportButton } from '@/components/floating-support-button';
 
 export function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
@@ -867,7 +868,8 @@ export function App() {
             }}
           />
         </main>
-        {showFeedback && <FeedbackPage onBack={() => setShowFeedback(false)} currentUser={currentUser} />}
+        {showFeedback && <FeedbackPage onBack={() => setShowFeedback(false)} currentUser={currentUser} /> } 
+        <FloatingSupportButton />  
         <Dialog open={showLoyaltyModal} onOpenChange={setShowLoyaltyModal}>
           <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
             <div className="space-y-1 text-left border-b border-emerald-900/60 pb-3">
@@ -1020,6 +1022,8 @@ export function App() {
             </Button>
           </DialogContent>
         </Dialog>
+
+
         {isResetPasswordOpen && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-[#051813] border border-emerald-800/80 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
