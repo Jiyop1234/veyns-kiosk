@@ -1,4 +1,5 @@
 // Vercel serverless function: staff-only customer account creation.
+/// <reference types="node" />
 //
 // Required Vercel environment variables (Project Settings -> Environment Variables):
 //   SUPABASE_URL                (or the existing VITE_SUPABASE_URL is used as a fallback)
