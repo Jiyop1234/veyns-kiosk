@@ -5,7 +5,7 @@
 // database (RPCs admin_preview_order / admin_place_order -> same engine as customer checkout).
 // This component only collects input and displays what the server returns.
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, UserPlus, Users, Plus, Minus, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, XCircle, MapPin, Ticket } from 'lucide-react';
+import { Search, UserPlus, Users, Plus, Minus, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, XCircle, MapPin, Ticket, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { formatPeso } from '@/lib/menu-data';
@@ -47,13 +47,17 @@ const groupVisible = (group: any, selected: Record<string, string[]>) => {
 
 export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrdersChanged?: () => void; onViewSales?: () => void }) {
   // ---------------- customer ----------------
-  const [mode, setMode] = useState<'existing' | 'new'>('existing');
+  const [mode, setMode] = useState<'existing' | 'new' | 'walkin'>('existing');
   const [custQuery, setCustQuery] = useState('');
   const [custResults, setCustResults] = useState<any[]>([]);
   const [custSearching, setCustSearching] = useState(false);
   const [custError, setCustError] = useState('');
   const [customer, setCustomer] = useState<any>(null);
   const searchSeq = useRef(0);
+  const [walkInName, setWalkInName] = useState('');
+  const [walkInError, setWalkInError] = useState('');
+  // Walk-in orders have no account, so authUserId is null; this key still changes when the customer changes.
+  const customerKey = customer ? (customer.authUserId || 'walk-in') : '';
 
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -162,6 +166,12 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
   useEffect(() => {
     setSelectedCodes([]); setCodeError(''); setAllPromos([]); setOwnedCodes([]); setMilestone(null);
     if (!customer) return;
+    if (customer.isWalkIn) {
+      // walk-in: public promos only (the database enforces this too); no personal vouchers or milestone rewards
+      let aliveWalkIn = true;
+      supabase.from('promos').select('*').then(({ data }: any) => { if (aliveWalkIn) setAllPromos(data || []); });
+      return () => { aliveWalkIn = false; };
+    }
     let alive = true;
     (async () => {
       const [promoRes, rewardRes, weeklyRes, milestoneRes] = await Promise.all([
@@ -176,7 +186,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
       setMilestone(milestoneRes.data && milestoneRes.data.applies ? milestoneRes.data : null);
     })();
     return () => { alive = false; };
-  }, [customer?.authUserId]);
+  }, [customerKey]);
 
   const promoUsable = (p: any) => {
     const now = Date.now();
@@ -320,6 +330,15 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
     } finally { setCreating(false); }
   };
 
+  const handleWalkIn = () => {
+    const name = walkInName.trim().replace(/\s+/g, ' ');
+    if (name.length < 2) { setWalkInError("Enter the customer's name."); return; }
+    setWalkInError('');
+    setCustomer({ id: null, authUserId: null, name, identifier: 'Walk-in (no account)', isWalkIn: true });
+    setContactName(name); setContactEmail(''); setContactPhone('');
+    setCreateNotice(null); setWalkInName('');
+  };
+
   const handleResendActivation = async () => {
     if (!createNotice || resending) return;
     setResending(true);
@@ -363,7 +382,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
       document.body.appendChild(script);
     }
     return () => { cancelled = true; if (mapObj.current) { mapObj.current.remove(); mapObj.current = null; markerObj.current = null; } };
-  }, [fulfillment, customer?.authUserId]);
+  }, [fulfillment, customerKey]);
 
   const pinRef = useRef<any>(null);
   useEffect(() => {
@@ -391,7 +410,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
   // Payload, server preview, validation
   // ======================================================================
   const payload = useMemo(() => customer ? ({
-    customerUserId: customer.authUserId,
+    customerUserId: customer.authUserId || null, walkIn: !!customer.isWalkIn,
     name: contactName.trim(), phone: contactPhone.trim(), email: contactEmail.trim(),
     fulfillment, deliveryOption, orderType, dateKey: effectiveDate, slotTime,
     location: location.trim(), landmark: landmark.trim(),
@@ -401,7 +420,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
     items: lines.map((l) => ({ menuItemId: l.item.id, quantity: l.qty, options: l.options.map((o: any) => ({ groupId: o.groupId, optionId: o.optionId })) })),
   }) : null, [customer, contactName, contactPhone, contactEmail, fulfillment, deliveryOption, orderType, effectiveDate, slotTime, location, landmark, pin, selectedCodes, lines]);
 
-  const pricingSig = payload ? JSON.stringify({ c: payload.customerUserId, f: payload.fulfillment, la: payload.deliveryLat, ln: payload.deliveryLng, p: payload.promoCodesList, i: payload.items }) : '';
+  const pricingSig = payload ? JSON.stringify({ c: payload.customerUserId, w: payload.walkIn, f: payload.fulfillment, la: payload.deliveryLat, ln: payload.deliveryLng, p: payload.promoCodesList, i: payload.items }) : '';
   useEffect(() => {
     if (!payload || lines.length === 0) { setPreview({ loading: false, data: null, error: '' }); return; }
     const seq = ++previewSeq.current;
@@ -447,6 +466,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
     if (selectedCodes.some((c) => c.toUpperCase() === code)) { setCodeError('This code is already applied.'); return; }
     const found = allPromos.find((p: any) => String(p.code).toUpperCase() === code);
     if (!found) { setCodeError('Invalid promo code.'); return; }
+    if (customer?.isWalkIn && found.visibility !== 'public') { setCodeError('Personal vouchers need a customer account. Walk-in orders can use public promos only.'); return; }
     if (!promoUsable(found)) { setCodeError('This code is expired, not started yet, or fully used.'); return; }
     setSelectedCodes((prev) => [...prev, found.code]); setCodeInput(''); setCodeError('');
   };
@@ -471,7 +491,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
       const { data: saved, error: readErr } = await supabase.from('orders')
         .select('id,order_number,user_id,customer_name,items,subtotal,promo_code,promo_discount,delivery_fee,delivery_discount,total,created_at,schedule_info')
         .eq('id', data.id).maybeSingle();
-      setResult({ order: saved || data, verified: !readErr && !!saved && saved.user_id === customer.authUserId, duplicate: !!data.duplicate, customerName: customer.name });
+      setResult({ order: saved || data, verified: !readErr && !!saved && (saved.user_id ?? null) === (customer.authUserId ?? null), duplicate: !!data.duplicate, customerName: customer.name });
       setConfirmOpen(false);
       onOrdersChanged && onOrdersChanged();
     } catch (e: any) {
@@ -539,7 +559,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
             <div className="space-y-3">
               <div className="bg-[#04140f] border border-lime-400/40 rounded-xl p-3 flex items-center justify-between gap-3">
                 <div><p className="text-sm font-extrabold text-white">{customer.name}</p><p className="text-[11px] text-emerald-300">{customer.identifier}</p></div>
-                <span className="text-[9px] uppercase bg-emerald-900/60 text-lime-300 px-2 py-1 rounded font-extrabold">Selected</span>
+                <span className="text-[9px] uppercase bg-emerald-900/60 text-lime-300 px-2 py-1 rounded font-extrabold">{customer.isWalkIn ? 'Walk-in' : 'Selected'}</span>
               </div>
               {createNotice && (
                 <div className={`rounded-xl border p-3 text-xs space-y-2 ${createNotice.sent ? 'border-lime-400/40 bg-lime-400/5 text-lime-200' : 'border-amber-500/50 bg-amber-500/10 text-amber-200'}`}>
@@ -552,12 +572,20 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button type="button" onClick={() => setMode('existing')} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer ${mode === 'existing' ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}><Search className="h-4 w-4" /> Existing customer</button>
                 <button type="button" onClick={() => setMode('new')} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer ${mode === 'new' ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}><UserPlus className="h-4 w-4" /> Create new customer</button>
+                <button type="button" onClick={() => setMode('walkin')} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer ${mode === 'walkin' ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}><User className="h-4 w-4" /> Walk-in (no account)</button>
               </div>
 
-              {mode === 'existing' ? (
+              {mode === 'walkin' ? (
+                <div className="space-y-3">
+                  <div><label className={labelCls}>Customer name *</label><input value={walkInName} onChange={(e) => { setWalkInName(e.target.value); setWalkInError(''); }} onKeyDown={(e) => { if (e.key === 'Enter') handleWalkIn(); }} className={inputCls} placeholder="e.g. Juan" /></div>
+                  {walkInError && <p className="text-[11px] text-red-400">{walkInError}</p>}
+                  <p className="text-[11px] text-emerald-400/80">No account is created and no email is sent. Public promos and vouchers can still be applied. Personal loyalty vouchers and stamps need a registered account.</p>
+                  <Button type="button" onClick={handleWalkIn} className={limeBtn}>Continue as walk-in</Button>
+                </div>
+              ) : mode === 'existing' ? (
                 <div className="space-y-2">
                   <input value={custQuery} onChange={(e) => setCustQuery(e.target.value)} placeholder="Search by name or email (min. 2 characters)" className={inputCls} />
                   {custSearching && <p className="text-[11px] text-emerald-400">Searching…</p>}
@@ -697,7 +725,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
                 <Button type="button" onClick={applyTypedCode} className={ghostBtn}>Apply</Button>
               </div>
               {codeError && <p className="text-[11px] text-red-400">{codeError}</p>}
-              <p className="text-[11px] text-emerald-400/70">Eligibility, expiry, usage limits and stacking are validated by the same server rules as customer checkout.</p>
+              <p className="text-[11px] text-emerald-400/70">Eligibility, expiry, usage limits and stacking are validated by the same server rules as customer checkout.{customer.isWalkIn ? ' Walk-in orders can use public promos only, and per-person limits cannot be enforced without an account.' : ''}</p>
             </>
           )}
         </div>
