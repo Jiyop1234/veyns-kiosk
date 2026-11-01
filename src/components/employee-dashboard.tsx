@@ -9,6 +9,8 @@ import { menuImages } from '@/lib/menu-images';
 import { supabase } from '@/lib/supabase';
 import { AdminOrderProcessing } from '@/components/admin-order-processing';
 import { AdminFeedbackManager } from '@/components/admin-feedback-manager';
+import { DeliveryPinMap } from '@/components/delivery-pin-map';
+import { useTimeSlots } from '@/lib/time-slots';
 import { MessageSquare } from 'lucide-react';
 
 // --- Menu image display helper: renders an image or the VEYNS fallback ---
@@ -57,7 +59,6 @@ const STATUS_SKIN: Record<string, string> = {
 };
 // Amount actually payable/collected: PWD orders use the discounted final amount.
 const payableAmount = (o: any) => (o?.pwdApplied ? Number(o.pwdFinal || 0) : Number(o?.total || 0));
-const RESCHEDULE_SLOTS = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'];
 
 // ---- edit-order helpers ----
 // Our Delivery vs Maxim: use the saved delivery_option; older orders fall back to the schedule text.
@@ -138,9 +139,45 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [editFee, setEditFee] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editSlot, setEditSlot] = useState('');
-  const [editCustomSlot, setEditCustomSlot] = useState(false);
-  const [editCustomStart, setEditCustomStart] = useState('09:00');
-  const [editCustomEnd, setEditCustomEnd] = useState('10:00');
+  const [editName, setEditName] = useState('');
+  const [editPin, setEditPin] = useState<{ lat: number; lng: number } | null>(null);
+  const [editPinFee, setEditPinFee] = useState<{ km: number; fee: number } | null>(null);
+  const editAddrTouched = useRef(false);
+
+  // --- Time window manager (Slot Capacity tab) ---
+  const [slotEdits, setSlotEdits] = useState<Record<string, { start: string; end: string }>>({});
+  const [newSlotStart, setNewSlotStart] = useState('09:00');
+  const [newSlotEnd, setNewSlotEnd] = useState('10:00');
+  const [slotMgmtBusy, setSlotMgmtBusy] = useState(false);
+  const [slotMsg, setSlotMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  // Our Delivery pin -> the database calculates distance + fee (same rule as customer checkout)
+  useEffect(() => {
+    if (!editPin) { setEditPinFee(null); return; }
+    let alive = true;
+    (async () => {
+      const { data, error } = await supabase.rpc('admin_preview_delivery_fee', { p_lat: editPin.lat, p_lng: editPin.lng });
+      if (!alive) return;
+      if (error || !data) { setEditPinFee(null); return; }
+      setEditPinFee({ km: Number(data.distanceKm), fee: Number(data.fee) });
+    })();
+    return () => { alive = false; };
+  }, [editPin]);
+
+  // Fill the address from the pin (unless staff already typed / kept an address)
+  useEffect(() => {
+    if (!editPin) return;
+    if (!editAddrTouched.current) setEditLocation(`Lat: ${editPin.lat.toFixed(4)}, Lng: ${editPin.lng.toFixed(4)}`);
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${editPin.lat}&lon=${editPin.lng}`);
+        if (!res.ok || editAddrTouched.current) return;
+        const d = await res.json();
+        if (d && d.display_name) setEditLocation(d.display_name);
+      } catch { /* keep the Lat/Lng text */ }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [editPin]);
   const [editNote, setEditNote] = useState('');
   const [statusMsg, setStatusMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
@@ -156,7 +193,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
   const [selectedSlotDate, setSelectedSlotDate] = useState(new Date().toISOString().split('T')[0]);
-  const timeSlotsList = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'];
+  const timeSlotsList = useTimeSlots(); // editable in Slot Capacity; shared live with customer checkout
 
   // Slot Owner Inspector Modal State
   const [inspectingSlot, setInspectingSlot] = useState<{ slotTime: string; dateKey: string } | null>(null);
@@ -847,7 +884,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     const today = todayManila();
     const base = order.slotDate && order.slotDate >= today ? order.slotDate : today;
     setRescheduleDate(base);
-    const first = RESCHEDULE_SLOTS.find((s) => !slotHasEnded(base, s) && !(base === order.slotDate && s === order.slotTime));
+    const first = timeSlotsList.find((s) => !slotHasEnded(base, s) && !(base === order.slotDate && s === order.slotTime));
     setRescheduleSlot(first || '');
     setRescheduleOrder(order);
   };
@@ -890,18 +927,17 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     setEditLandmark(order.fulfillment === 'delivery' && order.landmark && order.landmark !== 'N/A' ? order.landmark : '');
     setEditFee(order.fulfillment === 'delivery' && opt === 'our' ? String(order.deliveryFee ?? 0) : '');
     setEditDate(order.slotDate || todayManila());
-    const isStandard = RESCHEDULE_SLOTS.includes(order.slotTime);
     setEditSlot(order.slotTime || '');
-    setEditCustomSlot(!!order.slotTime && !isStandard);
-    const parsed = slotTo24(order.slotTime || '');
-    setEditCustomStart(parsed ? parsed.start : '09:00');
-    setEditCustomEnd(parsed ? parsed.end : '10:00');
+    setEditName(order.name || '');
+    setEditPin(null);
+    setEditPinFee(null);
+    editAddrTouched.current = order.fulfillment === 'delivery' && !!order.location;
     setEditNote('');
     setEditOrder(order);
   };
   const editBowlsNow = () => Object.values(editQty).reduce((s: number, n: any) => s + (Number(n) || 0), 0);
   const editBowlsBefore = () => (editOrder?.items || []).reduce((s: number, it: any) => s + itemQty(it), 0);
-  const editEffectiveSlot = () => (editCustomSlot ? `${to12h(editCustomStart)} - ${to12h(editCustomEnd)}` : editSlot);
+  const editEffectiveSlot = () => editSlot;
   const editSlotInfo = (dateKey: string, slot: string) => {
     const cap: any = Object.values(slotCapacities || {}).find((s: any) => s.date_key === dateKey && s.slot_time === slot);
     const max = cap ? Number(cap.max_bowls) : 10;
@@ -926,25 +962,26 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     } else {
       const slot = editEffectiveSlot();
       if (!slot || !editDate) { flash('err', 'Choose a date and a time slot.'); return; }
-      if (editCustomSlot && editCustomStart >= editCustomEnd) { flash('err', 'The end time must be after the start time.'); return; }
       changes.dateKey = editDate;
       changes.slotTime = slot;
       if (editMethod === 'pickup') {
         changes.fulfillment = 'pickup';
       } else {
-        if (!editPhone.trim() || !editLocation.trim() || !editLandmark.trim()) {
-          flash('err', 'Delivery needs a contact number, an address and a landmark.'); return;
+        const wasOur = editOrder.fulfillment === 'delivery' && orderDeliveryOption(editOrder) === 'our';
+        if (!editName.trim()) { flash('err', 'Contact name is required.'); return; }
+        if (!editPhone.trim() || !editLandmark.trim()) {
+          flash('err', 'Delivery needs a contact number and a nearest landmark.'); return;
         }
         changes.fulfillment = 'delivery';
         changes.deliveryOption = editMethod;
+        changes.customerName = editName.trim();
         changes.phone = editPhone.trim();
-        changes.location = editLocation.trim();
         changes.landmark = editLandmark.trim();
         if (editMethod === 'our') {
-          if (editFee.trim() === '' || Number.isNaN(Number(editFee)) || Number(editFee) < 0) {
-            flash('err', 'Enter the delivery fee for Our Delivery (0 or more).'); return;
-          }
-          changes.deliveryFee = Number(editFee);
+          if (!editLocation.trim()) { flash('err', 'Delivery address is required.'); return; }
+          if (!editPin && !wasOur) { flash('err', 'Drop the delivery pin on the map so the delivery fee can be calculated.'); return; }
+          changes.location = editLocation.trim();
+          if (editPin) { changes.deliveryLat = editPin.lat; changes.deliveryLng = editPin.lng; }
         }
       }
     }
@@ -955,6 +992,44 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     if (data?.unchanged) { flash('ok', `${editOrder.orderNumber}: nothing was changed.`); setEditOrder(null); return; }
     flash('ok', `${editOrder.orderNumber} updated. New total ${formatPeso(Number(data?.total || 0))}${editOrder.pwdApplied ? ' (PWD discount recalculated)' : ''}.`);
     setEditOrder(null);
+    fetchCloudData();
+  };
+
+  // --- Time windows (Slot Capacity tab): edit / add / remove; customers and dashboards update live ---
+  const slotFlash = (kind: 'ok' | 'err', text: string) => {
+    setSlotMsg({ kind, text });
+    setTimeout(() => setSlotMsg((cur) => (cur && cur.text === text ? null : cur)), 7000);
+  };
+  const slotEditValue = (label: string) => slotEdits[label] || slotTo24(label) || { start: '09:00', end: '10:00' };
+  const handleRenameSlot = async (oldLabel: string) => {
+    const v = slotEditValue(oldLabel);
+    if (!v.start || !v.end || v.start >= v.end) { slotFlash('err', 'The end time must be after the start time.'); return; }
+    const next = `${to12h(v.start)} - ${to12h(v.end)}`;
+    if (next === oldLabel) { slotFlash('ok', 'No change: that is already the current time.'); return; }
+    setSlotMgmtBusy(true);
+    const { data, error } = await supabase.rpc('admin_rename_time_slot', { p_old_label: oldLabel, p_new_label: next });
+    setSlotMgmtBusy(false);
+    if (error || data?.success === false) { slotFlash('err', error?.message || data?.message || 'Could not change the time slot.'); return; }
+    setSlotEdits((p) => { const n = { ...p }; delete n[oldLabel]; return n; });
+    slotFlash('ok', `Time slot changed to ${next}. Today's and upcoming bookings moved with it.`);
+    fetchCloudData();
+  };
+  const handleAddSlot = async () => {
+    if (!newSlotStart || !newSlotEnd || newSlotStart >= newSlotEnd) { slotFlash('err', 'The end time must be after the start time.'); return; }
+    const label = `${to12h(newSlotStart)} - ${to12h(newSlotEnd)}`;
+    setSlotMgmtBusy(true);
+    const { data, error } = await supabase.rpc('admin_add_time_slot', { p_label: label });
+    setSlotMgmtBusy(false);
+    if (error || data?.success === false) { slotFlash('err', error?.message || data?.message || 'Could not add the time slot.'); return; }
+    slotFlash('ok', `Added ${label}.`);
+  };
+  const handleDeleteSlot = async (label: string) => {
+    if (!window.confirm(`Remove the ${label} time slot? Customers will no longer be able to book it.`)) return;
+    setSlotMgmtBusy(true);
+    const { data, error } = await supabase.rpc('admin_delete_time_slot', { p_label: label });
+    setSlotMgmtBusy(false);
+    if (error || data?.success === false) { slotFlash('err', error?.message || data?.message || 'Could not remove the time slot.'); return; }
+    slotFlash('ok', `Removed ${label}.`);
     fetchCloudData();
   };
 
@@ -1279,6 +1354,52 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             <p className="text-xs text-emerald-300">
               Configure maximum bowl limits per time window, inspect slot owners, or transfer reservations between time slots.
             </p>
+            {/* Time windows: edits apply to today and all upcoming dates and show instantly for customers */}
+            <div className="rounded-2xl border border-emerald-800/80 bg-[#041913] p-4 space-y-3">
+              <div>
+                <p className="text-xs font-extrabold text-lime-400 uppercase tracking-wider">Edit time windows</p>
+                <p className="text-[11px] text-emerald-300 mt-0.5">
+                  Change a window (for example 12:00 PM - 1:00 PM to 9:00 AM - 10:00 AM). Today's and upcoming bookings move with it and customers see the new time instantly. Past dates keep their original time.
+                </p>
+              </div>
+              {slotMsg && (
+                <div className={`rounded-xl border p-2.5 text-[11px] font-bold ${slotMsg.kind === 'ok' ? 'bg-lime-950/60 border-lime-500/40 text-lime-300' : 'bg-red-950/70 border-red-700 text-red-300'}`}>
+                  {slotMsg.text}
+                </div>
+              )}
+              <div className="space-y-2">
+                {timeSlotsList.map((label) => {
+                  const v = slotEditValue(label);
+                  return (
+                    <div key={label} className="flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-bold text-white w-40 shrink-0">{label}</span>
+                      <input type="time" value={v.start}
+                        onChange={(e) => setSlotEdits((p) => ({ ...p, [label]: { ...slotEditValue(label), start: e.target.value } }))}
+                        className="bg-[#03120d] border border-emerald-800 rounded-lg p-1.5 text-xs text-white focus:outline-none focus:border-lime-400" />
+                      <span className="text-emerald-400 text-xs">to</span>
+                      <input type="time" value={v.end}
+                        onChange={(e) => setSlotEdits((p) => ({ ...p, [label]: { ...slotEditValue(label), end: e.target.value } }))}
+                        className="bg-[#03120d] border border-emerald-800 rounded-lg p-1.5 text-xs text-white focus:outline-none focus:border-lime-400" />
+                      <Button disabled={slotMgmtBusy} onClick={() => handleRenameSlot(label)}
+                        className="bg-lime-400 text-black font-extrabold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer disabled:opacity-40">Save time</Button>
+                      <Button disabled={slotMgmtBusy} onClick={() => handleDeleteSlot(label)}
+                        className="bg-red-950 text-red-300 border border-red-800 font-bold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer disabled:opacity-40">Remove</Button>
+                    </div>
+                  );
+                })}
+                {timeSlotsList.length === 0 && <p className="text-[11px] text-emerald-400/80">No time windows yet. Add one below.</p>}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-emerald-900/60">
+                <span className="text-[11px] font-bold text-lime-400 w-40 shrink-0">Add a new window</span>
+                <input type="time" value={newSlotStart} onChange={(e) => setNewSlotStart(e.target.value)}
+                  className="bg-[#03120d] border border-emerald-800 rounded-lg p-1.5 text-xs text-white focus:outline-none focus:border-lime-400" />
+                <span className="text-emerald-400 text-xs">to</span>
+                <input type="time" value={newSlotEnd} onChange={(e) => setNewSlotEnd(e.target.value)}
+                  className="bg-[#03120d] border border-emerald-800 rounded-lg p-1.5 text-xs text-white focus:outline-none focus:border-lime-400" />
+                <Button disabled={slotMgmtBusy} onClick={handleAddSlot}
+                  className="bg-emerald-300 text-black font-extrabold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer disabled:opacity-40">Add window</Button>
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {timeSlotsList.map((slotTime) => {
                 const existing = slotCapacities ? Object.values(slotCapacities).find((s: any) => s.date_key === selectedSlotDate && s.slot_time === slotTime) : null;
@@ -1792,7 +1913,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     onChange={(e) => {
                       const d = e.target.value; if (!d) return;
                       setRescheduleDate(d);
-                      const next = RESCHEDULE_SLOTS.find((s) => !slotAvailability(d, s, rescheduleOrder).disabled);
+                      const next = timeSlotsList.find((s) => !slotAvailability(d, s, rescheduleOrder).disabled);
                       setRescheduleSlot(next || '');
                     }}
                     className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
@@ -1800,7 +1921,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <div className="space-y-1.5">
                   <label className="font-bold text-lime-400 uppercase tracking-wider block">New Time Slot</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {RESCHEDULE_SLOTS.map((slot) => {
+                    {timeSlotsList.map((slot) => {
                       const a = slotAvailability(rescheduleDate, slot, rescheduleOrder);
                       return (
                         <button key={slot} type="button" disabled={a.disabled} onClick={() => setRescheduleSlot(slot)}
@@ -1875,44 +1996,76 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   {editMethod === 'on-site' ? (
                     <p className="rounded-xl border border-emerald-800 bg-[#041913] p-2.5 text-emerald-200">On-site (counter) order. Only quantities can be edited.</p>
                   ) : (
-                    <div className="grid grid-cols-3 gap-2">
-                      {([['pickup', 'Pickup'], ['our', 'Our Delivery'], ['maxim', 'Maxim Courier']] as const).map(([key, label]) => (
-                        <button key={key} type="button" onClick={() => setEditMethod(key)}
-                          className={`p-2 rounded-lg border text-[11px] font-bold transition-all cursor-pointer ${editMethod === key ? 'bg-lime-400 text-black border-lime-400 shadow-md' : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50'}`}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        {([['pickup', 'Pickup'], ['delivery', 'Delivery']] as const).map(([key, label]) => {
+                          const active = key === 'pickup' ? editMethod === 'pickup' : (editMethod === 'our' || editMethod === 'maxim');
+                          return (
+                            <button key={key} type="button"
+                              onClick={() => setEditMethod(key === 'pickup' ? 'pickup' : (editMethod === 'maxim' ? 'maxim' : 'our'))}
+                              className={`p-2 rounded-lg border text-[11px] font-bold transition-all cursor-pointer ${active ? 'bg-lime-400 text-black border-lime-400 shadow-md' : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50'}`}>
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {(editMethod === 'our' || editMethod === 'maxim') && (
+                        <div className="grid grid-cols-2 gap-2">
+                          {([['our', 'Our Delivery'], ['maxim', 'Maxim Courier']] as const).map(([key, label]) => (
+                            <button key={key} type="button" onClick={() => setEditMethod(key)}
+                              className={`p-2 rounded-lg border text-[11px] font-bold transition-all cursor-pointer ${editMethod === key ? 'bg-emerald-300 text-black border-emerald-300 shadow-md' : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-emerald-300/50'}`}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
                 {/* Delivery details */}
                 {(editMethod === 'our' || editMethod === 'maxim') && (
                   <div className="space-y-2 rounded-xl border border-emerald-800 bg-[#041913] p-3">
-                    <div>
-                      <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Contact Number</label>
-                      <input type="text" value={editPhone} onChange={(e) => setEditPhone(e.target.value)}
-                        className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Contact Name</label>
+                        <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
+                          className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+                      </div>
+                      <div>
+                        <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Contact Number</label>
+                        <input type="text" value={editPhone} onChange={(e) => setEditPhone(e.target.value)}
+                          className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+                      </div>
                     </div>
-                    <div>
-                      <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Delivery Address</label>
-                      <input type="text" value={editLocation} onChange={(e) => setEditLocation(e.target.value)}
-                        className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
-                    </div>
+                    {editMethod === 'our' && (
+                      <>
+                        <div>
+                          <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Delivery Pin (click the map)</label>
+                          <DeliveryPinMap value={editPin} onChange={setEditPin} />
+                          <p className="text-[10px] text-emerald-300 mt-1">
+                            {editPin
+                              ? `Pinned: ${editPin.lat.toFixed(5)}, ${editPin.lng.toFixed(5)}${editPinFee ? ` • ${editPinFee.km} km from store • delivery fee ${formatPeso(editPinFee.fee)}` : ' • calculating the fee…'}`
+                              : (editOrder.fulfillment === 'delivery' && orderDeliveryOption(editOrder) === 'our'
+                                  ? `No new pin: the saved delivery fee (${formatPeso(Number(editOrder.deliveryFee) || 0)}) is kept. Drop a pin to recalculate it.`
+                                  : 'Drop the pin on the customer location so the delivery fee can be calculated.')}
+                          </p>
+                          <p className="text-[10px] text-emerald-400/80">Under 1 km free • 1–2 km ₱40 • beyond 2 km ₱40 + ₱5 per extra km. Calculated by the database.</p>
+                        </div>
+                        <div>
+                          <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Delivery Address</label>
+                          <input type="text" value={editLocation} onChange={(e) => { editAddrTouched.current = true; setEditLocation(e.target.value); }}
+                            className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+                        </div>
+                      </>
+                    )}
                     <div>
                       <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Nearest Landmark</label>
                       <input type="text" value={editLandmark} onChange={(e) => setEditLandmark(e.target.value)}
                         className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
                     </div>
-                    {editMethod === 'our' ? (
-                      <div>
-                        <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Delivery Fee (₱)</label>
-                        <input type="number" min={0} max={1000} value={editFee} onChange={(e) => setEditFee(e.target.value)}
-                          className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
-                        <p className="text-[10px] text-emerald-400/80 mt-1">Under 1 km free • 1–2 km ₱40 • beyond 2 km ₱40 + ₱5 per extra km. The delivery pin is not stored on orders, so enter the fee; it is validated and logged.</p>
-                      </div>
-                    ) : (
-                      <p className="text-[10px] text-emerald-300">Maxim Courier: the delivery fee is paid directly to the rider, so this order's delivery fee becomes ₱0.00.</p>
+                    {editMethod === 'maxim' && (
+                      <p className="text-[10px] text-emerald-300">Maxim Courier: no map pin or address is needed. The delivery fee is paid directly to the rider, so this order's delivery fee becomes ₱0.00.</p>
                     )}
                   </div>
                 )}
@@ -1925,12 +2078,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     <input type="date" min={todayManila()} value={editDate} onChange={(e) => e.target.value && setEditDate(e.target.value)}
                       className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
                     <div className="grid grid-cols-2 gap-2">
-                      {RESCHEDULE_SLOTS.map((slot) => {
+                      {timeSlotsList.map((slot) => {
                         const a = editSlotInfo(editDate, slot);
-                        const selected = !editCustomSlot && editSlot === slot;
+                        const selected = editSlot === slot;
                         return (
                           <button key={slot} type="button" disabled={a.disabled}
-                            onClick={() => { setEditCustomSlot(false); setEditSlot(slot); }}
+                            onClick={() => setEditSlot(slot)}
                             className={`p-2 rounded-lg border text-[11px] font-bold flex flex-col items-center transition-all ${
                               a.disabled ? 'bg-red-950/50 border-red-900 text-red-400 opacity-60 cursor-not-allowed'
                               : selected ? 'bg-lime-400 text-black border-lime-400 shadow-md'
@@ -1941,25 +2094,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         );
                       })}
                     </div>
-                    <button type="button" onClick={() => setEditCustomSlot((v) => !v)}
-                      className={`w-full p-2 rounded-lg border text-[11px] font-bold transition-all cursor-pointer ${editCustomSlot ? 'bg-lime-400 text-black border-lime-400' : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50'}`}>
-                      {editCustomSlot ? 'Using a custom time' : 'Use a custom time (e.g. 9:00 AM - 10:00 AM)'}
-                    </button>
-                    {editCustomSlot && (
-                      <div className="grid grid-cols-2 gap-2 rounded-xl border border-emerald-800 bg-[#041913] p-3">
-                        <div>
-                          <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">From</label>
-                          <input type="time" value={editCustomStart} onChange={(e) => setEditCustomStart(e.target.value)}
-                            className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
-                        </div>
-                        <div>
-                          <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">To</label>
-                          <input type="time" value={editCustomEnd} onChange={(e) => setEditCustomEnd(e.target.value)}
-                            className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
-                        </div>
-                        <p className="col-span-2 text-[10px] text-emerald-300">Saved as <span className="font-bold text-white">{editEffectiveSlot() || '—'}</span>. A custom window starts with the default capacity of 10 bowls.</p>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -1979,7 +2113,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </div>
                   <div className="flex justify-between text-emerald-200">
                     <span>Estimated delivery fee</span>
-                    <span className="font-bold text-white">{editMethod === 'our' ? formatPeso(Number(editFee) || 0) : formatPeso(0)}</span>
+                    <span className="font-bold text-white">{editMethod === 'our' ? formatPeso(editPinFee ? editPinFee.fee : (Number(editFee) || 0)) : formatPeso(0)}</span>
                   </div>
                   <p className="text-[10px] text-emerald-400/80">Preview only. Promos and the PWD discount are recalculated by the database when you save, and the final total is shown afterwards.</p>
                 </div>

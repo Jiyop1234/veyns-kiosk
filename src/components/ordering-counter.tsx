@@ -9,6 +9,7 @@ import { getPromoStatus, getPromoEndMs } from '@/lib/promo-campaigns';
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
+import { useTimeSlots, slotHasEnded } from '@/lib/time-slots';
 
 // SECTION 2: Shared menu-image component with a branded fallback when no image is available.
 function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; alt: string; className: string }) {
@@ -357,22 +358,25 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [reservationDate, setReservationDate] = useState('');
   const [reservationTime, setReservationTime] = useState('12:00 PM - 1:00 PM');
 
+  // Time slots are edited by staff (live). Keep the current choice valid when they change.
+  const timeSlots = useTimeSlots();
+  useEffect(() => {
+    if (timeSlots.length === 0) return;
+    setTodayTimeSlot((p) => (timeSlots.includes(p) ? p : timeSlots[0]));
+    setReservationTime((p) => (timeSlots.includes(p) ? p : timeSlots[0]));
+  }, [timeSlots]);
+
   // Auto-select next available slot when reservation date is today
   useEffect(() => {
     if (!reservationDate) return;
     const today = new Date().toISOString().split('T')[0];
     if (reservationDate !== today) return;
     
-    const slots = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'];
-    const options: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false };
-    const currentHour = parseInt(new Intl.DateTimeFormat([], options).format(new Date()), 10);
-    
+    const slots = timeSlots;
+
     // Find the next available (non-past, non-fully-booked) slot
     for (const slot of slots) {
-      const slotStartHour = parseInt(slot.split(':')[0]);
-      const isPM = slot.includes('PM');
-      const slotHour24 = isPM && slotStartHour !== 12 ? slotStartHour + 12 : (isPM ? 12 : slotStartHour);
-      const isPast = currentHour >= slotHour24 + 1;
+      const isPast = slotHasEnded(today, slot);
       
       if (!isPast) {
         // Check if slot is fully booked
@@ -386,7 +390,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         }
       }
     }
-  }, [reservationDate, slotCapacities]);
+  }, [reservationDate, slotCapacities, timeSlots]);
 
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -2210,23 +2214,14 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
                     {(fulfillment === 'delivery' && deliveryOption === 'our') || fulfillment === 'pickup' ? (
                       <div className="grid grid-cols-2 gap-2">
-                        {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => {
+                        {timeSlots.map((slot) => {
                           const slotArray = Array.isArray(slotCapacities) ? slotCapacities : (slotCapacities ? Object.values(slotCapacities) : []);
                           const slotInfo = slotArray.find((s: any) => s.slot_time === slot && s.date_key === new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }));
                           const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_bowls >= (slotInfo.max_bowls || 10));
                           const bowlsLeft = slotInfo ? Math.max(0, (slotInfo.max_bowls || 10) - slotInfo.booked_bowls) : null;
                           
                           // Check if slot is in the past (Manila time)
-                          const isPastSlot = (() => {
-                            try {
-                              const options: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false };
-                              const currentHour = parseInt(new Intl.DateTimeFormat([], options).format(new Date()), 10);
-                              const slotStartHour = parseInt(slot.split(':')[0]);
-                              const isPM = slot.includes('PM');
-                              const slotHour24 = isPM && slotStartHour !== 12 ? slotStartHour + 12 : (isPM ? 12 : slotStartHour);
-                              return currentHour >= slotHour24 + 1;
-                            } catch { return false; }
-                          })();
+                          const isPastSlot = slotHasEnded(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }), slot);
                           
                           const isDisabled = isFullyBooked || isPastSlot;
                           
@@ -2275,24 +2270,14 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                           onChange={(e) => setReservationTime(e.target.value)}
                           className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white text-xs focus:outline-none focus:border-lime-400"
                         >
-                          {['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'].map((slot) => {
+                          {timeSlots.map((slot) => {
                             const slotArray = Array.isArray(slotCapacities) ? slotCapacities : (slotCapacities ? Object.values(slotCapacities) : []);
                             const slotInfo = slotArray.find((s: any) => s.slot_time === slot && s.date_key === reservationDate);
                             const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_bowls >= (slotInfo.max_bowls || 10));
                             const bowlsLeft = slotInfo ? Math.max(0, (slotInfo.max_bowls || 10) - slotInfo.booked_bowls) : null;
                             
                             // Check if slot is in the past (only for today's date)
-                            const isPastSlot = (() => {
-                              if (reservationDate !== new Date().toISOString().split('T')[0]) return false;
-                              try {
-                                const options: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false };
-                                const currentHour = parseInt(new Intl.DateTimeFormat([], options).format(new Date()), 10);
-                                const slotStartHour = parseInt(slot.split(':')[0]);
-                                const isPM = slot.includes('PM');
-                                const slotHour24 = isPM && slotStartHour !== 12 ? slotStartHour + 12 : (isPM ? 12 : slotStartHour);
-                                return currentHour >= slotHour24 + 1;
-                              } catch { return false; }
-                            })();
+                            const isPastSlot = !!reservationDate && slotHasEnded(reservationDate, slot);
                             
                             const isDisabled = isFullyBooked || isPastSlot;
                             const labelText = `${slot} ${isPastSlot ? '(Past)' : isFullyBooked ? '(Fully Booked)' : bowlsLeft !== null ? `(${bowlsLeft} bowls left)` : ''}`;

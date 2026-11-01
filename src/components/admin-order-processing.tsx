@@ -10,8 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { formatPeso } from '@/lib/menu-data';
 import { supabase } from '@/lib/supabase';
+import { useTimeSlots } from '@/lib/time-slots';
 
-const TIME_SLOTS = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'];
 const STORE_LAT = 10.359511; // display/map centre only; the fee is computed by the database
 const STORE_LNG = 123.952739;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -88,6 +88,8 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
   const [dateKey, setDateKey] = useState(todayManila());
   const [slotTime, setSlotTime] = useState('');
   const [slotCaps, setSlotCaps] = useState<any[]>([]);
+  const TIME_SLOTS = useTimeSlots(); // editable by staff in Slot Capacity, live
+  useEffect(() => { setSlotTime((p) => (p && !TIME_SLOTS.includes(p) ? '' : p)); }, [TIME_SLOTS]);
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
