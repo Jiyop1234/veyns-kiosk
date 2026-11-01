@@ -116,6 +116,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [editCustName, setEditCustName] = useState('');
   const [editCustType, setEditCustType] = useState<'email' | 'phone'>('email');
   const [editCustValue, setEditCustValue] = useState('');
+  const [custBusy, setCustBusy] = useState(false);
 
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
   const [selectedSlotDate, setSelectedSlotDate] = useState(new Date().toISOString().split('T')[0]);
@@ -660,11 +661,50 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     if (!editingCustomer) return;
     const newName = editCustName.trim();
     if (!newName) { alert('Nickname cannot be blank.'); return; }
-    const { error } = await supabase.from('profiles').update({ name: newName }).eq('id', editingCustomer.id);
-    if (error) { alert('Error updating customer profile: ' + error.message); return; }
+    const { data: updated, error } = await supabase.from('profiles').update({ name: newName }).eq('id', editingCustomer.id).select('id');
+    if (error || !updated || updated.length === 0) { alert('Update failed: ' + (error?.message || 'no row was changed (permission problem).')); return; }
     alert('Customer nickname updated.');
     setEditingCustomer(null);
     fetchCloudData();
+  };
+
+  // --- Staff-only account actions (server endpoint verifies the caller and uses the service key) ---
+  const callCustomerAdmin = async (payload: any) => {
+    setCustBusy(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) { alert('Your session expired. Please sign in again.'); return null; }
+      const res = await fetch('/api/admin-create-customer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ profileId: editingCustomer?.id, ...payload }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!body) { alert(res.status === 404 ? 'The account service (/api/admin-create-customer) is not deployed.' : 'Unexpected response from the account service.'); return null; }
+      if (!res.ok || !body.ok) { alert(body.error || 'Request failed.'); return null; }
+      return body;
+    } catch (e) { alert('Network error. Please try again.'); return null; }
+    finally { setCustBusy(false); }
+  };
+
+  const handleChangeCustomerEmail = async () => {
+    const email = editCustValue.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { alert('Enter a valid email address.'); return; }
+    if (email === String(editingCustomer?.identifier || '').toLowerCase()) { alert('That is already the current email.'); return; }
+    if (!confirm(`Change this customer's email to ${email}?\n\nThey will receive a link at the new address to set their password and verify it. They cannot log in until they do.`)) return;
+    const body = await callCustomerAdmin({ action: 'update_email', email });
+    if (!body) return;
+    alert(body.activationEmailSent ? `Email updated. A verification / password-setup link was sent to ${email}.` : `Email updated, but the link could not be sent: ${body.activationError || 'unknown error'}. Use "Send password reset" to try again.`);
+    setEditingCustomer(null);
+    fetchCloudData();
+  };
+
+  const handleSendCustomerReset = async () => {
+    if (!confirm('Send a password-reset email to this customer?')) return;
+    const body = await callCustomerAdmin({ action: 'send_reset' });
+    if (!body) return;
+    alert('Password-reset email sent. The customer chooses their own new password from the link.');
   };
 
   // --- Phase 4: open the Loyalty Manager, load live status + audit history ---
@@ -1806,7 +1846,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   Edit Account: {editingCustomer.name}
                 </DialogTitle>
                 <DialogDescription className="text-xs text-emerald-300">
-                  Update the display nickname. Verified sign-in details are changed by the customer.
+                  Update the display nickname, change the sign-in email, or send a password-reset email. The customer always verifies through their own inbox.
                 </DialogDescription>
               </div>
               <form onSubmit={handleSaveCustomerEdits} className="space-y-4 my-3 text-xs">
@@ -1820,7 +1860,24 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400"
                   />
                 </div>
-                <div className="space-y-1"><span className="font-bold text-lime-400 uppercase tracking-wider block">Verified sign-in</span><p className="rounded-xl border border-emerald-800 p-3 font-mono text-emerald-200">{editingCustomer.identifier}</p><p className="text-[10px] text-emerald-400/80">Customers change their email or phone in account settings and verify it through Supabase Auth.</p></div>
+                <div className="space-y-2 border-t border-emerald-900/60 pt-3">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Sign-in email</label>
+                  <input
+                    type="email"
+                    value={editCustValue}
+                    onChange={(e) => setEditCustValue(e.target.value)}
+                    className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-3 text-white font-mono focus:outline-none focus:border-lime-400"
+                  />
+                  <div className="flex gap-2">
+                    <Button type="button" disabled={custBusy} onClick={handleChangeCustomerEmail} className="flex-1 bg-sky-950 hover:bg-sky-400 hover:text-black text-sky-300 border border-sky-700 font-extrabold py-2 rounded-xl text-[11px] cursor-pointer disabled:opacity-40">
+                      {custBusy ? 'Working…' : 'Save new email'}
+                    </Button>
+                    <Button type="button" disabled={custBusy} onClick={handleSendCustomerReset} className="flex-1 bg-amber-950/40 hover:bg-amber-400 hover:text-black text-amber-300 border border-amber-700/60 font-extrabold py-2 rounded-xl text-[11px] cursor-pointer disabled:opacity-40">
+                      Send password reset
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-emerald-400/80">A verification link goes to the customer's Gmail. Staff never see or set passwords. Changing an email is for administrators only.</p>
+                </div>
                 <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
                   <Button
                     type="button"

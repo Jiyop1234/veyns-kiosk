@@ -697,6 +697,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         orderType: payload.orderType,
         scheduleInfo: payload.scheduleInfo,
         deliveryFee: payload.deliveryFee,
+        deliveryOption: newOrder.deliveryOption,
+        deliveryLat: payload.deliveryLat,
+        deliveryLng: payload.deliveryLng,
         promoCodesList: payload.promoCodesList,
         items: payload.items,
         dateKey: targetDateKey,
@@ -988,7 +991,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   };
 
   // SECTION 20: Calculate separate food vs delivery promotion discounts and order totals.
-  const rawDeliveryFee = fulfillment === 'delivery' ? calculatedDeliveryFee : 0;
+  const rawDeliveryFee = fulfillment === 'delivery' && deliveryOption === 'our' ? calculatedDeliveryFee : 0;
 
   const calculatePromoDiscounts = () => {
     let foodDiscountRaw = 0;
@@ -1953,8 +1956,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   )}
                   {placedOrderDetails.fulfillment === 'delivery' && (
                     <div className="flex justify-between text-emerald-200">
-                      <span>Delivery Fee ({placedOrderDetails.deliveryDistanceKm} km):</span>
-                      <span className="font-bold text-white">{formatPeso(placedOrderDetails.deliveryFee)}</span>
+                      <span>Delivery Fee{placedOrderDetails.deliveryOption === 'our' ? ` (${placedOrderDetails.deliveryDistanceKm} km)` : ''}:</span>
+                      <span className="font-bold text-white">{placedOrderDetails.deliveryOption === 'maxim' ? 'Paid to Maxim app' : formatPeso(placedOrderDetails.deliveryFee)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-extrabold text-white pt-1">
@@ -2392,7 +2395,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
                   />
 
-                  {deliveryDistanceKm !== null && (
+                  {deliveryDistanceKm !== null && deliveryOption === 'our' && (
                     <div className="bg-[#03120d] border border-lime-400/60 rounded-xl p-3 text-xs space-y-1">
                       <div className="flex justify-between font-bold text-white">
                         <span>Calculated Distance:</span>
@@ -2411,6 +2414,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     </div>
                   )}
 
+                  {deliveryOption === 'maxim' && (
+                    <div className="bg-[#03120d] border border-amber-400/50 rounded-xl p-3 text-xs text-amber-200">
+                      The delivery fee is set by the Maxim app and paid separately to the rider. The total here is food only.
+                    </div>
+                  )}
                   <div className="space-y-2 pt-2 border-t border-emerald-900/60">
                     <label className="font-bold text-lime-400 uppercase tracking-wider text-[10px] block">
                       Choose Delivery Courier:
@@ -2504,8 +2512,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 {fulfillment === 'delivery' && (
                   <>
                     <div className="flex items-center justify-between text-xs text-emerald-200">
-                      <span>Delivery Fee {deliveryDistanceKm !== null ? `(${deliveryDistanceKm} km)` : ''}</span>
-                      <span className="font-bold text-white">{formatPeso(rawDeliveryFee)}</span>
+                      <span>Delivery Fee {deliveryOption === 'our' && deliveryDistanceKm !== null ? `(${deliveryDistanceKm} km)` : ''}</span>
+                      <span className="font-bold text-white">{deliveryOption === 'maxim' ? 'Paid to Maxim app' : formatPeso(rawDeliveryFee)}</span>
                     </div>
 
                     {deliveryDiscountAmount > 0 && (

@@ -44,9 +44,9 @@ export default async function handler(req: any, res: any) {
   if (!staffRow) return json(res, 403, { ok: false, error: 'Only staff can create customer accounts.' });
 
   const body = typeof req.body === 'string' ? safeParse(req.body) : (req.body || {});
-  const action = body.action === 'resend' ? 'resend' : 'create';
+  const action = ['resend', 'update_email', 'send_reset'].includes(body.action) ? body.action : 'create';
   const email = String(body.email || '').trim().toLowerCase();
-  if (!EMAIL_RE.test(email) || email.length > 254) return json(res, 400, { ok: false, code: 'invalid_email', error: 'Enter a valid email address.' });
+  if (action !== 'send_reset' && (!EMAIL_RE.test(email) || email.length > 254)) return json(res, 400, { ok: false, code: 'invalid_email', error: 'Enter a valid email address.' });
 
   const siteUrl = (process.env.SITE_URL || req.headers.origin || '').toString().replace(/\/+$/, '') || undefined;
   const sendSetupEmail = async () => {
@@ -64,6 +64,36 @@ export default async function handler(req: any, res: any) {
     return mailErr
       ? json(res, 502, { ok: false, error: 'The activation email could not be sent: ' + mailErr })
       : json(res, 200, { ok: true, activationEmailSent: true });
+  }
+
+  // ---- staff: change a customer's email / send a password-reset email ----
+  // The admin never sees or types a password. The customer sets it through the emailed link,
+  // which also proves they own the (new) address.
+  if (action === 'update_email' || action === 'send_reset') {
+    const { data: target } = await admin.from('profiles')
+      .select('id,auth_user_id,role').eq('id', String(body.profileId || '')).maybeSingle();
+    if (!target?.auth_user_id || (target.role || 'regular') !== 'regular') {
+      return json(res, 404, { ok: false, error: 'Customer account not found.' });
+    }
+    const { data: au } = await admin.auth.admin.getUserById(target.auth_user_id);
+    const current = au?.user?.email;
+
+    if (action === 'send_reset') {
+      if (!current) return json(res, 400, { ok: false, error: 'This account has no email address.' });
+      const { error } = await admin.auth.resetPasswordForEmail(current, siteUrl ? { redirectTo: siteUrl } : undefined);
+      return error ? json(res, 502, { ok: false, error: 'Could not send the email: ' + error.message }) : json(res, 200, { ok: true });
+    }
+
+    // update_email: administrators only
+    if (staffRow.role !== 'admin') return json(res, 403, { ok: false, error: 'Only administrators can change a customer email.' });
+    if (current && current.toLowerCase() === email) return json(res, 400, { ok: false, error: 'That is already the current email.' });
+    const { data: dup } = await admin.from('profiles').select('id').eq('identifier', email).neq('id', target.id).maybeSingle();
+    if (dup) return json(res, 409, { ok: false, error: 'That email is already used by another account.' });
+    const { error: upErr } = await admin.auth.admin.updateUserById(target.auth_user_id, { email, email_confirm: false });
+    if (upErr) return json(res, 400, { ok: false, error: upErr.message });
+    await admin.from('profiles').update({ identifier: email }).eq('id', target.id);
+    const mailErr = await sendSetupEmail(); // sent to the NEW address
+    return json(res, 200, { ok: true, activationEmailSent: !mailErr, activationError: mailErr || undefined });
   }
 
   // ---- 2. validate input ----

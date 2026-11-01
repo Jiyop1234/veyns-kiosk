@@ -772,7 +772,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
               <div className="flex justify-between"><span className="text-emerald-400">Food subtotal</span><span className="text-white">{pv ? money(pv.subtotal) : '…'}</span></div>
               <div className="flex justify-between"><span className="text-emerald-400">Promo{pv && pv.appliedCodes ? ` (${pv.appliedCodes})` : ''}</span>
                 <span className="text-amber-400 font-bold">{pv ? (pv.appliedCodes ? `−${money(Number(pv.foodDiscount) + Number(pv.deliveryDiscount))}` : 'NA') : '…'}</span></div>
-              {fulfillment === 'delivery' && <div className="flex justify-between"><span className="text-emerald-400">Delivery fee{pv && pv.distanceKm != null ? ` (${pv.distanceKm} km)` : ''}</span><span className="text-white">{pv ? (pv.deliveryPinSet ? money(pv.deliveryFee) : 'Pin required') : '…'}</span></div>}
+              {fulfillment === 'delivery' && <div className="flex justify-between"><span className="text-emerald-400">Delivery fee{deliveryOption === 'our' && pv && pv.distanceKm != null ? ` (${pv.distanceKm} km)` : ''}</span><span className="text-white">{deliveryOption === 'maxim' ? 'Paid to Maxim app' : pv ? (pv.deliveryPinSet ? money(pv.deliveryFee) : 'Pin required') : '…'}</span></div>}
               <div className="flex justify-between border-t border-emerald-900/60 pt-2"><span className="font-extrabold text-white">Total</span><span className="font-extrabold text-lime-400 text-lg">{pv ? money(pv.total) : '…'}</span></div>
               <p className="text-[10px] text-emerald-500">{preview.loading ? 'Recalculating on the server…' : 'Totals are calculated by the server, using the same rules as customer checkout.'}</p>
             </div>
@@ -842,7 +842,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
               <div className="border-t border-emerald-900/60 pt-2 space-y-1">
                 <div className="flex justify-between"><span className="text-emerald-400">Food subtotal</span><span>{money(pv.subtotal)}</span></div>
                 <div className="flex justify-between"><span className="text-emerald-400">Promo</span><span className="text-amber-400 font-bold">{pv.appliedCodes ? `${pv.appliedCodes} (−${money(Number(pv.foodDiscount) + Number(pv.deliveryDiscount))})` : 'NA'}</span></div>
-                {fulfillment === 'delivery' && <div className="flex justify-between"><span className="text-emerald-400">Delivery fee</span><span>{money(pv.deliveryFee)}</span></div>}
+                {fulfillment === 'delivery' && <div className="flex justify-between"><span className="text-emerald-400">Delivery fee</span><span>{deliveryOption === 'maxim' ? 'Paid to Maxim app' : money(pv.deliveryFee)}</span></div>}
                 <div className="flex justify-between text-sm pt-1"><span className="font-extrabold">Total</span><span className="font-extrabold text-lime-400">{money(pv.total)}</span></div>
               </div>
               <p className="text-[11px] text-emerald-400">Payment: Cash on pickup / delivery (existing workflow).</p>

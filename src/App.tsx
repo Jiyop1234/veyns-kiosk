@@ -180,15 +180,8 @@ export function App() {
     });
     try {
       if (localStorage.getItem('veyns_auth_mode') === 'guest') {
-        const userObj = {
-          id: profile?.id,
-          authUserId: data.user.id,
-          email: data.user.email,
-          identifier: profile?.identifier || data.user.email,
-          role: userRole,
-          type: 'regular',
-          name: profile?.name || authName || data.user.email?.split('@')[0] || 'Valued Customer'
-        };
+        const savedGuest = localStorage.getItem('veyns_current_user');
+        if (savedGuest) setCurrentUser(JSON.parse(savedGuest));
         setAuthMode('guest');
         const sessionOrders = sessionStorage.getItem('veyns_guest_order_history');
         if (sessionOrders) setOrderHistory(JSON.parse(sessionOrders));
@@ -324,7 +317,7 @@ export function App() {
     if (!currentUser || currentUser.type === 'guest') return;
     const email = newEmailInput.trim().toLowerCase();
     if (!validateEmail(email)) { alert('Enter a valid email address.'); return; }
-    const { error } = await supabase.auth.updateUser({ email });
+    const { error } = await supabase.auth.updateUser({ email }, { emailRedirectTo: window.location.origin });
     if (error) { alert(error.message); return; }
     alert('A verification email was sent to your new email address. Please verify it to update your account.');
     setIsUpdatingIdentifier(false);
@@ -376,10 +369,11 @@ export function App() {
       authUserId: data.user.id,
       email: data.user.email,
       identifier: profile?.identifier || data.user.email,
-      role: userRole,
+      role: profile.role,
       type: 'regular',
-      name: profile?.name || authName || data.user.email?.split('@')[0] || 'Valued Customer'
+      name: profile?.name || data.user.email?.split('@')[0] || 'Staff'
     };
+    setCurrentUser(userObj);
     setAuthMode('employee'); 
     setIsAdminDashboardOpen(true);
   };
