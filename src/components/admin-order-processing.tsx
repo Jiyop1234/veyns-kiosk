@@ -82,7 +82,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
   const [optError, setOptError] = useState('');
 
   // ---------------- order details ----------------
-  const [fulfillment, setFulfillment] = useState<'delivery' | 'pickup'>('delivery');
+  const [fulfillment, setFulfillment] = useState<'delivery' | 'pickup' | 'on-site'>('delivery');
   const [deliveryOption, setDeliveryOption] = useState<'our' | 'maxim'>('our');
   const [orderType, setOrderType] = useState<'today' | 'reservation'>('today');
   const [dateKey, setDateKey] = useState(todayManila());
@@ -108,7 +108,8 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
   const [codeInput, setCodeInput] = useState('');
   const [codeError, setCodeError] = useState('');
 
-  const effectiveDate = orderType === 'today' ? todayManila() : dateKey;
+  const isOnSite = fulfillment === 'on-site'; // served at the counter: no schedule, no time slot
+  const effectiveDate = (orderType === 'today' || isOnSite) ? todayManila() : dateKey;
 
   // ---------------- server preview + submit ----------------
   const [preview, setPreview] = useState<{ loading: boolean; data: any; error: string }>({ loading: false, data: null, error: '' });
@@ -414,7 +415,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
   const payload = useMemo(() => customer ? ({
     customerUserId: customer.authUserId || null, walkIn: !!customer.isWalkIn,
     name: contactName.trim(), phone: contactPhone.trim(), email: contactEmail.trim(),
-    fulfillment, deliveryOption, orderType, dateKey: effectiveDate, slotTime,
+    fulfillment, deliveryOption, orderType: isOnSite ? 'today' : orderType, dateKey: effectiveDate, slotTime: isOnSite ? '' : slotTime,
     location: location.trim(), landmark: landmark.trim(),
     deliveryLat: fulfillment === 'delivery' && pin ? pin.lat : null,
     deliveryLng: fulfillment === 'delivery' && pin ? pin.lng : null,
@@ -449,8 +450,9 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
     if (!location.trim()) issues.push('Delivery address is required.');
     if (!landmark.trim()) issues.push('Nearest landmark is required.');
   }
-  if (orderType === 'reservation' && effectiveDate < todayManila()) issues.push('Choose a date that is not in the past.');
-  if (!slotTime) issues.push('Choose a time slot.');
+  if (!isOnSite && orderType === 'reservation' && effectiveDate < todayManila()) issues.push('Choose a date that is not in the past.');
+  if (isOnSite) { /* on-site orders have no schedule or slot */ }
+  else if (!slotTime) issues.push('Choose a time slot.');
   else if (slotEnded(effectiveDate, slotTime)) issues.push('The chosen time slot has already ended.');
   else {
     const si = slotInfo(slotTime);
@@ -516,7 +518,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
   const pv = preview.data;
   const unitFor = (idx: number, l: any) => (pv && pv.items && pv.items[idx] ? Number(pv.items[idx].unitPrice) : estimateUnit(l.item, l.options));
   const money = (n: any) => formatPeso(Number(n || 0));
-  const scheduleText = orderType === 'reservation' ? `Reservation on ${effectiveDate} (${slotTime || '—'})` : `Today (${slotTime || '—'})`;
+  const scheduleText = isOnSite ? 'On-site (Counter)' : orderType === 'reservation' ? `Reservation on ${effectiveDate} (${slotTime || '—'})` : `Today (${slotTime || '—'})`;
 
   if (result) {
     const o = result.order;
@@ -657,9 +659,9 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
         {/* ---------------- 3. details ---------------- */}
         <div className={card}>
           <h2 className="font-display text-sm font-extrabold text-white uppercase tracking-wide flex items-center gap-2"><MapPin className="h-4 w-4 text-lime-400" /> 3. Fulfillment & schedule</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {(['delivery', 'pickup'] as const).map((f) => (
-              <button key={f} type="button" onClick={() => setFulfillment(f)} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold uppercase cursor-pointer ${fulfillment === f ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>{f}</button>
+          <div className="grid grid-cols-3 gap-2">
+            {(['delivery', 'pickup', 'on-site'] as const).map((f) => (
+              <button key={f} type="button" onClick={() => setFulfillment(f)} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold uppercase cursor-pointer ${fulfillment === f ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>{f === 'on-site' ? 'On-site / Counter' : f}</button>
             ))}
           </div>
           {fulfillment === 'delivery' && (
@@ -668,6 +670,8 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
               <button type="button" onClick={() => setDeliveryOption('maxim')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${deliveryOption === 'maxim' ? 'bg-emerald-800 text-white border border-lime-400/60' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>Maxim delivery</button>
             </div>
           )}
+          {isOnSite && <p className="text-[11px] text-emerald-300 bg-[#04140f] border border-emerald-800/60 rounded-xl p-3">On-site order: served at the counter right now. No schedule or time slot is needed, and it does not use up any slot bowls.</p>}
+          {!isOnSite && (<>
           <div className="grid grid-cols-2 gap-2">
             <button type="button" onClick={() => setOrderType('today')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${orderType === 'today' ? 'bg-emerald-800 text-white border border-lime-400/60' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>⚡ Order today</button>
             <button type="button" onClick={() => setOrderType('reservation')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${orderType === 'reservation' ? 'bg-emerald-800 text-white border border-lime-400/60' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>📅 Reservation</button>
@@ -688,6 +692,8 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
               })}
             </div>
           </div>
+
+          </>)}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-emerald-900/60">
             <div><label className={labelCls}>Contact name *</label><input value={contactName} onChange={(e) => setContactName(e.target.value)} className={inputCls} /></div>
@@ -825,7 +831,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
               <div className="bg-[#04140f] border border-emerald-800/60 rounded-xl p-3 space-y-1">
                 <p className="font-extrabold text-white">{customer.name} <span className="font-normal text-emerald-400">({customer.identifier})</span></p>
                 <p className="text-emerald-300">{contactName}{contactPhone ? ` • ${contactPhone}` : ''}{contactEmail ? ` • ${contactEmail}` : ''}</p>
-                <p className="text-emerald-300 uppercase font-bold">{fulfillment} • {scheduleText}</p>
+                <p className="text-emerald-300 uppercase font-bold">{isOnSite ? 'On-site (Counter)' : <>{fulfillment} • {scheduleText}</>}</p>
                 {fulfillment === 'delivery' && <p className="text-emerald-300">{location} <span className="text-emerald-500">(Landmark: {landmark})</span></p>}
               </div>
               <div className="space-y-1">
