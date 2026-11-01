@@ -1041,7 +1041,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       alert('Choose a delivery location on the map before placing the order.'); return;
     }
     const scheduleInfoText = orderType === 'today'
-      ? fulfillment === 'delivery' && deliveryOption === 'our' ? 'Today (' + todayTimeSlot + ') - Personal Delivery' : 'Today - Maxim Delivery (Anytime)'
+      ? fulfillment === 'delivery'
+        ? (deliveryOption === 'our' ? 'Today (' + todayTimeSlot + ') - Personal Delivery' : 'Today - Maxim Delivery (Anytime)')
+        : 'Today - Pickup'
       : 'Reservation on ' + (reservationDate || 'Upcoming Date') + ' (' + reservationTime + ')';
     const promoCodesList = isGuest ? [] : appliedPromos.map(p => p.code);
     const orderData = {
