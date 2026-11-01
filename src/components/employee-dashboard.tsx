@@ -454,8 +454,18 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     ]);
   };
 
+  // Keep option-group limits consistent: single = exactly 1 choice max, and min can never exceed max.
+  const normalizeGroupLimits = (g: any) => {
+    let max = Number(g.maxSelections);
+    if (!(max >= 1)) max = 1;
+    if (g.type === 'single') max = 1;
+    let min = Math.max(0, Number(g.minSelections) || 0);
+    if (min > max) min = max;
+    return { ...g, minSelections: min, maxSelections: max };
+  };
+
   const handleUpdateGroup = (groupId: string, field: string, value: any) => {
-    setItemOptionGroups(prev => prev.map(g => g.id === groupId ? { ...g, [field]: value } : g));
+    setItemOptionGroups(prev => prev.map(g => g.id === groupId ? normalizeGroupLimits({ ...g, [field]: value }) : g));
   };
 
   const handleDeleteGroup = (groupId: string) => {

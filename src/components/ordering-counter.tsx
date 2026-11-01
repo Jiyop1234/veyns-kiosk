@@ -852,7 +852,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         }
 
         const selections = selectedOptions[group.id] || [];
-        const minReq = group.required ? Math.max(1, group.minSelections || 0) : (group.minSelections || 0);
+        // never demand more picks than the group allows (a bad min > max setting must not block the order)
+        const maxAllowed = group.type === 'single' ? 1 : (group.maxSelections || Infinity);
+        const minReq = Math.min(group.required ? Math.max(1, group.minSelections || 0) : (group.minSelections || 0), maxAllowed);
         
         if (selections.length < minReq) {
           setValidationError(`Please make a selection for required group: "${group.name}".`);

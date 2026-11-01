@@ -275,7 +275,9 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
     for (const group of customizing.optionGroups) {
       if (!groupVisible(group, selectedOptions)) continue;
       const sel = selectedOptions[group.id] || [];
-      const minReq = group.required ? Math.max(1, group.minSelections || 0) : (group.minSelections || 0);
+      // never demand more picks than the group allows (a bad min > max setting must not block the order)
+      const maxAllowed = group.type === 'single' ? 1 : (group.maxSelections || Infinity);
+      const minReq = Math.min(group.required ? Math.max(1, group.minSelections || 0) : (group.minSelections || 0), maxAllowed);
       if (sel.length < minReq) { setOptError(`Please make a selection for required group: "${group.name}".`); return; }
       if (group.maxSelections && sel.length > group.maxSelections) { setOptError(`You can choose at most ${group.maxSelections} options for "${group.name}".`); return; }
       (group.options || []).filter((o: any) => sel.includes(o.id)).forEach((o: any) =>
