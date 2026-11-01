@@ -59,6 +59,27 @@ const STATUS_SKIN: Record<string, string> = {
 const payableAmount = (o: any) => (o?.pwdApplied ? Number(o.pwdFinal || 0) : Number(o?.total || 0));
 const RESCHEDULE_SLOTS = ['12:00 PM - 1:00 PM', '4:00 PM - 5:00 PM', '7:00 PM - 8:00 PM', '10:00 PM - 11:00 PM'];
 
+// ---- edit-order helpers ----
+// Our Delivery vs Maxim: use the saved delivery_option; older orders fall back to the schedule text.
+const orderDeliveryOption = (o: any): 'our' | 'maxim' | null => {
+  if ((o?.fulfillment || '') !== 'delivery') return null;
+  if (o?.deliveryOption === 'our' || o?.deliveryOption === 'maxim') return o.deliveryOption;
+  return /maxim/i.test(o?.scheduleInfo || '') ? 'maxim' : 'our';
+};
+// "09:00" -> "9:00 AM" (format required by the database slot parser)
+const to12h = (hhmm: string) => {
+  const [h, m] = (hhmm || '').split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return '';
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+};
+// "9:00 AM - 10:00 AM" -> { start: "09:00", end: "10:00" }
+const slotTo24 = (slot: string): { start: string; end: string } | null => {
+  const m = (slot || '').match(/^\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])\s*-\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])\s*$/);
+  if (!m) return null;
+  const conv = (h: string, mi: string, ap: string) => `${String((parseInt(h, 10) % 12) + (ap.toUpperCase() === 'PM' ? 12 : 0)).padStart(2, '0')}:${mi}`;
+  return { start: conv(m[1], m[2], m[3]), end: conv(m[4], m[5], m[6]) };
+};
+
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
   const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots' | 'process' | 'feedback'>('sales');
   const [menuItems, setMenuItems] = useState<any[]>([]);
@@ -106,6 +127,21 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [rescheduleOrder, setRescheduleOrder] = useState<any>(null);
   const [rescheduleDate, setRescheduleDate] = useState<string>('');
   const [rescheduleSlot, setRescheduleSlot] = useState<string>('');
+
+  // --- Edit order state (quantities, fulfillment, delivery details, schedule) ---
+  const [editOrder, setEditOrder] = useState<any>(null);
+  const [editQty, setEditQty] = useState<Record<number, number>>({});
+  const [editMethod, setEditMethod] = useState<'pickup' | 'our' | 'maxim' | 'on-site'>('pickup');
+  const [editPhone, setEditPhone] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editLandmark, setEditLandmark] = useState('');
+  const [editFee, setEditFee] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editSlot, setEditSlot] = useState('');
+  const [editCustomSlot, setEditCustomSlot] = useState(false);
+  const [editCustomStart, setEditCustomStart] = useState('09:00');
+  const [editCustomEnd, setEditCustomEnd] = useState('10:00');
+  const [editNote, setEditNote] = useState('');
   const [statusMsg, setStatusMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const [customers, setCustomers] = useState<any[]>([]);
@@ -210,6 +246,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           slotTime: o.slot_time || '',
           rescheduledToDate: o.rescheduled_to_date || '',
           rescheduledToTime: o.rescheduled_to_time || '',
+          deliveryOption: o.delivery_option || '',
+          lastEditedAt: o.last_edited_at || null,
+          editCount: Number(o.edit_count || 0),
           pwdApplied: !!o.pwd_applied,
           pwdOriginal: Number(o.pwd_original_amount || 0),
           pwdPercent: Number(o.pwd_discount_percent || 0),
@@ -836,6 +875,89 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     fetchCloudData();
   };
 
+  // --- Edit an order: quantities, fulfillment method, delivery details and time schedule ---
+  // The browser only collects the changes; the database RPC (admin_edit_order) recalculates the
+  // subtotal, discounts and total, checks slot capacity and writes the audit log.
+  const openEditOrder = (order: any) => {
+    const items = Array.isArray(order.items) ? order.items : [];
+    const q: Record<number, number> = {};
+    items.forEach((it: any, i: number) => { q[i] = itemQty(it); });
+    setEditQty(q);
+    const opt = orderDeliveryOption(order);
+    setEditMethod(order.fulfillment === 'on-site' ? 'on-site' : order.fulfillment === 'pickup' ? 'pickup' : (opt || 'our'));
+    setEditPhone(order.phone || '');
+    setEditLocation(order.fulfillment === 'delivery' ? (order.location || '') : '');
+    setEditLandmark(order.fulfillment === 'delivery' && order.landmark && order.landmark !== 'N/A' ? order.landmark : '');
+    setEditFee(order.fulfillment === 'delivery' && opt === 'our' ? String(order.deliveryFee ?? 0) : '');
+    setEditDate(order.slotDate || todayManila());
+    const isStandard = RESCHEDULE_SLOTS.includes(order.slotTime);
+    setEditSlot(order.slotTime || '');
+    setEditCustomSlot(!!order.slotTime && !isStandard);
+    const parsed = slotTo24(order.slotTime || '');
+    setEditCustomStart(parsed ? parsed.start : '09:00');
+    setEditCustomEnd(parsed ? parsed.end : '10:00');
+    setEditNote('');
+    setEditOrder(order);
+  };
+  const editBowlsNow = () => Object.values(editQty).reduce((s: number, n: any) => s + (Number(n) || 0), 0);
+  const editBowlsBefore = () => (editOrder?.items || []).reduce((s: number, it: any) => s + itemQty(it), 0);
+  const editEffectiveSlot = () => (editCustomSlot ? `${to12h(editCustomStart)} - ${to12h(editCustomEnd)}` : editSlot);
+  const editSlotInfo = (dateKey: string, slot: string) => {
+    const cap: any = Object.values(slotCapacities || {}).find((s: any) => s.date_key === dateKey && s.slot_time === slot);
+    const max = cap ? Number(cap.max_bowls) : 10;
+    const booked = cap ? Number(cap.booked_bowls) : 0;
+    const same = !!editOrder && dateKey === editOrder.slotDate && slot === editOrder.slotTime;
+    const mine = same ? editBowlsBefore() : 0; // this order's own bowls are already counted in its current slot
+    const closed = !!cap && !!cap.is_manually_fully_booked && !same;
+    const full = closed || booked - mine + editBowlsNow() > max;
+    const ended = !same && slotHasEnded(dateKey, slot);
+    return { same, ended, full, left: Math.max(0, max - (booked - mine)), disabled: ended || full };
+  };
+  const handleSaveEdit = async () => {
+    if (!editOrder) return;
+    const onSite = editMethod === 'on-site';
+    const lines = (editOrder.items || [])
+      .map((_: any, i: number) => ({ index: i, quantity: Number(editQty[i]) || 0 }))
+      .filter((l: any) => l.quantity > 0);
+    if (lines.length === 0) { flash('err', 'An order must keep at least one item. Cancel the order instead.'); return; }
+    const changes: any = { items: lines, note: editNote.trim() || null };
+    if (onSite) {
+      changes.fulfillment = 'on-site';
+    } else {
+      const slot = editEffectiveSlot();
+      if (!slot || !editDate) { flash('err', 'Choose a date and a time slot.'); return; }
+      if (editCustomSlot && editCustomStart >= editCustomEnd) { flash('err', 'The end time must be after the start time.'); return; }
+      changes.dateKey = editDate;
+      changes.slotTime = slot;
+      if (editMethod === 'pickup') {
+        changes.fulfillment = 'pickup';
+      } else {
+        if (!editPhone.trim() || !editLocation.trim() || !editLandmark.trim()) {
+          flash('err', 'Delivery needs a contact number, an address and a landmark.'); return;
+        }
+        changes.fulfillment = 'delivery';
+        changes.deliveryOption = editMethod;
+        changes.phone = editPhone.trim();
+        changes.location = editLocation.trim();
+        changes.landmark = editLandmark.trim();
+        if (editMethod === 'our') {
+          if (editFee.trim() === '' || Number.isNaN(Number(editFee)) || Number(editFee) < 0) {
+            flash('err', 'Enter the delivery fee for Our Delivery (0 or more).'); return;
+          }
+          changes.deliveryFee = Number(editFee);
+        }
+      }
+    }
+    setBusyOrderId(editOrder.id);
+    const { data, error } = await supabase.rpc('admin_edit_order', { p_order_id: editOrder.id, p_changes: changes });
+    setBusyOrderId(null);
+    if (error || data?.success === false) { flash('err', error?.message || data?.message || 'Could not update the order.'); return; }
+    if (data?.unchanged) { flash('ok', `${editOrder.orderNumber}: nothing was changed.`); setEditOrder(null); return; }
+    flash('ok', `${editOrder.orderNumber} updated. New total ${formatPeso(Number(data?.total || 0))}${editOrder.pwdApplied ? ' (PWD discount recalculated)' : ''}.`);
+    setEditOrder(null);
+    fetchCloudData();
+  };
+
   // --- Return from the dashboard to the customer-facing store ---
   const handleExitStore = () => {
     if (onBackToStore) {
@@ -1083,6 +1205,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                               {order.status === 'completed' && order.completedAt && (
                                 <span className="block text-[10px] text-emerald-400">{new Date(order.completedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}</span>
                               )}
+                              {order.lastEditedAt && (
+                                <span className="block text-[10px] text-amber-300">✎ Edited {new Date(order.lastEditedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}</span>
+                              )}
                             </div>
                           </td>
                           <td className="p-3 text-right space-y-1.5">
@@ -1093,6 +1218,16 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                             >
                               See Invoice
                             </Button>
+                            {(order.status === 'pending' || order.status === 'rescheduled') && (
+                              <Button
+                                size="sm"
+                                disabled={busyOrderId === order.id}
+                                onClick={() => openEditOrder(order)}
+                                className="block ml-auto bg-amber-950 hover:bg-amber-400 hover:text-black text-amber-300 border border-amber-700 font-extrabold text-[10px] px-3 py-1.5 rounded-xl transition-all cursor-pointer disabled:opacity-40"
+                              >
+                                Edit Order
+                              </Button>
+                            )}
                             {!order.pwdApplied && (order.status === 'pending' || order.status === 'rescheduled') && (
                               <Button
                                 size="sm"
@@ -1686,6 +1821,175 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <Button disabled={!rescheduleSlot || busyOrderId === rescheduleOrder.id} onClick={handleConfirmReschedule}
                   className="flex-1 bg-lime-400 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed">
                   {busyOrderId === rescheduleOrder.id ? 'Moving…' : 'Confirm Reschedule'}
+                </Button>
+              </div>
+            </DialogContent>
+          )}
+        </Dialog>
+
+        {/* Edit Order modal */}
+        <Dialog open={!!editOrder} onOpenChange={(open) => !open && setEditOrder(null)}>
+          {editOrder && (
+            <DialogContent className="max-w-lg w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
+              <div className="space-y-1 border-b border-emerald-900/60 pb-3">
+                <DialogTitle className="font-display text-lg font-extrabold text-white">Edit {editOrder.orderNumber}</DialogTitle>
+                <DialogDescription className="text-xs text-emerald-300">
+                  {editOrder.name}. Changes show instantly in the customer's My Order History. The database recalculates the total, checks slot capacity and logs every edit.
+                </DialogDescription>
+              </div>
+
+              <div className="my-3 space-y-4 text-xs">
+                {/* Items */}
+                <div className="space-y-1.5">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Items &amp; Quantity</label>
+                  {(editOrder.items || []).map((it: any, i: number) => {
+                    const qty = Number(editQty[i]) || 0;
+                    return (
+                      <div key={i} className={`flex items-center justify-between gap-2 rounded-xl border p-2.5 ${qty === 0 ? 'border-red-900 bg-red-950/30 opacity-70' : 'border-emerald-800 bg-[#041913]'}`}>
+                        <div className="min-w-0">
+                          <p className={`font-bold text-white truncate ${qty === 0 ? 'line-through' : ''}`}>{lineItemName(it)}</p>
+                          {it.customizationsSummary && <p className="text-[10px] text-lime-300 font-mono">↳ {it.customizationsSummary}</p>}
+                          <p className="text-[10px] text-emerald-400">{formatPeso(itemUnit(it))} each{qty === 0 ? ' • will be removed' : ''}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button type="button" onClick={() => setEditQty((p) => ({ ...p, [i]: Math.max(0, (Number(p[i]) || 0) - 1) }))}
+                            className="h-7 w-7 rounded-lg bg-[#082d22] border border-emerald-700 text-lime-400 font-extrabold cursor-pointer">−</button>
+                          <input type="number" min={0} max={50} value={qty}
+                            onChange={(e) => {
+                              const n = Math.max(0, Math.min(50, Math.floor(Number(e.target.value) || 0)));
+                              setEditQty((p) => ({ ...p, [i]: n }));
+                            }}
+                            className="w-12 bg-[#04140f] border border-emerald-800 rounded-lg py-1 text-center text-xs font-bold text-white focus:outline-none focus:border-lime-400" />
+                          <button type="button" onClick={() => setEditQty((p) => ({ ...p, [i]: Math.min(50, (Number(p[i]) || 0) + 1) }))}
+                            className="h-7 w-7 rounded-lg bg-[#082d22] border border-emerald-700 text-lime-400 font-extrabold cursor-pointer">+</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <p className="text-[10px] text-emerald-400/80">Set a quantity to 0 to remove a line. Each line keeps its original price and add-ons.</p>
+                </div>
+
+                {/* Fulfillment */}
+                <div className="space-y-1.5">
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block">Fulfillment</label>
+                  {editMethod === 'on-site' ? (
+                    <p className="rounded-xl border border-emerald-800 bg-[#041913] p-2.5 text-emerald-200">On-site (counter) order. Only quantities can be edited.</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {([['pickup', 'Pickup'], ['our', 'Our Delivery'], ['maxim', 'Maxim Courier']] as const).map(([key, label]) => (
+                        <button key={key} type="button" onClick={() => setEditMethod(key)}
+                          className={`p-2 rounded-lg border text-[11px] font-bold transition-all cursor-pointer ${editMethod === key ? 'bg-lime-400 text-black border-lime-400 shadow-md' : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50'}`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Delivery details */}
+                {(editMethod === 'our' || editMethod === 'maxim') && (
+                  <div className="space-y-2 rounded-xl border border-emerald-800 bg-[#041913] p-3">
+                    <div>
+                      <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Contact Number</label>
+                      <input type="text" value={editPhone} onChange={(e) => setEditPhone(e.target.value)}
+                        className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+                    </div>
+                    <div>
+                      <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Delivery Address</label>
+                      <input type="text" value={editLocation} onChange={(e) => setEditLocation(e.target.value)}
+                        className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+                    </div>
+                    <div>
+                      <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Nearest Landmark</label>
+                      <input type="text" value={editLandmark} onChange={(e) => setEditLandmark(e.target.value)}
+                        className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+                    </div>
+                    {editMethod === 'our' ? (
+                      <div>
+                        <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Delivery Fee (₱)</label>
+                        <input type="number" min={0} max={1000} value={editFee} onChange={(e) => setEditFee(e.target.value)}
+                          className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+                        <p className="text-[10px] text-emerald-400/80 mt-1">Under 1 km free • 1–2 km ₱40 • beyond 2 km ₱40 + ₱5 per extra km. The delivery pin is not stored on orders, so enter the fee; it is validated and logged.</p>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-emerald-300">Maxim Courier: the delivery fee is paid directly to the rider, so this order's delivery fee becomes ₱0.00.</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Schedule */}
+                {editMethod !== 'on-site' && (
+                  <div className="space-y-2">
+                    <label className="font-bold text-lime-400 uppercase tracking-wider block">Date &amp; Time Schedule</label>
+                    <p className="text-[10px] text-emerald-400/80">Current: {editOrder.slotDate ? `${editOrder.slotDate} (${editOrder.slotTime})` : 'unknown'}. Past and fully booked slots cannot be chosen. Changing the time marks the order Rescheduled.</p>
+                    <input type="date" min={todayManila()} value={editDate} onChange={(e) => e.target.value && setEditDate(e.target.value)}
+                      className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
+                    <div className="grid grid-cols-2 gap-2">
+                      {RESCHEDULE_SLOTS.map((slot) => {
+                        const a = editSlotInfo(editDate, slot);
+                        const selected = !editCustomSlot && editSlot === slot;
+                        return (
+                          <button key={slot} type="button" disabled={a.disabled}
+                            onClick={() => { setEditCustomSlot(false); setEditSlot(slot); }}
+                            className={`p-2 rounded-lg border text-[11px] font-bold flex flex-col items-center transition-all ${
+                              a.disabled ? 'bg-red-950/50 border-red-900 text-red-400 opacity-60 cursor-not-allowed'
+                              : selected ? 'bg-lime-400 text-black border-lime-400 shadow-md'
+                              : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50 cursor-pointer'}`}>
+                            <span>{slot}</span>
+                            <span className="text-[9px] font-semibold mt-0.5">{a.same ? 'Current slot' : a.ended ? '⏰ Past' : a.full ? '⛔ Fully Booked' : `🟢 ${a.left} bowls left`}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button type="button" onClick={() => setEditCustomSlot((v) => !v)}
+                      className={`w-full p-2 rounded-lg border text-[11px] font-bold transition-all cursor-pointer ${editCustomSlot ? 'bg-lime-400 text-black border-lime-400' : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50'}`}>
+                      {editCustomSlot ? 'Using a custom time' : 'Use a custom time (e.g. 9:00 AM - 10:00 AM)'}
+                    </button>
+                    {editCustomSlot && (
+                      <div className="grid grid-cols-2 gap-2 rounded-xl border border-emerald-800 bg-[#041913] p-3">
+                        <div>
+                          <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">From</label>
+                          <input type="time" value={editCustomStart} onChange={(e) => setEditCustomStart(e.target.value)}
+                            className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+                        </div>
+                        <div>
+                          <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">To</label>
+                          <input type="time" value={editCustomEnd} onChange={(e) => setEditCustomEnd(e.target.value)}
+                            className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+                        </div>
+                        <p className="col-span-2 text-[10px] text-emerald-300">Saved as <span className="font-bold text-white">{editEffectiveSlot() || '—'}</span>. A custom window starts with the default capacity of 10 bowls.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Note */}
+                <div>
+                  <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Reason / Note (optional, saved in the audit log)</label>
+                  <input type="text" value={editNote} maxLength={200} onChange={(e) => setEditNote(e.target.value)}
+                    placeholder="e.g. Customer misclicked Maxim, wants our delivery"
+                    className="w-full bg-[#041913] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400" />
+                </div>
+
+                {/* Estimate */}
+                <div className="rounded-xl border border-emerald-800 bg-[#041913] p-3 space-y-1">
+                  <div className="flex justify-between text-emerald-200">
+                    <span>Estimated food subtotal ({editBowlsNow()} item{editBowlsNow() === 1 ? '' : 's'})</span>
+                    <span className="font-bold text-white">{formatPeso((editOrder.items || []).reduce((s: number, it: any, i: number) => s + itemUnit(it) * (Number(editQty[i]) || 0), 0))}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-200">
+                    <span>Estimated delivery fee</span>
+                    <span className="font-bold text-white">{editMethod === 'our' ? formatPeso(Number(editFee) || 0) : formatPeso(0)}</span>
+                  </div>
+                  <p className="text-[10px] text-emerald-400/80">Preview only. Promos and the PWD discount are recalculated by the database when you save, and the final total is shown afterwards.</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
+                <Button onClick={() => setEditOrder(null)} className="flex-1 bg-emerald-950 text-emerald-200 font-bold py-2.5 rounded-xl text-xs cursor-pointer">Cancel</Button>
+                <Button disabled={busyOrderId === editOrder.id} onClick={handleSaveEdit}
+                  className="flex-1 bg-lime-400 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed">
+                  {busyOrderId === editOrder.id ? 'Saving…' : 'Save Changes'}
                 </Button>
               </div>
             </DialogContent>

@@ -596,7 +596,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
             date: new Date(o.created_at).toLocaleString(),
             promoCode: o.promo_code,
             orderType: o.order_type || 'today',
-            scheduleInfo: o.schedule_info || 'Immediate / Today'
+            scheduleInfo: o.schedule_info || 'Immediate / Today',
+            status: o.status || 'pending',
+            lastEditedAt: o.last_edited_at || null
           }));
           setHistoryList(formattedCloudOrders);
           return;
@@ -628,6 +630,23 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   useEffect(() => {
     refreshOrderHistoryFromStorage();
+  }, [currentUser]);
+
+  // SECTION 14b: Live updates. When staff edit this customer's order (items, fulfillment, schedule),
+  // "My Order History" refreshes immediately without reloading the page.
+  useEffect(() => {
+    if (isGuest) return;
+    const liveUserId = currentUser?.authUserId || currentUser?.userId;
+    if (!liveUserId) return;
+    const myOrdersChannel = supabase
+      .channel('my_orders_live_' + liveUserId + '_' + Math.random())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `user_id=eq.${liveUserId}` }, () => {
+        refreshOrderHistoryFromStorage();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(myOrdersChannel);
+    };
   }, [currentUser]);
 
   useEffect(() => {
@@ -1538,6 +1557,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       </span>
                       {order.scheduleInfo && (
                         <p className="text-[10px] text-emerald-300 mt-1 font-medium">{order.scheduleInfo}</p>
+                      )}
+                      {order.lastEditedAt && (
+                        <p className="text-[10px] text-amber-300 mt-1 font-semibold">✎ Updated by VEYNS staff • {new Date(order.lastEditedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}</p>
                       )}
                     </div>
                   </div>
