@@ -423,7 +423,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
     items: lines.map((l) => ({ menuItemId: l.item.id, quantity: l.qty, options: l.options.map((o: any) => ({ groupId: o.groupId, optionId: o.optionId })) })),
   }) : null, [customer, contactName, contactPhone, contactEmail, fulfillment, deliveryOption, orderType, effectiveDate, slotTime, location, landmark, pin, selectedCodes, lines]);
 
-  const pricingSig = payload ? JSON.stringify({ c: payload.customerUserId, w: payload.walkIn, f: payload.fulfillment, la: payload.deliveryLat, ln: payload.deliveryLng, p: payload.promoCodesList, i: payload.items }) : '';
+  const pricingSig = payload ? JSON.stringify({ c: payload.customerUserId, w: payload.walkIn, f: payload.fulfillment, o: payload.deliveryOption, la: payload.deliveryLat, ln: payload.deliveryLng, p: payload.promoCodesList, i: payload.items }) : '';
   useEffect(() => {
     if (!payload || lines.length === 0) { setPreview({ loading: false, data: null, error: '' }); return; }
     const seq = ++previewSeq.current;
