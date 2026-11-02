@@ -77,20 +77,24 @@
   }
 }
 
-/* Loyalty card: laptop/desktop only (large screen + mouse). Phones/tablets unchanged. */
+/* Loyalty card: laptop/desktop only (large screen + mouse). Stays PORTRAIT.
+   Content is scaled to fit the window height so no scrollbar appears.
+   Phones/tablets are unchanged. */
 @media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
   .loyalty-dialog {
-    max-width: 56rem !important;
-    max-height: 95vh !important;
-    overflow-y: auto !important;
+    max-height: 96vh !important;
+    overflow-y: auto !important;   /* only shows if the window is extremely short */
+    scrollbar-width: none;
   }
-  .loyalty-layout {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    align-items: start;
-  }
-  .loyalty-layout > * {
-    margin-top: 0 !important;
-  }
+  .loyalty-dialog::-webkit-scrollbar { display: none; }
+  .loyalty-layout { zoom: 0.85; }
+}
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) and (min-height: 900px) {
+  .loyalty-layout { zoom: 0.92; }
+}
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) and (max-height: 799px) {
+  .loyalty-layout { zoom: 0.75; }
+}
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) and (max-height: 699px) {
+  .loyalty-layout { zoom: 0.62; }
 }
