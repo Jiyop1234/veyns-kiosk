@@ -684,6 +684,24 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   // SECTION 15: Create orders only through the server-validated Supabase RPC.
   const orderIdempotencyKeyRef = useRef<string>((typeof crypto !== 'undefined' && (crypto as any).randomUUID) ? (crypto as any).randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2));
   const placingOrderRef = useRef(false);
+
+  // Checkout validation: required fields turn red after the customer taps "Confirm & Place Order".
+  const [showErrors, setShowErrors] = useState(false);
+  const getMissingFields = () => {
+    const m: string[] = [];
+    if (!String(customerName || '').trim()) m.push('customerName');
+    if (fulfillment === 'delivery') {
+      if (!String(customerEmail || '').trim()) m.push('customerEmail');
+      if (!String(customerPhone || '').trim()) m.push('customerPhone');
+      if (!deliveryCoordinates) m.push('deliveryPin');
+      if (!String(customerLocation || '').trim()) m.push('customerLocation');
+      if (!String(nearestLandmark || '').trim()) m.push('nearestLandmark');
+    }
+    if (orderType === 'reservation' && !reservationDate) m.push('reservationDate');
+    return m;
+  };
+  const errCls = (key: string, normal = 'border-emerald-800/80') =>
+    showErrors && getMissingFields().includes(key) ? 'border-red-500 ring-2 ring-red-500/50' : normal;
   const saveOrderToHistory = async (newOrder: any) => {
     // Calculate total quantity of bowls ordered across all cart lines
     const totalBowlsCount = lines.reduce((sum, line) => sum + (line.qty || 1), 0);
@@ -1070,6 +1088,16 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   const handleConfirmOrder = async () => {
     if (placingOrderRef.current) return; // ignore double-clicks while an order is being saved
+    const missing = getMissingFields();
+    if (missing.length > 0) {
+      setShowErrors(true);
+      setTimeout(() => {
+        const el = document.querySelector('[data-field="' + missing[0] + '"]') as any;
+        if (el?.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (el?.focus && missing[0] !== 'deliveryPin') { try { el.focus({ preventScroll: true }); } catch {} }
+      }, 50);
+      return;
+    }
     if (orderType === 'today' && !isOrderTodayAllowed()) {
       alert('Store is closed until 12 noon. Select a reservation time instead.'); return;
     }
@@ -2275,7 +2303,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       <div>
                         <label className="text-[10px] text-emerald-300 block mb-1">Reservation Date *</label>
                         <div className="relative">
-                          <div className="flex items-center justify-between w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2.5 text-xs">
+                          <div data-field="reservationDate" className={`flex items-center justify-between w-full bg-[#041913] border ${errCls('reservationDate')} rounded-lg p-2.5 text-xs`}>
                             <span className={reservationDate ? 'text-white font-semibold' : 'text-emerald-500'}>
                               {reservationDate ? new Date(reservationDate + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'Tap to choose a date'}
                             </span>
@@ -2360,14 +2388,14 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       placeholder="Customer Name *"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
-                      className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
+                      data-field="customerName" className={`w-full bg-[#041913] border ${errCls('customerName')} rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400`}
                     />
                     <input
                       type="email"
                       placeholder="Email Address *"
                       value={customerEmail}
                       onChange={(e) => setCustomerEmail(e.target.value)}
-                      className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
+                      data-field="customerEmail" className={`w-full bg-[#041913] border ${errCls('customerEmail')} rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400`}
                     />
                   </div>
 
@@ -2376,7 +2404,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     placeholder="Phone Number *"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
+                    data-field="customerPhone" className={`w-full bg-[#041913] border ${errCls('customerPhone')} rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400`}
                   />
 
                   <div className="space-y-2 pt-1">
@@ -2396,8 +2424,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     {!isPinning ? (
                       <Button
                         type="button"
+                        data-field="deliveryPin"
                         onClick={() => setIsPinning(true)}
-                        className="w-full bg-[#04261d] hover:bg-[#063829] text-lime-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow"
+                        className={`w-full bg-[#04261d] hover:bg-[#063829] text-lime-400 border ${errCls('deliveryPin', 'border-emerald-700')} font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow`}
                       >
                         <MapPin className="size-4 text-lime-400" /> Open Map to Drop Pin
                       </Button>
@@ -2416,7 +2445,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     placeholder="Delivery Address (Auto-filled from Pin) *"
                     value={customerLocation}
                     onChange={(e) => setCustomerLocation(e.target.value)}
-                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400 resize-none font-mono text-[11px]"
+                    data-field="customerLocation" className={`w-full bg-[#041913] border ${errCls('customerLocation')} rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400 resize-none font-mono text-[11px]`}
                   />
 
                   <input
@@ -2424,7 +2453,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     placeholder="Nearest Landmark / Unit No. *"
                     value={nearestLandmark}
                     onChange={(e) => setNearestLandmark(e.target.value)}
-                    className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
+                    data-field="nearestLandmark" className={`w-full bg-[#041913] border ${errCls('nearestLandmark')} rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400`}
                   />
 
                   {deliveryDistanceKm !== null && deliveryOption === 'our' && (
@@ -2495,7 +2524,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       placeholder="Name of Person Picking Up *"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
-                      className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400"
+                      data-field="customerName" className={`w-full bg-[#041913] border ${errCls('customerName')} rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400`}
                     />
                   </div>
 
@@ -2563,13 +2592,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 </div>
 
                 <Button
-                  disabled={
-                    lines.length === 0 ||
-                    (fulfillment === 'delivery' && (!customerName || !customerEmail || !customerPhone || !customerLocation || !nearestLandmark)) ||
-                    (fulfillment === 'pickup' && !customerName) ||
-                    (orderType === 'reservation' && !reservationDate) ||
-                    isStoreClosedForToday
-                  }
+                  disabled={lines.length === 0 || isStoreClosedForToday}
                   onClick={handleConfirmOrder}
                   className={`w-full font-extrabold py-3 rounded-xl text-sm transition-all shadow-lg cursor-pointer ${
                     isStoreClosedForToday
@@ -2579,6 +2602,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 >
                   {isStoreClosedForToday ? 'Store is Closed — Will Be Back Later at 12 NOON' : 'Confirm & Place Order'}
                 </Button>
+
+                {showErrors && getMissingFields().length > 0 && (
+                  <p className="text-center text-[11px] text-red-400 font-semibold pt-1">
+                    Please fill in the fields highlighted in red to continue.
+                  </p>
+                )}
 
                 {isStoreClosedForToday && (
                   <p className="text-center text-[11px] text-amber-300 font-medium pt-1">

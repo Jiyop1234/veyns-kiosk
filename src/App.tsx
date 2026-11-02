@@ -284,11 +284,8 @@ export function App() {
       return;
     }
     if (data?.user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('auth_user_id', data.user.id)
-        .maybeSingle();
+      // Use the secure RPC (not a direct table read) so login never hits a 403 on public.profiles.
+      const { data: profile } = await supabase.rpc('claim_veyns_profile');
       const userRole = profile?.role || 'regular';
       // Build a COMPLETE user object so the header renders the correct nickname immediately
       // without waiting for restoreAuthUser to fire from the auth state listener.
