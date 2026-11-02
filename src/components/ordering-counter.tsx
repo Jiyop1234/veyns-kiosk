@@ -476,9 +476,25 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
   }, [showCheckout, fulfillment, isPinning]);
 
+  // Tear down the map whenever its container leaves the page, so it can be rebuilt cleanly next time.
+  useEffect(() => {
+    if (!(showCheckout && fulfillment === 'delivery' && isPinning) && mapInstanceRef.current) {
+      try { mapInstanceRef.current.remove(); } catch (e) {}
+      mapInstanceRef.current = null;
+      markerInstanceRef.current = null;
+    }
+  }, [showCheckout, fulfillment, isPinning]);
+
   // SECTION 11: Initialize the delivery map and allow customers to choose a delivery location.
   const initMap = () => {
-    if (!mapRef.current || mapInstanceRef.current) return;
+    if (!mapRef.current) return;
+    // If an old map exists but its container was removed from the page (e.g. switched to Pick Up and back), discard it and rebuild.
+    if (mapInstanceRef.current) {
+      if (mapInstanceRef.current.getContainer && mapInstanceRef.current.getContainer() === mapRef.current) return;
+      try { mapInstanceRef.current.remove(); } catch (e) {}
+      mapInstanceRef.current = null;
+      markerInstanceRef.current = null;
+    }
     const L = window.L;
     if (!L) return;
 
@@ -489,15 +505,17 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       iconAnchor: [10, 10]
     });
 
-    const map = L.map(mapRef.current).setView([STORE_LAT, STORE_LNG], 15);
+    const startLat = deliveryCoordinates ? deliveryCoordinates.lat : STORE_LAT;
+    const startLng = deliveryCoordinates ? deliveryCoordinates.lng : STORE_LNG;
+    const map = L.map(mapRef.current).setView([startLat, startLng], deliveryCoordinates ? 16 : 15);
     mapInstanceRef.current = map;
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    const customerInitialLat = STORE_LAT;
-    const customerInitialLng = STORE_LNG;
+    const customerInitialLat = startLat;
+    const customerInitialLng = startLng;
 
     const marker = L.marker([customerInitialLat, customerInitialLng], { draggable: true, icon: customIcon }).addTo(map);
     marker.bindPopup('<b>Store Location / Drag to your delivery pin!</b>').openPopup();
@@ -513,7 +531,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       await processSelectedCoordinates(e.latlng.lat, e.latlng.lng);
     });
 
-    processSelectedCoordinates(customerInitialLat, customerInitialLng);
+    // Only compute for the default store pin; a previously chosen pin keeps its address/fee.
+    if (!deliveryCoordinates) processSelectedCoordinates(customerInitialLat, customerInitialLng);
+    setTimeout(() => { try { map.invalidateSize(); } catch (e) {} }, 150);
   };
 
   // SECTION 12: Process selected coordinates, calculate delivery costs, and look up a readable address.
