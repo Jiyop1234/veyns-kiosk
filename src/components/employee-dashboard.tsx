@@ -92,6 +92,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [itemPrice, setItemPrice] = useState('');
   const [itemDiscount, setItemDiscount] = useState('');
   const [itemBestSeller, setItemBestSeller] = useState(false);
+  const [itemIsExtra, setItemIsExtra] = useState(false);
+  const [itemOfferInPopup, setItemOfferInPopup] = useState(false);
+  const [menuSection, setMenuSection] = useState<'main' | 'extras'>('main');
   const [itemImageFile, setItemImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState('');
   
@@ -244,6 +247,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           discountPercent: Number(m.discount_percent || 0),
           isAvailable: m.is_available,
           bestSeller: m.best_seller,
+          isExtra: !!m.is_extra,
+          offerInPopup: !!m.offer_in_popup,
           sortOrder: Number(m.sort_order || 100),
           image: m.image_url,
           optionGroups: m.option_groups || []
@@ -461,7 +466,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     const newItemData = {
       id: itemId,
       name: itemName.trim(),
-      category: itemCategory,
+      category: itemIsExtra ? 'Extras' : itemCategory,
       description: itemDescription.trim(),
       price: parseFloat(itemPrice),
       discount_percent: itemDiscount !== '' ? parseFloat(itemDiscount) : 0,
@@ -469,14 +474,17 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       best_seller: itemBestSeller,
       sort_order: editingItem ? (editingItem.sortOrder || 100) : 100,
       image_url: imageUrl,
-      option_groups: itemOptionGroups
+      option_groups: itemOptionGroups,
+      is_extra: itemIsExtra,
+      offer_in_popup: itemIsExtra ? true : itemOfferInPopup
     };
 
     try {
-      await supabase.from('menu_items').upsert(newItemData, { onConflict: 'id' });
-      alert('Menu item, photo & dynamic option groups successfully saved and synced!');
+      const { error: saveError } = await supabase.from('menu_items').upsert(newItemData, { onConflict: 'id' });
+      if (saveError) throw saveError;
+      alert('Saved and synced!');
     } catch (err) {
-      alert('Error saving menu item to database.');
+      alert('Error saving to database: ' + (err?.message || 'unknown error'));
     }
 
     setEditingItem(null);
@@ -487,10 +495,30 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     setItemDiscount('');
     setItemBestSeller(false);
     setItemImageFile(null);
+    setItemIsExtra(false);
+    setItemOfferInPopup(false);
     setImagePreviewUrl('');
     setItemOptionGroups([]);
     setPreviewSelections({});
     fetchCloudData();
+  };
+
+  // --- Open the Add / Edit form (main item or extra) ---
+  const openAddItem = (asExtra: boolean) => {
+    setItemName(''); setItemCategory(asExtra ? 'Extras' : 'Rice Bowls'); setItemDescription('');
+    setItemPrice(''); setItemDiscount(''); setItemBestSeller(false); setItemImageFile(null);
+    setImagePreviewUrl(''); setItemOptionGroups([]); setPreviewSelections({});
+    setItemIsExtra(asExtra); setItemOfferInPopup(false);
+    setEditingItem(null); setIsAddingNewItem(true);
+  };
+  const openEditItem = (item: any, displayImage: string) => {
+    setEditingItem(item); setItemName(item.name); setItemCategory(item.category || 'Rice Bowls');
+    setItemDescription(item.description || ''); setItemPrice(item.price.toString());
+    setItemDiscount((item.discountPercent || 0).toString()); setItemBestSeller(item.bestSeller || false);
+    setItemImageFile(null); setImagePreviewUrl(displayImage || '');
+    setItemOptionGroups(item.optionGroups || []); setPreviewSelections({});
+    setItemIsExtra(!!item.isExtra); setItemOfferInPopup(!!item.offerInPopup);
+    setIsAddingNewItem(true);
   };
 
   // --- Show or hide a menu item ---
@@ -1622,12 +1650,16 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
             <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
               <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Database Menu Manager (Live Sync)</h3>
-              <Button onClick={() => { setItemName(''); setItemCategory('Rice Bowls'); setItemDescription(''); setItemPrice(''); setItemDiscount(''); setItemBestSeller(false); setItemImageFile(null); setImagePreviewUrl(''); setItemOptionGroups([]); setPreviewSelections({}); setEditingItem(null); setIsAddingNewItem(true); }} className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg">
-                <Plus className="h-4 w-4" /> Add New Menu Item
+              <Button onClick={() => openAddItem(menuSection === 'extras')} className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg">
+                <Plus className="h-4 w-4" /> {menuSection === 'extras' ? 'Add New Extra' : 'Add New Menu Item'}
               </Button>
             </div>
+            <div className="flex gap-2">
+              <button onClick={() => setMenuSection('main')} className={`px-4 py-2 rounded-full text-xs font-extrabold cursor-pointer ${menuSection === 'main' ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>Main Menu ({menuItems.filter((i) => !i.isExtra).length})</button>
+              <button onClick={() => setMenuSection('extras')} className={`px-4 py-2 rounded-full text-xs font-extrabold cursor-pointer ${menuSection === 'extras' ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>Extras ({menuItems.filter((i) => i.isExtra).length})</button>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {menuItems.map((item) => {
+              {menuItems.filter((i) => (menuSection === 'extras' ? i.isExtra : !i.isExtra)).map((item) => {
                 const discountPct = item.discountPercent || 0;
                 const effectivePrice = discountPct > 0 ? item.price * (1 - discountPct / 100) : item.price;
                 const isAvailable = item.isAvailable !== false;
@@ -1683,7 +1715,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
-                      <Button onClick={() => { setEditingItem(item); setItemName(item.name); setItemCategory(item.category || 'Rice Bowls'); setItemDescription(item.description || ''); setItemPrice(item.price.toString()); setItemDiscount((item.discountPercent || 0).toString()); setItemBestSeller(item.bestSeller || false); setImagePreviewUrl(displayImage || ''); setItemOptionGroups(item.optionGroups || []); setPreviewSelections({}); setIsAddingNewItem(true); }} size="sm" className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1">
+                      <Button onClick={() => openEditItem(item, displayImage)} size="sm" className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1">
                         <Edit2 className="h-3.5 w-3.5" /> Edit Item
                       </Button>
                     </div>
@@ -2353,11 +2385,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 </div>
                 <div className="space-y-1.5">
                   <label className="font-bold text-lime-400 uppercase tracking-wider block">Category</label>
-                  <select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400">
+                  <select disabled={itemIsExtra} value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white font-bold focus:outline-none focus:border-lime-400">
                     <option value="Rice Bowls">Rice Bowls</option>
                     <option value="Noodle Bowls">Noodle Bowls</option>
                     <option value="Sides">Sides</option>
                     <option value="Apparel">Apparel</option>
+                    {itemIsExtra && <option value="Extras">Extras</option>}
                   </select>
                 </div>
               </div>
@@ -2380,6 +2413,17 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   </div>
                 </label>
               </div>
+              {!itemIsExtra ? (
+                <label className="flex items-center gap-2.5 p-3 rounded-xl border border-emerald-800/80 bg-[#041913] cursor-pointer hover:border-lime-400/60 transition-colors">
+                  <input type="checkbox" checked={itemOfferInPopup} onChange={(e) => setItemOfferInPopup(e.target.checked)} className="rounded border-emerald-700 text-lime-400 focus:ring-lime-400 bg-black/40 h-4 w-4" />
+                  <div>
+                    <span className="font-bold text-lime-400 uppercase tracking-wider text-xs block">Also offer in "A little something extra?"</span>
+                    <span className="text-[10px] text-emerald-300">Stays on the main menu and is NOT listed on the Extras page</span>
+                  </div>
+                </label>
+              ) : (
+                <p className="text-[10px] text-emerald-300 bg-[#041913] border border-emerald-800/80 rounded-xl p-3">This is an Extra: it appears in the "A little something extra?" popup and on the Extras page, not on the main menu.</p>
+              )}
               <div className="space-y-1.5">
                 <label className="font-bold text-lime-400 uppercase tracking-wider block">Description</label>
                 <textarea rows={2} value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} placeholder="Crispy pork sisig served over warm garlic rice..." className="w-full bg-[#041913] border border-emerald-800/80 rounded-xl p-3 text-white focus:outline-none focus:border-lime-400" />

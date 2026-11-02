@@ -11,6 +11,7 @@ import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
 import { FeedbackPage } from '@/components/feedback-page';
 import { FloatingSupportButton } from '@/components/floating-support-button';
+import { ExtrasPage } from '@/components/extras-page';
 
 export function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
@@ -47,6 +48,7 @@ export function App() {
   
   const [showMyOrders, setShowMyOrders] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showExtras, setShowExtras] = useState(false);
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [showAccountSettingsPanel, setShowAccountSettingsPanel] = useState(false);
   const [isUpdatingIdentifier, setIsUpdatingIdentifier] = useState(false);
@@ -831,6 +833,7 @@ export function App() {
           }}
           onExitGuest={handleLogout}
           onOpenFeedback={() => setShowFeedback(true)}
+          onOpenExtras={() => setShowExtras(true)}
         />
         <main className="flex-1">
           <OrderingCounter
@@ -863,6 +866,7 @@ export function App() {
           />
         </main>
         {showFeedback && <FeedbackPage onBack={() => setShowFeedback(false)} currentUser={currentUser} /> } 
+        {showExtras && <ExtrasPage onBack={() => setShowExtras(false)} onReviewOrder={() => { setShowExtras(false); setShowMyOrders(true); }} />}
         <FloatingSupportButton />  
         <Dialog open={showLoyaltyModal} onOpenChange={setShowLoyaltyModal}>
           <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">

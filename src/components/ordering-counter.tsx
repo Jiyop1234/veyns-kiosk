@@ -246,6 +246,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           discountPercent: Number(m.discount_percent || 0),
           isAvailable: m.is_available,
           bestSeller: m.best_seller,
+          isExtra: !!m.is_extra,
+          offerInPopup: !!m.offer_in_popup,
           sortOrder: Number(m.sort_order || 100),
           isCustomizable: m.is_customizable,
           hasBrothEggOption: m.has_broth_egg_option,
@@ -752,6 +754,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   // SECTION 16: Filter visible menu items by availability, category, and search text.
   const filtered = currentMenuGrid.filter((item) => {
     if (item.isAvailable === false) return false;
+    if (item.isExtra) return false;
     const matchCategory = category === 'All items' || item.category === category;
     const matchSearch =
       !search ||
@@ -759,6 +762,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       (item.description || '').toLowerCase().includes(search.toLowerCase());
     return matchCategory && matchSearch;
   });
+
+  // Items offered in "A little something extra?": extras + regular items flagged "offer in popup" (e.g. Fries)
+  const popupItems = currentMenuGrid
+    .filter((i) => i.isAvailable !== false && (i.isExtra || i.offerInPopup))
+    .sort((a, b) => (a.sortOrder || 100) - (b.sortOrder || 100));
 
   // SECTION 17: Menu customization logic, conditional option groups, pricing, and cart insertion.
   const handleOpenModal = (item) => {
@@ -901,7 +909,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
     setAddedItemName(`${qty} × ${selected.name}${summary ? ` (${summary})` : ''}`);
     setSelected(null);
-    setShowUpsell(true);
+    setShowUpsell(popupItems.length > 0);
   };
 
   // SECTION 18: Upsell quantity helpers and cart quantity updates.
@@ -1779,7 +1787,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           </div>
 
           <div className="grid grid-cols-2 gap-2.5 my-4">
-            {UPSELL_ITEMS.map((item) => {
+            {popupItems.map((item) => {
               const currentQty = getUpsellQty(item.id);
 
               return (
