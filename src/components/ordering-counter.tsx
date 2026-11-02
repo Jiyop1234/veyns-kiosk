@@ -1298,7 +1298,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
       {/* SECTION 25: Milestone Loyalty Card (Silver / Platinum / Diamond) + Rewards Wallet */}
       <Dialog open={showLoyaltyModal} onOpenChange={setShowLoyaltyModal}>
-      <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="loyalty-dialog max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[90vh] overflow-y-auto">
         {loyaltyLoading && !loyaltyStatus ? (
           <p className="text-xs text-emerald-300 text-center py-10">Loading your loyalty card…</p>
         ) : !loyaltyStatus ? (
@@ -1523,8 +1523,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           );
 
           return (
-            <div className="space-y-4">
+            <div className="space-y-4 loyalty-layout">
               <style>{`@keyframes veynsFlipIn{from{opacity:0;transform:perspective(900px) rotateY(85deg)}to{opacity:1;transform:perspective(900px) rotateY(0deg)}}`}</style>
+              <div className="space-y-4">
               <div className={`rounded-3xl p-5 ${cardSkin}`}>
                 {/* Only ONE face is rendered at a time (no 3D-transformed layers left behind) so text stays razor sharp */}
                 <div key={loyaltyCardFlipped ? 'back' : 'front'} style={{ animation: 'veynsFlipIn 0.35s ease-out' }}>
@@ -1546,7 +1547,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
               {isDiamond && voucherPanel && (
                 <div className="bg-[#0a0a0c] border border-slate-500/50 rounded-2xl p-3">{voucherPanel}</div>
               )}
+              </div>
 
+              <div className="space-y-4">
               <div className="bg-[#051813] border border-emerald-800 rounded-2xl p-4 space-y-2 text-xs">
                 <div className="text-[10px] space-y-1 text-emerald-200/90 border-t border-white/10 pt-2">
                   <p className="font-extrabold uppercase tracking-wider text-lime-400">How it works</p>
@@ -1583,6 +1586,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                 className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg">
                 Close Loyalty Card
               </Button>
+              </div>
             </div>
           );
         })()}

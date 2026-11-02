@@ -76,3 +76,21 @@
     transform: translateY(0);
   }
 }
+
+/* Loyalty card: laptop/desktop only (large screen + mouse). Phones/tablets unchanged. */
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+  .loyalty-dialog {
+    max-width: 56rem !important;
+    max-height: 95vh !important;
+    overflow-y: auto !important;
+  }
+  .loyalty-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    align-items: start;
+  }
+  .loyalty-layout > * {
+    margin-top: 0 !important;
+  }
+}
