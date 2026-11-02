@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
-import { Lock, LogOut, ShoppingBag, UtensilsCrossed, Settings, UserPlus, Edit3, KeyRound, ChevronDown, Facebook, Instagram, MessageSquare, PlusCircle } from 'lucide-react';
+import { Lock, LogOut, ShoppingBag, UtensilsCrossed, Settings, UserPlus, Edit3, KeyRound, ChevronDown, Facebook, Instagram, MessageSquare } from 'lucide-react';
 import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
 
@@ -77,17 +77,6 @@ export function SiteHeader({
               Hi, {nickname}
             </span>
           ) : null}
-
-          {/* Extras page */}
-          <Button
-            variant="outline"
-            onClick={onOpenExtras}
-            className="flex items-center gap-1.5 bg-[#061d16] border-emerald-700/80 text-white hover:border-lime-400 hover:bg-[#082a20] cursor-pointer px-3 sm:px-4 py-1.5 h-9 text-xs rounded-full"
-            title="Extras"
-          >
-            <PlusCircle className="size-4 text-lime-400 shrink-0" />
-            <span className="hidden sm:inline">Extras</span>
-          </Button>
 
           {/* Customer Feedback / Reviews */}
           <Button

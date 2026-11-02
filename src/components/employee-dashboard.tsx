@@ -237,7 +237,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const fetchCloudData = async () => {
     try {
       const { data: cloudMenu } = await supabase.from('menu_items').select('*');
-      if (cloudMenu && cloudMenu.length > 0) {
+      if (cloudMenu) {
         const formattedMenu = cloudMenu.map((m: any) => ({
           id: m.id,
           name: m.name,
@@ -532,10 +532,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   // --- Delete a menu item after confirmation ---
   const handleDeleteMenuItem = async (id: string) => {
     if (!confirm('Are you sure you want to delete this menu item from the database?')) return;
-    try {
-      await supabase.from('menu_items').delete().eq('id', id);
-      fetchCloudData();
-    } catch (e) {}
+    const { error } = await supabase.from('menu_items').delete().eq('id', id);
+    if (error) { alert('Delete failed: ' + error.message); return; }
+    fetchCloudData();
   };
 
   // Option Group Builder Handlers for Menu Manager

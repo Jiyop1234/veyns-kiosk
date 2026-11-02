@@ -1,7 +1,7 @@
 // @ts-nocheck
 // SECTION 1: Imports for React, UI components, menu data, cart state, and Supabase.
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar, UserPlus, Ticket, X } from 'lucide-react';
+import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar, UserPlus, Ticket, X, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, UPSELL_ITEMS, CATEGORIES, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
@@ -25,7 +25,7 @@ function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; 
 }
 
 // SECTION 3: Main ordering experience, including menu browsing, checkout, order history, and loyalty UI.
-export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, setOrderHistory, resetKey, currentUser, onOrderPlacedSuccess, onOpenRegister }: any) {
+export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, setOrderHistory, resetKey, currentUser, onOrderPlacedSuccess, onOpenRegister, onOpenExtras }: any) {
   // SECTION 4: Cart access and local state for menu browsing, promotions, loyalty, and slot availability.
   const { add, lines, setLineQty, remove, clear, total } = useCart();
   const [category, setCategory] = useState('All items');
@@ -37,6 +37,16 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
   // Slot capacities & Fully Booked states
   const [slotCapacities, setSlotCapacities] = useState<Record<string, any>>({});
+  // Must match the default max bowls used by your place_order database function.
+  const DEFAULT_MAX_BOWLS = 10;
+  const getSlotStatus = (dateKey: string, slot: string) => {
+    const info: any = Object.values(slotCapacities || {}).find((x: any) => x.slot_time === slot && x.date_key === dateKey);
+    const max = Number(info?.max_bowls) || DEFAULT_MAX_BOWLS;
+    const booked = Number(info?.booked_bowls) || 0;
+    const left = Math.max(0, max - booked);
+    const closed = !!(info?.is_fully_booked || info?.is_manually_fully_booked);
+    return { left, full: closed || left <= 0 };
+  };
 
   // SECTION 5: Customer type and ordering-time eligibility checks.
   const isGuest = !currentUser || currentUser.role === 'guest' || (currentUser.name && currentUser.name.toLowerCase().includes('guest')) || (currentUser.identifier && currentUser.identifier.toLowerCase().includes('guest'));
@@ -232,12 +242,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // SECTION 7: Merge Supabase menu records with the existing local menu data and sort the result.
   const loadMenuFromCloud = async () => {
+    // Fallback to the bundled menu ONLY if the database can't be reached.
     let mergedMenu = [...MENU_GRID];
 
     try {
       const { data: cloudMenu, error } = await supabase.from('menu_items').select('*');
-      if (cloudMenu && cloudMenu.length > 0) {
-        const formatted = cloudMenu.map((m: any) => ({
+      if (!error && cloudMenu) {
+        mergedMenu = cloudMenu.map((m: any) => ({
           id: m.id,
           name: m.name,
           category: m.category,
@@ -254,10 +265,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           image: m.image_url,
           optionGroups: m.option_groups || []
         }));
-        
-        const cloudIds = new Set(formatted.map(item => item.id));
-        const localOnly = MENU_GRID.filter(item => !cloudIds.has(item.id));
-        mergedMenu = [...formatted, ...localOnly];
       }
     } catch (e) {
       console.error('Error fetching cloud menu:', e);
@@ -266,10 +273,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     mergedMenu.sort((a, b) => {
       if (a.category === 'Apparel' && b.category !== 'Apparel') return 1;
       if (a.category !== 'Apparel' && b.category === 'Apparel') return -1;
-      
       if (a.bestSeller && !b.bestSeller) return -1;
       if (!a.bestSeller && b.bestSeller) return 1;
-
       return (a.sortOrder || 100) - (b.sortOrder || 100);
     });
 
@@ -371,7 +376,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   // Auto-select next available slot when reservation date is today
   useEffect(() => {
     if (!reservationDate) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
     if (reservationDate !== today) return;
     
     const slots = timeSlots;
@@ -1164,15 +1169,25 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
           <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
             {CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setCategory(cat)}
-                className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                  category === cat ? 'bg-lime-400 text-black' : 'bg-[#071F19] text-emerald-200 hover:bg-[#0a2c24]'
-                }`}
-              >
-                {cat}
-              </button>
+              <React.Fragment key={cat}>
+                {cat === 'Apparel' && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenExtras && onOpenExtras()}
+                    className="px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer bg-[#071F19] text-emerald-200 hover:bg-[#0a2c24] flex items-center gap-1.5"
+                  >
+                    <PlusCircle className="h-3.5 w-3.5 text-lime-400" /> Extras
+                  </button>
+                )}
+                <button
+                  onClick={() => setCategory(cat)}
+                  className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                    category === cat ? 'bg-lime-400 text-black' : 'bg-[#071F19] text-emerald-200 hover:bg-[#0a2c24]'
+                  }`}
+                >
+                  {cat}
+                </button>
+              </React.Fragment>
             ))}
           </div>
         </div>
@@ -2223,13 +2238,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     {(fulfillment === 'delivery' && deliveryOption === 'our') || fulfillment === 'pickup' ? (
                       <div className="grid grid-cols-2 gap-2">
                         {timeSlots.map((slot) => {
-                          const slotArray = Array.isArray(slotCapacities) ? slotCapacities : (slotCapacities ? Object.values(slotCapacities) : []);
-                          const slotInfo = slotArray.find((s: any) => s.slot_time === slot && s.date_key === new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }));
-                          const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_bowls >= (slotInfo.max_bowls || 10));
-                          const bowlsLeft = slotInfo ? Math.max(0, (slotInfo.max_bowls || 10) - slotInfo.booked_bowls) : null;
-                          
-                          // Check if slot is in the past (Manila time)
-                          const isPastSlot = slotHasEnded(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }), slot);
+                          const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+                          const { left: bowlsLeft, full: isFullyBooked } = getSlotStatus(todayKey, slot);
+                          const isPastSlot = slotHasEnded(todayKey, slot);
                           
                           const isDisabled = isFullyBooked || isPastSlot;
                           
@@ -2249,7 +2260,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                             >
                               <span>{slot}</span>
                               <span className="text-[9px] font-semibold mt-0.5">
-                                {isPastSlot ? '⏰ Past' : isFullyBooked ? '⛔ Fully Booked' : bowlsLeft !== null ? `🟢 ${bowlsLeft} bowls left` : 'Available'}
+                                {isPastSlot ? '⏰ Past' : isFullyBooked ? '⛔ Fully Booked' : `🟢 Available (${bowlsLeft} bowls)`}
                               </span>
                             </button>
                           );
@@ -2263,13 +2274,22 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     <div className="space-y-2">
                       <div>
                         <label className="text-[10px] text-emerald-300 block mb-1">Reservation Date *</label>
-                        <input
-                          type="date"
-                          min={new Date().toISOString().split('T')[0]}
-                          value={reservationDate}
-                          onChange={(e) => setReservationDate(e.target.value)}
-                          className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white text-xs focus:outline-none focus:border-lime-400"
-                        />
+                        <div className="relative">
+                          <div className="flex items-center justify-between w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2.5 text-xs">
+                            <span className={reservationDate ? 'text-white font-semibold' : 'text-emerald-500'}>
+                              {reservationDate ? new Date(reservationDate + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'Tap to choose a date'}
+                            </span>
+                            <Calendar className="h-4 w-4 text-lime-400" />
+                          </div>
+                          <input
+                            type="date"
+                            min={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })}
+                            value={reservationDate}
+                            onChange={(e) => setReservationDate(e.target.value)}
+                            onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                            className="absolute inset-0 h-full w-full opacity-0 cursor-pointer text-base [color-scheme:dark]"
+                          />
+                        </div>
                       </div>
                       <div>
                         <label className="text-[10px] text-emerald-300 block mb-1">Time Slot *</label>
@@ -2279,16 +2299,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                           className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white text-xs focus:outline-none focus:border-lime-400"
                         >
                           {timeSlots.map((slot) => {
-                            const slotArray = Array.isArray(slotCapacities) ? slotCapacities : (slotCapacities ? Object.values(slotCapacities) : []);
-                            const slotInfo = slotArray.find((s: any) => s.slot_time === slot && s.date_key === reservationDate);
-                            const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_bowls >= (slotInfo.max_bowls || 10));
-                            const bowlsLeft = slotInfo ? Math.max(0, (slotInfo.max_bowls || 10) - slotInfo.booked_bowls) : null;
-                            
-                            // Check if slot is in the past (only for today's date)
+                            const { left: bowlsLeft, full: isFullyBooked } = reservationDate ? getSlotStatus(reservationDate, slot) : { left: DEFAULT_MAX_BOWLS, full: false };
                             const isPastSlot = !!reservationDate && slotHasEnded(reservationDate, slot);
                             
                             const isDisabled = isFullyBooked || isPastSlot;
-                            const labelText = `${slot} ${isPastSlot ? '(Past)' : isFullyBooked ? '(Fully Booked)' : bowlsLeft !== null ? `(${bowlsLeft} bowls left)` : ''}`;
+                            const labelText = `${slot} ${isPastSlot ? '(Past)' : isFullyBooked ? '(Fully Booked)' : `(Available: ${bowlsLeft} bowls)`}`;
                             
                             return (
                               <option key={slot} value={slot} disabled={isDisabled}>

@@ -837,6 +837,7 @@ export function App() {
         />
         <main className="flex-1">
           <OrderingCounter
+            onOpenExtras={() => setShowExtras(true)}
             showMyOrders={showMyOrders}
             setShowMyOrders={setShowMyOrders}
             orderHistory={orderHistory}
