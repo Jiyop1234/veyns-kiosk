@@ -2425,9 +2425,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
                   <input
                     type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={11}
                     placeholder="Phone Number *"
                     value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    onChange={(e) => setCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
                     data-field="customerPhone" className={`w-full bg-[#041913] border ${errCls('customerPhone')} rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400`}
                   />
 
