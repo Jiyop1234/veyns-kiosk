@@ -9,7 +9,7 @@ import { getPromoStatus, getPromoEndMs } from '@/lib/promo-campaigns';
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
-import { useTimeSlots, slotHasEnded } from '@/lib/time-slots';
+import { useTimeSlots, slotHasEnded, slotOrderBlock, isStoreOpenNow, todayKeyManila, useMinuteTick, STORE_OPEN_LABEL } from '@/lib/time-slots';
 
 // SECTION 2: Shared menu-image component with a branded fallback when no image is available.
 function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; alt: string; className: string }) {
@@ -50,24 +50,16 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // SECTION 5: Customer type and ordering-time eligibility checks.
   const isGuest = !currentUser || currentUser.role === 'guest' || (currentUser.name && currentUser.name.toLowerCase().includes('guest')) || (currentUser.identifier && currentUser.identifier.toLowerCase().includes('guest'));
-  // Helper to check if "Order Today" is allowed in Philippine Time (Asia/Manila)
-  // Closed from 12:00 AM (00:00) until 12:00 PM (12:00)
-  const isOrderTodayAllowed = () => {
-    try {
-      const options: Intl.DateTimeFormatOptions = {
-        timeZone: 'Asia/Manila',
-        hour: 'numeric',
-        hour12: false
-      };
-      const formatter = new Intl.DateTimeFormat([], options);
-      const hourInPhilippines = parseInt(formatter.format(new Date()), 10);
-      return !(hourInPhilippines >= 0 && hourInPhilippines < 12);
-    } catch (e) {
-      const currentHour = new Date().getHours();
-      return !(currentHour >= 0 && currentHour < 12);
-    }
-  };
-  const orderTodayOpen = isOrderTodayAllowed();
+  // "Order Today" rules (Asia/Manila): the store opens at 12 noon, and orders for a time slot close
+  // 1 hour before it starts, so Order Today only works while at least one slot can still be booked.
+  const nowTick = useMinuteTick();
+  const timeSlots = useTimeSlots(); // edited by staff (live)
+  const storeOpenNow = isStoreOpenNow(nowTick);
+  const todayKeyNow = todayKeyManila(nowTick);
+  const slotIsBookable = (dateKey: string, slot: string) =>
+    slotOrderBlock(dateKey, slot, nowTick) === null && !getSlotStatus(dateKey, slot).full;
+  const todayHasBookableSlot = timeSlots.some((slot) => slotOrderBlock(todayKeyNow, slot, nowTick) === null);
+  const orderTodayOpen = storeOpenNow && todayHasBookableSlot;
 
   // --- Phase 3: Milestone loyalty status, wallet claiming, Platinum weekly claims ---
   const [loyaltyStatus, setLoyaltyStatus] = useState<any>(null);
@@ -366,38 +358,31 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [reservationTime, setReservationTime] = useState('12:00 PM - 1:00 PM');
 
   // Time slots are edited by staff (live). Keep the current choice valid when they change.
-  const timeSlots = useTimeSlots();
   useEffect(() => {
     if (timeSlots.length === 0) return;
     setTodayTimeSlot((p) => (timeSlots.includes(p) ? p : timeSlots[0]));
     setReservationTime((p) => (timeSlots.includes(p) ? p : timeSlots[0]));
   }, [timeSlots]);
 
-  // Auto-select next available slot when reservation date is today
+  // Keep the chosen slots valid: skip slots that already ended, are inside the 1-hour order cutoff, or are full.
+  useEffect(() => {
+    if (orderType !== 'today') return;
+    if (slotIsBookable(todayKeyNow, todayTimeSlot)) return;
+    const next = timeSlots.find((s) => slotIsBookable(todayKeyNow, s));
+    if (next) setTodayTimeSlot(next);
+  }, [orderType, todayTimeSlot, timeSlots, slotCapacities, nowTick]);
+
   useEffect(() => {
     if (!reservationDate) return;
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-    if (reservationDate !== today) return;
-    
-    const slots = timeSlots;
+    if (slotIsBookable(reservationDate, reservationTime)) return;
+    const next = timeSlots.find((s) => slotIsBookable(reservationDate, s));
+    if (next) setReservationTime(next);
+  }, [reservationDate, reservationTime, slotCapacities, timeSlots, nowTick]);
 
-    // Find the next available (non-past, non-fully-booked) slot
-    for (const slot of slots) {
-      const isPast = slotHasEnded(today, slot);
-      
-      if (!isPast) {
-        // Check if slot is fully booked
-        const slotArray = Array.isArray(slotCapacities) ? slotCapacities : (slotCapacities ? Object.values(slotCapacities) : []);
-        const slotInfo = slotArray.find((s: any) => s.slot_time === slot && s.date_key === today);
-        const isFullyBooked = slotInfo?.is_fully_booked || (slotInfo && slotInfo.booked_bowls >= (slotInfo.max_bowls || 10));
-        
-        if (!isFullyBooked) {
-          setReservationTime(slot);
-          break;
-        }
-      }
-    }
-  }, [reservationDate, slotCapacities, timeSlots]);
+  // If the store closes / the last slot of the day is gone while "Order Today" is selected, switch to Reservation.
+  useEffect(() => {
+    if (!orderTodayOpen && orderType === 'today') setOrderType('reservation');
+  }, [orderTodayOpen, orderType]);
 
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -518,7 +503,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     const customerInitialLng = startLng;
 
     const marker = L.marker([customerInitialLat, customerInitialLng], { draggable: true, icon: customIcon }).addTo(map);
-    marker.bindPopup('<b>Store Location / Drag to your delivery pin!</b>').openPopup();
+    marker.bindPopup('<b>Tap the map or drag me to drop your delivery pin</b>').openPopup();
     markerInstanceRef.current = marker;
 
     marker.on('dragend', async () => {
@@ -531,8 +516,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       await processSelectedCoordinates(e.latlng.lat, e.latlng.lng);
     });
 
-    // Only compute for the default store pin; a previously chosen pin keeps its address/fee.
-    if (!deliveryCoordinates) processSelectedCoordinates(customerInitialLat, customerInitialLng);
     setTimeout(() => { try { map.invalidateSize(); } catch (e) {} }, 150);
   };
 
@@ -586,7 +569,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         await processSelectedCoordinates(lat, lng);
       },
       () => {
-        alert('Unable to retrieve your location. Please drop a pin on the map.');
+        alert('Unable to retrieve your location. Please type your address or drop a pin on the map.');
       }
     );
   };
@@ -713,7 +696,6 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     if (fulfillment === 'delivery') {
       if (!String(customerEmail || '').trim()) m.push('customerEmail');
       if (!String(customerPhone || '').trim()) m.push('customerPhone');
-      if (!deliveryCoordinates) m.push('deliveryPin');
       if (!String(customerLocation || '').trim()) m.push('customerLocation');
       if (!String(nearestLandmark || '').trim()) m.push('nearestLandmark');
     }
@@ -780,7 +762,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     if (orderErr || !orderDataRes) throw new Error(orderErr?.message || 'Order could not be saved.');
     orderIdempotencyKeyRef.current = (typeof crypto !== 'undefined' && (crypto as any).randomUUID) ? (crypto as any).randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
 
-    const savedOrder = { ...newOrder, orderNumber: orderDataRes.order_number, items: orderDataRes.items, subtotal: Number(orderDataRes.subtotal || newOrder.subtotal), promoDiscount: Number(orderDataRes.promo_discount || 0), promoCode: orderDataRes.promo_code || null, promoCodesList: orderDataRes.promo_code ? String(orderDataRes.promo_code).split(',').map((c: string) => c.trim()) : [], deliveryDiscount: Number(orderDataRes.delivery_discount || 0), deliveryFee: Number(orderDataRes.delivery_fee || newOrder.deliveryFee), total: Number(orderDataRes.total || newOrder.total) };
+    const savedOrder = { ...newOrder, orderNumber: orderDataRes.order_number, items: orderDataRes.items, subtotal: Number(orderDataRes.subtotal || newOrder.subtotal), promoDiscount: Number(orderDataRes.promo_discount || 0), promoCode: orderDataRes.promo_code || null, promoCodesList: orderDataRes.promo_code ? String(orderDataRes.promo_code).split(',').map((c: string) => c.trim()) : [], deliveryDiscount: Number(orderDataRes.delivery_discount || 0), deliveryFee: Number(orderDataRes.delivery_fee || newOrder.deliveryFee), total: Number(orderDataRes.total || newOrder.total), deliveryFeePending: !!orderDataRes.delivery_fee_pending };
     
     const prior = isGuest ? sessionStorage.getItem(userHistoryStorageKey) : localStorage.getItem(userHistoryStorageKey);
     let previous: any[] = [];
@@ -1066,6 +1048,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
   // SECTION 20: Calculate separate food vs delivery promotion discounts and order totals.
   const rawDeliveryFee = fulfillment === 'delivery' && deliveryOption === 'our' ? calculatedDeliveryFee : 0;
+  // No pin dropped: the typed address is used and the store confirms the delivery fee afterwards.
+  const deliveryFeePending = fulfillment === 'delivery' && deliveryOption === 'our' && !deliveryCoordinates;
 
   const calculatePromoDiscounts = () => {
     let foodDiscountRaw = 0;
@@ -1118,11 +1102,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       }, 50);
       return;
     }
-    if (orderType === 'today' && !isOrderTodayAllowed()) {
-      alert('Store is closed until 12 noon. Select a reservation time instead.'); return;
-    }
-    if (fulfillment === 'delivery' && !deliveryCoordinates) {
-      alert('Choose a delivery location on the map before placing the order.'); return;
+    if (orderType === 'today' && !orderTodayOpen) {
+      alert(storeOpenNow ? 'No more time slots are available today. Please select a reservation instead.' : 'Store is closed. We will be back at 12 NOON. Please select a reservation instead.'); return;
     }
     const scheduleInfoText = orderType === 'today'
       ? fulfillment === 'delivery'
@@ -2060,7 +2041,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   {placedOrderDetails.fulfillment === 'delivery' && (
                     <div className="flex justify-between text-emerald-200">
                       <span>Delivery Fee{placedOrderDetails.deliveryOption === 'our' ? ` (${placedOrderDetails.deliveryDistanceKm} km)` : ''}:</span>
-                      <span className="font-bold text-white">{placedOrderDetails.deliveryOption === 'maxim' ? 'Paid to Maxim app' : formatPeso(placedOrderDetails.deliveryFee)}</span>
+                      <span className="font-bold text-white">{placedOrderDetails.deliveryOption === 'maxim' ? 'Paid to Maxim app' : placedOrderDetails.deliveryFeePending ? 'To be confirmed' : formatPeso(placedOrderDetails.deliveryFee)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-extrabold text-white pt-1">
@@ -2249,7 +2230,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     disabled={!orderTodayOpen}
                     onClick={() => {
                       if (!orderTodayOpen) {
-                        alert('⚠️ Store is closed! Will be back later at 12 NOON. Please select "Reservation" instead.');
+                        alert(storeOpenNow ? '⚠️ No more time slots are available today. Please select "Reservation" instead.' : '⚠️ Store is closed! We will be back at 12 NOON. Please select "Reservation" instead.');
                         return;
                       }
                       setOrderType('today');
@@ -2262,7 +2243,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         : 'bg-[#061c16] border-emerald-800/60 text-emerald-200'
                     }`}
                   >
-                    <Clock className="h-4 w-4" /> Order Today {!orderTodayOpen && '(Closed < 12PM)'}
+                    <Clock className="h-4 w-4 shrink-0" />
+                    {orderTodayOpen ? 'Order Today' : (
+                      <span className="flex flex-col items-center leading-tight">
+                        <span>{storeOpenNow ? 'No slots left today' : 'Order Today · CLOSED'}</span>
+                        {!storeOpenNow && <span className="text-[9px] font-semibold">Be back at {STORE_OPEN_LABEL}</span>}
+                      </span>
+                    )}
                   </button>
                   <button
                     type="button"
@@ -2276,6 +2263,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     <Calendar className="h-4 w-4" /> Reservation (Open)
                   </button>
                 </div>
+
+                <p className="text-[10px] text-emerald-400/80">⏱ Orders for each time slot close 1 hour before it starts.</p>
 
                 {orderType === 'today' ? (
                   <div className="bg-[#061c16] border border-emerald-800/60 rounded-xl p-3 space-y-2 text-xs">
@@ -2292,7 +2281,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         {timeSlots.map((slot) => {
                           const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
                           const { left: bowlsLeft, full: isFullyBooked } = getSlotStatus(todayKey, slot);
-                          const isPastSlot = slotHasEnded(todayKey, slot);
+                          const slotBlock = slotOrderBlock(todayKey, slot, nowTick);
+                          const isPastSlot = slotBlock !== null;
                           
                           const isDisabled = isFullyBooked || isPastSlot;
                           
@@ -2312,7 +2302,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                             >
                               <span>{slot}</span>
                               <span className="text-[9px] font-semibold mt-0.5">
-                                {isPastSlot ? '⏰ Past' : isFullyBooked ? '⛔ Fully Booked' : `🟢 Available (${bowlsLeft} bowls)`}
+                                {slotBlock === 'ended' ? '⏰ Past' : slotBlock === 'cutoff' ? '🔒 Orders closed (1 hr before)' : isFullyBooked ? '⛔ Fully Booked' : `🟢 Available (${bowlsLeft} bowls)`}
                               </span>
                             </button>
                           );
@@ -2352,10 +2342,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         >
                           {timeSlots.map((slot) => {
                             const { left: bowlsLeft, full: isFullyBooked } = reservationDate ? getSlotStatus(reservationDate, slot) : { left: DEFAULT_MAX_BOWLS, full: false };
-                            const isPastSlot = !!reservationDate && slotHasEnded(reservationDate, slot);
+                            const slotBlock = reservationDate ? slotOrderBlock(reservationDate, slot, nowTick) : null;
+                            const isPastSlot = slotBlock !== null;
                             
                             const isDisabled = isFullyBooked || isPastSlot;
-                            const labelText = `${slot} ${isPastSlot ? '(Past)' : isFullyBooked ? '(Fully Booked)' : `(Available: ${bowlsLeft} bowls)`}`;
+                            const labelText = `${slot} ${slotBlock === 'ended' ? '(Past)' : slotBlock === 'cutoff' ? '(Orders closed)' : isFullyBooked ? '(Fully Booked)' : `(Available: ${bowlsLeft} bowls)`}`;
                             
                             return (
                               <option key={slot} value={slot} disabled={isDisabled}>
@@ -2437,7 +2428,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   <div className="space-y-2 pt-1">
                     <div className="flex items-center justify-between">
                       <label className="font-bold text-lime-400 uppercase tracking-wider text-[10px]">
-                        Pin Delivery Location (Map) *
+                        Pin on Map (Optional)
                       </label>
                       <button
                         type="button"
@@ -2455,13 +2446,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         onClick={() => setIsPinning(true)}
                         className={`w-full bg-[#04261d] hover:bg-[#063829] text-lime-400 border ${errCls('deliveryPin', 'border-emerald-700')} font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow`}
                       >
-                        <MapPin className="size-4 text-lime-400" /> Open Map to Drop Pin
+                        <MapPin className="size-4 text-lime-400" /> Open Map to Drop Pin (Optional)
                       </Button>
                     ) : (
                       <div className="space-y-2">
                         <div ref={mapRef} className="w-full h-48 rounded-xl border border-emerald-800 overflow-hidden bg-black/50" />
                         <p className="text-[10px] text-emerald-300 italic text-center">
-                          💡 Click 'Use My GPS' or drag the marker on the map to your exact spot.
+                          💡 Optional: tap the map, drag the marker or use 'Use My GPS' and your address fills in automatically.
                         </p>
                       </div>
                     )}
@@ -2469,7 +2460,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
 
                   <textarea
                     rows={2}
-                    placeholder="Delivery Address (Auto-filled from Pin) *"
+                    placeholder="Delivery Address * (type it, or it auto-fills when you pin / use GPS)"
                     value={customerLocation}
                     onChange={(e) => setCustomerLocation(e.target.value)}
                     data-field="customerLocation" className={`w-full bg-[#041913] border ${errCls('customerLocation')} rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400 resize-none font-mono text-[11px]`}
@@ -2482,6 +2473,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                     onChange={(e) => setNearestLandmark(e.target.value)}
                     data-field="nearestLandmark" className={`w-full bg-[#041913] border ${errCls('nearestLandmark')} rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400`}
                   />
+
+                  {deliveryDistanceKm === null && deliveryOption === 'our' && (
+                    <div className="bg-[#03120d] border border-amber-500/40 rounded-xl p-3 text-[11px] text-amber-200">
+                      No pin? No problem: type your address and nearest landmark. The store will confirm your delivery fee. Drop a pin or use GPS if you want the exact fee now.
+                    </div>
+                  )}
 
                   {deliveryDistanceKm !== null && deliveryOption === 'our' && (
                     <div className="bg-[#03120d] border border-lime-400/60 rounded-xl p-3 text-xs space-y-1">
@@ -2601,8 +2598,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   <>
                     <div className="flex items-center justify-between text-xs text-emerald-200">
                       <span>Delivery Fee {deliveryOption === 'our' && deliveryDistanceKm !== null ? `(${deliveryDistanceKm} km)` : ''}</span>
-                      <span className="font-bold text-white">{deliveryOption === 'maxim' ? 'Paid to Maxim app' : formatPeso(rawDeliveryFee)}</span>
+                      <span className="font-bold text-white">{deliveryOption === 'maxim' ? 'Paid to Maxim app' : deliveryFeePending ? 'To be confirmed' : formatPeso(rawDeliveryFee)}</span>
                     </div>
+                    {deliveryFeePending && (
+                      <p className="text-[10px] text-amber-300">No map pin was dropped, so the store will confirm your delivery fee. It is not included in the total yet.</p>
+                    )}
 
                     {deliveryDiscountAmount > 0 && (
                       <div className="flex items-center justify-between text-xs text-lime-400 font-semibold">

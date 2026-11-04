@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { formatPeso } from '@/lib/menu-data';
 import { supabase } from '@/lib/supabase';
-import { useTimeSlots } from '@/lib/time-slots';
+import { useTimeSlots, slotOrderBlock, isStoreOpenNow, todayKeyManila, tomorrowKeyManila, useMinuteTick, STORE_OPEN_LABEL } from '@/lib/time-slots';
 
 const STORE_LAT = 10.359511; // display/map centre only; the fee is computed by the database
 const STORE_LNG = 123.952739;
@@ -90,6 +90,12 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
   const [slotCaps, setSlotCaps] = useState<any[]>([]);
   const TIME_SLOTS = useTimeSlots(); // editable by staff in Slot Capacity, live
   useEffect(() => { setSlotTime((p) => (p && !TIME_SLOTS.includes(p) ? '' : p)); }, [TIME_SLOTS]);
+
+  // Same ordering rules as the customer checkout: store opens at 12 noon, and a slot closes 1 hour before it starts.
+  const nowTick = useMinuteTick();
+  const storeOpenNow = isStoreOpenNow(nowTick);
+  const todayHasBookableSlot = TIME_SLOTS.some((s) => slotOrderBlock(todayKeyManila(nowTick), s, nowTick) === null);
+  const orderTodayOpen = storeOpenNow && todayHasBookableSlot;
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
@@ -112,6 +118,17 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
 
   const isOnSite = fulfillment === 'on-site'; // served at the counter: no schedule, no time slot
   const effectiveDate = (orderType === 'today' || isOnSite) ? todayManila() : dateKey;
+
+  // Order Today closed (store not open yet / no slot left): move to a reservation automatically.
+  useEffect(() => {
+    if (isOnSite || orderTodayOpen || orderType !== 'today') return;
+    setOrderType('reservation');
+    if (!todayHasBookableSlot) setDateKey(tomorrowKeyManila(nowTick));
+  }, [orderTodayOpen, orderType, isOnSite]);
+  // A chosen slot that has since passed / entered its cutoff is cleared so it cannot be submitted.
+  useEffect(() => {
+    if (!isOnSite && slotTime && slotOrderBlock(effectiveDate, slotTime, nowTick) !== null) setSlotTime('');
+  }, [nowTick, effectiveDate, slotTime, isOnSite]);
 
   // ---------------- server preview + submit ----------------
   const [preview, setPreview] = useState<{ loading: boolean; data: any; error: string }>({ loading: false, data: null, error: '' });
@@ -370,7 +387,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
       if (cancelled || !L || !mapRef.current || mapObj.current) return;
       const map = L.map(mapRef.current).setView([STORE_LAT, STORE_LNG], 14);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
-      map.on('click', (e: any) => setPin({ lat: e.latlng.lat, lng: e.latlng.lng }));
+      map.on('click', (e: any) => { locationTouched.current = false; setPin({ lat: e.latlng.lat, lng: e.latlng.lng }); }); // a pin auto-fills the address
       mapObj.current = map;
       if (pinRef.current) { markerObj.current = L.marker([pinRef.current.lat, pinRef.current.lng]).addTo(map); map.setView([pinRef.current.lat, pinRef.current.lng], 15); }
     };
@@ -448,14 +465,14 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
   if (fulfillment === 'delivery') {
     if (!contactPhone.trim()) issues.push('Contact number is required for delivery.');
     else if (!PHONE_RE.test(contactPhone.trim())) issues.push('Contact number is not valid.');
-    if (!pin) issues.push('Drop the delivery pin on the map.');
     if (!location.trim()) issues.push('Delivery address is required.');
     if (!landmark.trim()) issues.push('Nearest landmark is required.');
   }
   if (!isOnSite && orderType === 'reservation' && effectiveDate < todayManila()) issues.push('Choose a date that is not in the past.');
   if (isOnSite) { /* on-site orders have no schedule or slot */ }
   else if (!slotTime) issues.push('Choose a time slot.');
-  else if (slotEnded(effectiveDate, slotTime)) issues.push('The chosen time slot has already ended.');
+  else if (slotOrderBlock(effectiveDate, slotTime, nowTick) === 'ended') issues.push('The chosen time slot has already ended.');
+  else if (slotOrderBlock(effectiveDate, slotTime, nowTick) === 'cutoff') issues.push('Orders for that slot closed 1 hour before it starts. Choose a later slot.');
   else {
     const si = slotInfo(slotTime);
     if (si.closed) issues.push('That slot was closed by the administrator.');
@@ -495,7 +512,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
       if (!data || !data.id || !data.order_number) throw new Error('The server did not confirm a saved order. Nothing was recorded; please check Sales Analytics before retrying.');
       // read the order back from the database before claiming success
       const { data: saved, error: readErr } = await supabase.from('orders')
-        .select('id,order_number,user_id,customer_name,items,subtotal,promo_code,promo_discount,delivery_fee,delivery_discount,total,created_at,schedule_info')
+        .select('id,order_number,user_id,customer_name,items,subtotal,promo_code,promo_discount,delivery_fee,delivery_fee_pending,delivery_discount,total,created_at,schedule_info')
         .eq('id', data.id).maybeSingle();
       setResult({ order: saved || data, verified: !readErr && !!saved && (saved.user_id ?? null) === (customer.authUserId ?? null), duplicate: !!data.duplicate, customerName: customer.name });
       setConfirmOpen(false);
@@ -540,7 +557,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
           <div className="flex justify-between"><span className="text-emerald-400">Customer</span><span className="font-bold text-white">{result.customerName}</span></div>
           <div className="flex justify-between"><span className="text-emerald-400">Food subtotal</span><span className="text-white">{money(o.subtotal)}</span></div>
           <div className="flex justify-between"><span className="text-emerald-400">Promo</span><span className="text-amber-400 font-bold">{o.promo_code || 'NA'}</span></div>
-          <div className="flex justify-between"><span className="text-emerald-400">Delivery fee</span><span className="text-white">{money(o.delivery_fee)}</span></div>
+          <div className="flex justify-between"><span className="text-emerald-400">Delivery fee</span><span className="text-white">{o.delivery_fee_pending ? 'To be confirmed' : money(o.delivery_fee)}</span></div>
           <div className="flex justify-between border-t border-emerald-900/60 pt-1.5"><span className="font-extrabold text-white">Total</span><span className="font-extrabold text-lime-400 text-sm">{money(o.total)}</span></div>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -675,7 +692,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
           {isOnSite && <p className="text-[11px] text-emerald-300 bg-[#04140f] border border-emerald-800/60 rounded-xl p-3">On-site order: served at the counter right now. No schedule or time slot is needed, and it does not use up any slot bowls.</p>}
           {!isOnSite && (<>
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => setOrderType('today')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${orderType === 'today' ? 'bg-emerald-800 text-white border border-lime-400/60' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>⚡ Order today</button>
+            <button type="button" disabled={!orderTodayOpen} onClick={() => setOrderType('today')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${orderType === 'today' ? 'bg-emerald-800 text-white border border-lime-400/60' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>{orderTodayOpen ? '⚡ Order today' : storeOpenNow ? '⚡ No slots left today' : <span>⚡ Order today · CLOSED<span className="block text-[9px] font-semibold">Be back at {STORE_OPEN_LABEL}</span></span>}</button>
             <button type="button" onClick={() => setOrderType('reservation')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${orderType === 'reservation' ? 'bg-emerald-800 text-white border border-lime-400/60' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>📅 Reservation</button>
           </div>
           {orderType === 'reservation' && (
@@ -685,10 +702,10 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
             <label className={labelCls}>Time slot (reserves bowls)</label>
             <div className="grid grid-cols-2 gap-2">
               {TIME_SLOTS.map((s) => {
-                const si = slotInfo(s); const ended = slotEnded(effectiveDate, s); const full = si.closed || si.remaining < 1; const disabled = ended || full;
+                const si = slotInfo(s); const block = slotOrderBlock(effectiveDate, s, nowTick); const ended = block !== null; const full = si.closed || si.remaining < 1; const disabled = ended || full;
                 return (
                   <button key={s} type="button" disabled={disabled} onClick={() => setSlotTime(s)} className={`px-3 py-2 rounded-xl text-[11px] font-bold text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${slotTime === s ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>
-                    {s}<span className="block text-[10px] font-medium opacity-80">{ended ? 'Slot ended' : si.closed ? 'Closed' : full ? 'Fully booked' : `${si.remaining} bowls left`}</span>
+                    {s}<span className="block text-[10px] font-medium opacity-80">{block === 'ended' ? 'Slot ended' : block === 'cutoff' ? 'Orders closed (1 hr before)' : si.closed ? 'Closed' : full ? 'Fully booked' : `${si.remaining} bowls left`}</span>
                   </button>
                 );
               })}
@@ -704,9 +721,9 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
           </div>
           {fulfillment === 'delivery' && (
             <div className="space-y-3">
-              <div><label className={labelCls}>Delivery pin * (click the map)</label>
+              <div><label className={labelCls}>Delivery pin (optional: click the map to auto-fill the address and fee)</label>
                 <div ref={mapRef} className="h-64 w-full rounded-xl overflow-hidden border border-emerald-800/60 bg-[#04140f] z-0" />
-                <p className="text-[11px] mt-1 text-emerald-400">{pin ? `Pinned: ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}${pv && pv.distanceKm != null ? ` • ${pv.distanceKm} km from store` : ''}` : 'No pin yet.'}</p></div>
+                <p className="text-[11px] mt-1 text-emerald-400">{pin ? `Pinned: ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}${pv && pv.distanceKm != null ? ` • ${pv.distanceKm} km from store` : ''}` : 'No pin: type the address below. The delivery fee will be marked "to be confirmed".'}</p></div>
               <div><label className={labelCls}>Delivery address *</label><input value={location} onChange={(e) => { locationTouched.current = true; setLocation(e.target.value); }} className={inputCls} /></div>
               <div><label className={labelCls}>Nearest landmark *</label><input value={landmark} onChange={(e) => setLandmark(e.target.value)} className={inputCls} /></div>
             </div>
@@ -774,7 +791,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
               <div className="flex justify-between"><span className="text-emerald-400">Food subtotal</span><span className="text-white">{pv ? money(pv.subtotal) : '…'}</span></div>
               <div className="flex justify-between"><span className="text-emerald-400">Promo{pv && pv.appliedCodes ? ` (${pv.appliedCodes})` : ''}</span>
                 <span className="text-amber-400 font-bold">{pv ? (pv.appliedCodes ? `−${money(Number(pv.foodDiscount) + Number(pv.deliveryDiscount))}` : 'NA') : '…'}</span></div>
-              {fulfillment === 'delivery' && <div className="flex justify-between"><span className="text-emerald-400">Delivery fee{deliveryOption === 'our' && pv && pv.distanceKm != null ? ` (${pv.distanceKm} km)` : ''}</span><span className="text-white">{deliveryOption === 'maxim' ? 'Paid to Maxim app' : pv ? (pv.deliveryPinSet ? money(pv.deliveryFee) : 'Pin required') : '…'}</span></div>}
+              {fulfillment === 'delivery' && <div className="flex justify-between"><span className="text-emerald-400">Delivery fee{deliveryOption === 'our' && pv && pv.distanceKm != null ? ` (${pv.distanceKm} km)` : ''}</span><span className="text-white">{deliveryOption === 'maxim' ? 'Paid to Maxim app' : pv ? (pv.deliveryPinSet ? money(pv.deliveryFee) : 'To be confirmed') : '…'}</span></div>}
               <div className="flex justify-between border-t border-emerald-900/60 pt-2"><span className="font-extrabold text-white">Total</span><span className="font-extrabold text-lime-400 text-lg">{pv ? money(pv.total) : '…'}</span></div>
               <p className="text-[10px] text-emerald-500">{preview.loading ? 'Recalculating on the server…' : 'Totals are calculated by the server, using the same rules as customer checkout.'}</p>
             </div>
@@ -844,7 +861,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
               <div className="border-t border-emerald-900/60 pt-2 space-y-1">
                 <div className="flex justify-between"><span className="text-emerald-400">Food subtotal</span><span>{money(pv.subtotal)}</span></div>
                 <div className="flex justify-between"><span className="text-emerald-400">Promo</span><span className="text-amber-400 font-bold">{pv.appliedCodes ? `${pv.appliedCodes} (−${money(Number(pv.foodDiscount) + Number(pv.deliveryDiscount))})` : 'NA'}</span></div>
-                {fulfillment === 'delivery' && <div className="flex justify-between"><span className="text-emerald-400">Delivery fee</span><span>{deliveryOption === 'maxim' ? 'Paid to Maxim app' : money(pv.deliveryFee)}</span></div>}
+                {fulfillment === 'delivery' && <div className="flex justify-between"><span className="text-emerald-400">Delivery fee</span><span>{deliveryOption === 'maxim' ? 'Paid to Maxim app' : pv.deliveryPinSet ? money(pv.deliveryFee) : 'To be confirmed'}</span></div>}
                 <div className="flex justify-between text-sm pt-1"><span className="font-extrabold">Total</span><span className="font-extrabold text-lime-400">{money(pv.total)}</span></div>
               </div>
               <p className="text-[11px] text-emerald-400">Payment: Cash on pickup / delivery (existing workflow).</p>

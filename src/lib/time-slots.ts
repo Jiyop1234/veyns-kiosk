@@ -58,3 +58,62 @@ export function useTimeSlots(): string[] {
 
   return slots;
 }
+
+// ---------------------------------------------------------------------------
+// Ordering rules shared by the customer checkout and the staff "Process Customer Order" screen.
+// (The database enforces the same rules in place_order / admin_place_order.)
+//   * The store opens at 12 noon (Asia/Manila): "Order Today" is closed before that.
+//   * Orders for a time slot close 1 hour before the slot starts
+//     (e.g. the 4:00 PM - 5:00 PM slot can no longer be ordered from 3:00 PM).
+// ---------------------------------------------------------------------------
+export const STORE_OPEN_HOUR = 12;
+export const STORE_OPEN_LABEL = '12 NOON';
+export const SLOT_CUTOFF_MINUTES = 60;
+
+const MANILA_OFFSET_MS = 8 * 3600 * 1000;
+
+// Epoch ms when a slot starts on a given date (Asia/Manila), or null if the label is not valid.
+export function slotStartsAt(dateKey: string, slot: string): number | null {
+  const m = (slot || '').match(SLOT_RE);
+  if (!m || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey || '')) return null;
+  const s = toMinutes(m[1], m[2], m[3]);
+  const [y, mo, d] = dateKey.split('-').map(Number);
+  return Date.UTC(y, mo - 1, d, 0, s, 0) - MANILA_OFFSET_MS;
+}
+
+export type SlotBlock = 'ended' | 'cutoff' | null;
+
+// null = the slot can still be ordered. 'ended' = already over. 'cutoff' = inside the 1-hour cutoff.
+export function slotOrderBlock(dateKey: string, slot: string, now: number = Date.now()): SlotBlock {
+  const start = slotStartsAt(dateKey, slot);
+  const end = slotEndsAt(dateKey, slot);
+  if (start === null || end === null) return 'ended';
+  if (end <= now) return 'ended';
+  if (start - SLOT_CUTOFF_MINUTES * 60 * 1000 <= now) return 'cutoff';
+  return null;
+}
+
+// Today's date (YYYY-MM-DD) in Asia/Manila.
+export function todayKeyManila(now: number = Date.now()): string {
+  return new Date(now + MANILA_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+// Tomorrow's date (YYYY-MM-DD) in Asia/Manila.
+export function tomorrowKeyManila(now: number = Date.now()): string {
+  return new Date(now + MANILA_OFFSET_MS + 24 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+// True from 12:00 noon (Asia/Manila) onwards.
+export function isStoreOpenNow(now: number = Date.now()): boolean {
+  return new Date(now + MANILA_OFFSET_MS).getUTCHours() >= STORE_OPEN_HOUR;
+}
+
+// Re-renders the component every 30 seconds so open/closed labels and slot cutoffs update by themselves.
+export function useMinuteTick(): number {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
