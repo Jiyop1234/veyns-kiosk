@@ -40,13 +40,18 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [slotCapacities, setSlotCapacities] = useState<Record<string, any>>({});
   // Must match the default max bowls used by your place_order database function.
   const DEFAULT_MAX_BOWLS = 10;
+  const SLOT_FULL_MSG = 'Sorry! This time slot is already fully booked. Please select another available schedule.';
+  const cartBowlsNeeded = lines.reduce((s: number, l: any) => s + (Number(l.qty) || 0), 0);
   const getSlotStatus = (dateKey: string, slot: string) => {
     const info: any = Object.values(slotCapacities || {}).find((x: any) => x.slot_time === slot && x.date_key === dateKey);
     const max = Number(info?.max_bowls) || DEFAULT_MAX_BOWLS;
     const booked = Number(info?.booked_bowls) || 0;
     const left = Math.max(0, max - booked);
     const closed = !!(info?.is_fully_booked || info?.is_manually_fully_booked);
-    return { left, full: closed || left <= 0 };
+    const full = closed || left <= 0;
+    // not full, but fewer bowls left than this cart needs: the database would reject it, so do not offer it
+    const short = !full && cartBowlsNeeded > 0 && left < cartBowlsNeeded;
+    return { left, full, short };
   };
 
   // SECTION 5: Customer type and ordering-time eligibility checks.
@@ -58,7 +63,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const storeOpenNow = isStoreOpenNow(nowTick);
   const todayKeyNow = todayKeyManila(nowTick);
   const slotIsBookable = (dateKey: string, slot: string) =>
-    slotOrderBlock(dateKey, slot, nowTick) === null && !getSlotStatus(dateKey, slot).full;
+    slotOrderBlock(dateKey, slot, nowTick) === null && !getSlotStatus(dateKey, slot).full && !getSlotStatus(dateKey, slot).short;
   const todayHasBookableSlot = timeSlots.some((slot) => slotOrderBlock(todayKeyNow, slot, nowTick) === null);
   const orderTodayOpen = storeOpenNow && todayHasBookableSlot;
 
@@ -220,7 +225,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         return;
       }
 
-      if (data && data.length > 0) {
+      if (data) {
         const capacitiesMap: Record<string, any> = {};
         data.forEach((slot: any) => {
           const key = `${slot.date_key}_${slot.slot_time}`;
@@ -370,14 +375,14 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     if (orderType !== 'today') return;
     if (slotIsBookable(todayKeyNow, todayTimeSlot)) return;
     const next = timeSlots.find((s) => slotIsBookable(todayKeyNow, s));
-    if (next) setTodayTimeSlot(next);
+    setTodayTimeSlot(next || '');
   }, [orderType, todayTimeSlot, timeSlots, slotCapacities, nowTick]);
 
   useEffect(() => {
     if (!reservationDate) return;
     if (slotIsBookable(reservationDate, reservationTime)) return;
     const next = timeSlots.find((s) => slotIsBookable(reservationDate, s));
-    if (next) setReservationTime(next);
+    setReservationTime(next || '');
   }, [reservationDate, reservationTime, slotCapacities, timeSlots, nowTick]);
 
   // If the store closes / the last slot of the day is gone while "Order Today" is selected, switch to Reservation.
@@ -684,6 +689,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       if (!String(nearestLandmark || '').trim()) m.push('nearestLandmark');
     }
     if (orderType === 'reservation' && !reservationDate) m.push('reservationDate');
+    // a slot that is full / closed / too small for this cart must never be submitted
+    if (orderType === 'reservation' && reservationDate && !slotIsBookable(reservationDate, reservationTime)) m.push('reservationTime');
+    if (orderType === 'today' && !(fulfillment === 'delivery' && deliveryOption === 'maxim') && !slotIsBookable(todayKeyNow, todayTimeSlot)) m.push('todayTimeSlot');
     return m;
   };
   const errCls = (key: string, normal = 'border-emerald-800/80') =>
@@ -1083,6 +1091,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const handleConfirmOrder = async () => {
     if (placingOrderRef.current) return; // ignore double-clicks while an order is being saved
     const missing = getMissingFields();
+    if (missing.includes('reservationTime') || missing.includes('todayTimeSlot')) {
+      setShowErrors(true);
+      alert(SLOT_FULL_MSG);
+      void loadSlotCapacities();
+      return;
+    }
     if (missing.length > 0) {
       setShowErrors(true);
       setTimeout(() => {
@@ -1120,7 +1134,16 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       if (onOrderPlacedSuccess) await onOrderPlacedSuccess();
     } catch (error: any) {
       console.error('Order submission failed:', error);
-      alert(error?.message || 'Unable to place this order. Please try again.');
+      const msg = String(error?.message || '');
+      if (/fully booked|closed by the administrator|valid date and time slot|no longer available/i.test(msg)) {
+        alert(SLOT_FULL_MSG);
+        void loadSlotCapacities();
+      } else if (/Not enough capacity/i.test(msg)) {
+        alert(msg + ' Please reduce your order or choose another schedule.');
+        void loadSlotCapacities();
+      } else {
+        alert(msg || 'Unable to place this order. Please try again.');
+      }
     } finally {
       placingOrderRef.current = false;
     }
@@ -2270,11 +2293,11 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                       <div className="grid grid-cols-2 gap-2">
                         {timeSlots.map((slot) => {
                           const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-                          const { left: bowlsLeft, full: isFullyBooked } = getSlotStatus(todayKey, slot);
+                          const { left: bowlsLeft, full: isFullyBooked, short: isShort } = getSlotStatus(todayKey, slot);
                           const slotBlock = slotOrderBlock(todayKey, slot, nowTick);
                           const isPastSlot = slotBlock !== null;
                           
-                          const isDisabled = isFullyBooked || isPastSlot;
+                          const isDisabled = isFullyBooked || isShort || isPastSlot;
                           
                           return (
                             <button
@@ -2292,7 +2315,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                             >
                               <span>{slot}</span>
                               <span className="text-[9px] font-semibold mt-0.5">
-                                {slotBlock === 'ended' ? '⏰ Past' : slotBlock === 'cutoff' ? '🔒 Orders closed (1 hr before)' : isFullyBooked ? '⛔ Fully Booked' : `🟢 Available (${bowlsLeft} bowls)`}
+                                {slotBlock === 'ended' ? '⏰ Past' : slotBlock === 'cutoff' ? '🔒 Orders closed (1 hr before)' : isFullyBooked ? '⛔ Fully Booked' : isShort ? `🟡 Only ${bowlsLeft} bowl${bowlsLeft === 1 ? '' : 's'} left (cart has ${cartBowlsNeeded})` : `🟢 Available (${bowlsLeft} bowls)`}
                               </span>
                             </button>
                           );
@@ -2331,12 +2354,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                           className="w-full bg-[#041913] border border-emerald-800/80 rounded-lg p-2 text-white text-xs focus:outline-none focus:border-lime-400"
                         >
                           {timeSlots.map((slot) => {
-                            const { left: bowlsLeft, full: isFullyBooked } = reservationDate ? getSlotStatus(reservationDate, slot) : { left: DEFAULT_MAX_BOWLS, full: false };
+                            const { left: bowlsLeft, full: isFullyBooked, short: isShort } = reservationDate ? getSlotStatus(reservationDate, slot) : { left: DEFAULT_MAX_BOWLS, full: false, short: false };
                             const slotBlock = reservationDate ? slotOrderBlock(reservationDate, slot, nowTick) : null;
                             const isPastSlot = slotBlock !== null;
                             
-                            const isDisabled = isFullyBooked || isPastSlot;
-                            const labelText = `${slot} ${slotBlock === 'ended' ? '(Past)' : slotBlock === 'cutoff' ? '(Orders closed)' : isFullyBooked ? '(Fully Booked)' : `(Available: ${bowlsLeft} bowls)`}`;
+                            const isDisabled = isFullyBooked || isShort || isPastSlot;
+                            const labelText = `${slot} ${slotBlock === 'ended' ? '(Past)' : slotBlock === 'cutoff' ? '(Orders closed)' : isFullyBooked ? '(Fully Booked)' : isShort ? `(Only ${bowlsLeft} left - cart has ${cartBowlsNeeded})` : `(Available: ${bowlsLeft} bowls)`}`;
                             
                             return (
                               <option key={slot} value={slot} disabled={isDisabled}>
