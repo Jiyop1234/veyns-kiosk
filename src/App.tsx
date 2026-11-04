@@ -45,6 +45,11 @@ export function App() {
   const [identifierError, setIdentifierError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [loginError, setLoginError] = useState('');
+  // which customer login field(s) to outline in red: set only by the credential check below
+  const [loginFieldError, setLoginFieldError] = useState({ email: false, password: false });
+  useEffect(() => {
+    if (!loginError) setLoginFieldError({ email: false, password: false }); // any reset of the message also resets the borders
+  }, [loginError]);
   
   const [showMyOrders, setShowMyOrders] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -212,12 +217,43 @@ export function App() {
     }
   };
 
+  // Editing a login field removes that field's red border; the message goes once no border is left.
+  const clearLoginFeedback = (field: 'email' | 'password') => {
+    if (loginFieldError.email || loginFieldError.password) {
+      const next = { ...loginFieldError, [field]: false };
+      setLoginFieldError(next);
+      if (!next.email && !next.password) setLoginError('');
+    } else if (loginError) {
+      setLoginError('');
+    }
+  };
+
+  // After a failed sign-in, ask the rate-limited server check which field was wrong. Anything unexpected
+  // (rate limited, offline, server error) returns 'unavailable' and the UI shows the generic message.
+  const classifyLoginFailure = async (email: string): Promise<'email_not_found' | 'email_found' | 'unavailable'> => {
+    try {
+      const res = await fetch('/api/login-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) return 'unavailable';
+      const json = await res.json();
+      if (json?.result === 'email_not_found') return 'email_not_found';
+      if (json?.result === 'email_found') return 'email_found';
+      return 'unavailable';
+    } catch {
+      return 'unavailable';
+    }
+  };
+
   const handleRegularAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setNicknameError('');
     setIdentifierError('');
     setPasswordError('');
     setLoginError('');
+    setLoginFieldError({ email: false, password: false });
     const email = authEmailInput.trim().toLowerCase();
     if (!email || !validateEmail(email)) {
       setIdentifierError('Enter a valid email address.');
@@ -280,7 +316,22 @@ export function App() {
       password: authPassword,
     });
     if (error) {
-      setLoginError(error.message);
+      const wrongCredentials = (error as any)?.code === 'invalid_credentials' || /invalid login credentials/i.test(error.message || '');
+      if (!wrongCredentials) {
+        setLoginError(error.message); // e.g. email not confirmed: shown as before
+        return;
+      }
+      const verdict = await classifyLoginFailure(email);
+      if (verdict === 'email_not_found') {
+        setLoginFieldError({ email: true, password: false });
+        setLoginError('Incorrect email.');
+      } else if (verdict === 'email_found') {
+        setLoginFieldError({ email: false, password: true });
+        setLoginError('Incorrect password.');
+      } else {
+        setLoginFieldError({ email: true, password: true });
+        setLoginError('Invalid credentials.');
+      }
       return;
     }
     if (data?.user) {
@@ -559,10 +610,10 @@ export function App() {
                 onChange={(e) => {
                   setAuthEmailInput(e.target.value);
                   if (identifierError) setIdentifierError('');
-                  if (loginError) setLoginError('');
+                  clearLoginFeedback('email');
                 }}
                 className={`w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 text-xs text-white placeholder:text-emerald-600 focus:outline-none ${
-                  identifierError || (loginError && !isSignUp) ? 'border-red-500 focus:border-red-500' : 'border-emerald-800/80 focus:border-lime-400'
+                  identifierError || loginFieldError.email || (loginError && !isSignUp && !loginFieldError.email && !loginFieldError.password) ? 'border-red-500 focus:border-red-500' : 'border-emerald-800/80 focus:border-lime-400'
                 }`}
               />
               {identifierError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{identifierError}</p>}
@@ -592,10 +643,10 @@ export function App() {
                   onChange={(e) => {
                     setAuthPassword(e.target.value);
                     if (passwordError) setPasswordError('');
-                    if (loginError) setLoginError('');
+                    clearLoginFeedback('password');
                   }}
                   className={`w-full rounded-xl border bg-[#041913] px-3.5 py-2.5 pr-10 text-xs text-white placeholder:text-emerald-600 focus:outline-none ${
-                    passwordError || (loginError && !isSignUp) ? 'border-red-500 focus:border-red-500' : 'border-emerald-800/80 focus:border-lime-400'
+                    passwordError || loginFieldError.password || (loginError && !isSignUp && !loginFieldError.email && !loginFieldError.password) ? 'border-red-500 focus:border-red-500' : 'border-emerald-800/80 focus:border-lime-400'
                   }`}
                 />
                 <button

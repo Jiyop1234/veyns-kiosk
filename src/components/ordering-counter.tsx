@@ -9,6 +9,7 @@ import { getPromoStatus, getPromoEndMs } from '@/lib/promo-campaigns';
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
+import { requestCustomerGeocode } from '@/lib/order-geocode';
 import { useTimeSlots, slotHasEnded, slotOrderBlock, isStoreOpenNow, todayKeyManila, useMinuteTick, STORE_OPEN_LABEL } from '@/lib/time-slots';
 
 // SECTION 2: Shared menu-image component with a branded fallback when no image is available.
@@ -519,7 +520,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     setTimeout(() => { try { map.invalidateSize(); } catch (e) {} }, 150);
   };
 
-  // SECTION 12: Process selected coordinates, calculate delivery costs, and look up a readable address.
+  // SECTION 12: Process selected coordinates and calculate delivery costs.
+  // The pin NEVER fills the customer's address: customers type their own address and landmark.
+  // The readable map address is generated on the server and is visible to staff only.
   const processSelectedCoordinates = async (lat: number, lng: number) => {
     setDeliveryCoordinates({ lat, lng });
     const dist = calculateDistanceKm(STORE_LAT, STORE_LNG, lat, lng);
@@ -529,27 +532,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     const fee = computeFeeFromKm(dist);
     setCalculatedDeliveryFee(fee);
 
-    setCustomerLocation(`Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`);
-
     if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
-
-    geocodeTimeoutRef.current = setTimeout(async () => {
-      try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`, {
-          headers: {
-            'User-Agent': 'VeynsKioskDeliveryApp/1.0'
-          }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.display_name) {
-            setCustomerLocation(data.display_name);
-          }
-        }
-      } catch (e) {
-        // Fallback remains Lat/Lng
-      }
-    }, 600);
   };
 
   const handleUseCurrentGPS = () => {
@@ -696,6 +679,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     if (fulfillment === 'delivery') {
       if (!String(customerEmail || '').trim()) m.push('customerEmail');
       if (!String(customerPhone || '').trim()) m.push('customerPhone');
+      if (deliveryOption === 'our' && !deliveryCoordinates) m.push('deliveryPin');
       if (!String(customerLocation || '').trim()) m.push('customerLocation');
       if (!String(nearestLandmark || '').trim()) m.push('nearestLandmark');
     }
@@ -760,7 +744,13 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     });
 
     if (orderErr || !orderDataRes) throw new Error(orderErr?.message || 'Order could not be saved.');
+    const placedKey = orderIdempotencyKeyRef.current; // the key of THIS order (a new one is issued below)
     orderIdempotencyKeyRef.current = (typeof crypto !== 'undefined' && (crypto as any).randomUUID) ? (crypto as any).randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
+
+    // The server generates the ADMIN-ONLY map address from the saved pin. Customers never receive it.
+    if (newOrder.fulfillment === 'delivery' && newOrder.deliveryOption === 'our' && orderDataRes.id) {
+      void requestCustomerGeocode(String(orderDataRes.id), placedKey);
+    }
 
     const savedOrder = { ...newOrder, orderNumber: orderDataRes.order_number, items: orderDataRes.items, subtotal: Number(orderDataRes.subtotal || newOrder.subtotal), promoDiscount: Number(orderDataRes.promo_discount || 0), promoCode: orderDataRes.promo_code || null, promoCodesList: orderDataRes.promo_code ? String(orderDataRes.promo_code).split(',').map((c: string) => c.trim()) : [], deliveryDiscount: Number(orderDataRes.delivery_discount || 0), deliveryFee: Number(orderDataRes.delivery_fee || newOrder.deliveryFee), total: Number(orderDataRes.total || newOrder.total), deliveryFeePending: !!orderDataRes.delivery_fee_pending };
     
@@ -2428,7 +2418,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   <div className="space-y-2 pt-1">
                     <div className="flex items-center justify-between">
                       <label className="font-bold text-lime-400 uppercase tracking-wider text-[10px]">
-                        Pin on Map (Optional)
+                        {deliveryOption === 'our' ? 'Pin on Map (Required)' : 'Pin on Map (Optional)'}
                       </label>
                       <button
                         type="button"
@@ -2446,38 +2436,43 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                         onClick={() => setIsPinning(true)}
                         className={`w-full bg-[#04261d] hover:bg-[#063829] text-lime-400 border ${errCls('deliveryPin', 'border-emerald-700')} font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow`}
                       >
-                        <MapPin className="size-4 text-lime-400" /> Open Map to Drop Pin (Optional)
+                        <MapPin className="size-4 text-lime-400" /> {deliveryOption === 'our' ? 'Open Map to Drop Pin (Required)' : 'Open Map to Drop Pin (Optional)'}
                       </Button>
                     ) : (
                       <div className="space-y-2">
                         <div ref={mapRef} className="w-full h-48 rounded-xl border border-emerald-800 overflow-hidden bg-black/50" />
                         <p className="text-[10px] text-emerald-300 italic text-center">
-                          💡 Optional: tap the map, drag the marker or use 'Use My GPS' and your address fills in automatically.
+                          💡 Tap the map or drag the marker to your exact delivery spot (or use 'Use My GPS', then adjust the marker). The pin sets your delivery fee. Type your address and landmark yourself below.
                         </p>
                       </div>
                     )}
                   </div>
 
+                  {showErrors && getMissingFields().includes('deliveryPin') && (
+                    <p className="text-[11px] font-bold text-red-400">Please pin your delivery location on the map. We need it to calculate your delivery fee.</p>
+                  )}
+
                   <textarea
                     rows={2}
-                    placeholder="Delivery Address * (type it, or it auto-fills when you pin / use GPS)"
+                    placeholder="Complete Delivery Address * (house no., street, barangay, city)"
                     value={customerLocation}
                     onChange={(e) => setCustomerLocation(e.target.value)}
                     data-field="customerLocation" className={`w-full bg-[#041913] border ${errCls('customerLocation')} rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400 resize-none font-mono text-[11px]`}
                   />
+                  {showErrors && getMissingFields().includes('customerLocation') && (
+                    <p className="text-[11px] font-bold text-red-400">Please type your complete delivery address.</p>
+                  )}
 
                   <input
                     type="text"
-                    placeholder="Nearest Landmark / Unit No. *"
+                    placeholder="Nearest Landmark * (school, church, store...)"
                     value={nearestLandmark}
                     onChange={(e) => setNearestLandmark(e.target.value)}
                     data-field="nearestLandmark" className={`w-full bg-[#041913] border ${errCls('nearestLandmark')} rounded-lg p-2 text-white placeholder:text-emerald-500 focus:outline-none focus:border-lime-400`}
                   />
 
-                  {deliveryDistanceKm === null && deliveryOption === 'our' && (
-                    <div className="bg-[#03120d] border border-amber-500/40 rounded-xl p-3 text-[11px] text-amber-200">
-                      No pin? No problem: type your address and nearest landmark. The store will confirm your delivery fee. Drop a pin or use GPS if you want the exact fee now.
-                    </div>
+                  {showErrors && getMissingFields().includes('nearestLandmark') && (
+                    <p className="text-[11px] font-bold text-red-400">Please enter your nearest landmark.</p>
                   )}
 
                   {deliveryDistanceKm !== null && deliveryOption === 'our' && (
