@@ -114,6 +114,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [newVoucherExpiryVal, setNewVoucherExpiryVal] = useState('60');
   const [newVoucherExpiryUnit, setNewVoucherExpiryUnit] = useState<'minutes' | 'hours' | 'never'>('minutes');
   const [newVoucherUsageLimit, setNewVoucherUsageLimit] = useState('');
+  // Task 6: Total Usage Limit (limited / unlimited) and Usage Per Account (one-time / multiple)
+  const [newVoucherUsageMode, setNewVoucherUsageMode] = useState<'unlimited' | 'limited'>('unlimited');
+  const [newVoucherPerAccount, setNewVoucherPerAccount] = useState<'one_time' | 'multiple'>('one_time');
+  const [redemptionView, setRedemptionView] = useState<{ code: string; rows: any[]; loading: boolean } | null>(null);
   // Campaign scheduling fields (all optional; times are entered as Asia/Manila time)
   const [newCampaignName, setNewCampaignName] = useState('');
   const [newCampaignDesc, setNewCampaignDesc] = useState('');
@@ -354,6 +358,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           expiryDurationMs: Number(p.expiry_duration_ms),
           usageLimit: p.usage_limit ? Number(p.usage_limit) : null,
           usageCount: Number(p.usage_count || 0),
+          perPersonLimit: p.per_person_limit === null || p.per_person_limit === undefined ? null : Number(p.per_person_limit),
           createdAt: Number(p.created_at || Date.now()),
           name: p.name || '',
           description: p.description || '',
@@ -655,6 +660,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     setNewPromoCode('');
     setNewPromoDiscount('');
     setNewVoucherUsageLimit('');
+    setNewVoucherUsageMode('unlimited');
+    setNewVoucherPerAccount('one_time');
     setNewCampaignName('');
     setNewCampaignDesc('');
     setNewCampaignMinPurchase('');
@@ -683,7 +690,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
     // Legacy "expires N minutes after creation" only applies to plain vouchers.
     // A campaign (name, start, end, or an edit) uses its real dates instead.
-    const isCampaign = Boolean(editingPromoCode || startIso || endIso || newCampaignName.trim());
+    // Editing a PLAIN voucher (no name/dates) only changes its settings: its original expiry is kept as is.
+    const editedPromo = editingPromoCode ? promos.find((x: any) => x.code === editingPromoCode) : null;
+    const keepLegacyExpiry = Boolean(editedPromo && !isCampaignPromo(editedPromo) && !startIso && !endIso && !newCampaignName.trim());
+    const isCampaign = Boolean((editingPromoCode && !keepLegacyExpiry) || startIso || endIso || newCampaignName.trim());
     const expiryNum = parseFloat(newVoucherExpiryVal) || 60;
     let expiryMs = 0;
     if (!isCampaign) {
@@ -691,7 +701,20 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       else if (newVoucherExpiryUnit === 'hours') expiryMs = expiryNum * 60 * 60 * 1000;
     }
 
-    const usageLimitNum = newVoucherUsageLimit ? parseInt(newVoucherUsageLimit) : null;
+    // Total usage: UNLIMITED saves no cap (NULL). LIMITED needs a positive whole number.
+    let usageLimitNum: number | null = null;
+    if (newVoucherUsageMode === 'limited') {
+      const raw = newVoucherUsageLimit.trim();
+      if (!/^[0-9]+$/.test(raw) || parseInt(raw, 10) < 1) { alert('Maximum redemptions must be a positive whole number (1 or more).'); return; }
+      usageLimitNum = parseInt(raw, 10);
+      if (editingPromoCode) {
+        const existing = promos.find((x: any) => x.code === editingPromoCode);
+        const done = Number(existing?.usageCount || 0);
+        if (usageLimitNum < done) { alert(`This voucher already has ${done} successful redemptions. The maximum cannot be lower than ${done}.`); return; }
+      }
+    }
+    // Usage per account: ONE-TIME = 1 redemption per account, MULTIPLE = no per-account cap (NULL)
+    const perPersonLimitValue: number | null = newVoucherPerAccount === 'one_time' ? 1 : null;
     const cleanCode = newPromoCode.trim().toUpperCase();
 
     const fields: any = {
@@ -700,14 +723,15 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       target_type: newPromoTargetType, // Scope: subtotal (food) or delivery
       eligibility: 'registered',       // Strictly enforced: registered customers only
       visibility: newVoucherVisibility,
-      expiry_duration_ms: expiryMs,
       usage_limit: usageLimitNum,
+      per_person_limit: perPersonLimitValue,
       name: newCampaignName.trim() || null,
       description: newCampaignDesc.trim() || null,
       min_purchase: minPurchaseNum,
       expires_at: endIso,
       updated_at: new Date().toISOString(),
     };
+    if (!keepLegacyExpiry) fields.expiry_duration_ms = expiryMs;
     if (startIso) fields.start_date = startIso; // otherwise the database default (now) applies
 
     try {
@@ -740,12 +764,28 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     setNewPromoTargetType(p.target_type === 'delivery' ? 'delivery' : 'subtotal');
     setNewVoucherVisibility(p.visibility === 'hidden' ? 'hidden' : 'public');
     setNewVoucherUsageLimit(p.usageLimit ? String(p.usageLimit) : '');
+    setNewVoucherUsageMode(p.usageLimit ? 'limited' : 'unlimited');
+    setNewVoucherPerAccount(p.perPersonLimit === null || p.perPersonLimit === undefined ? 'multiple' : 'one_time');
     setNewCampaignName(p.name || '');
     setNewCampaignDesc(p.description || '');
     setNewCampaignMinPurchase(p.minPurchase > 0 ? String(p.minPurchase) : '');
     setNewCampaignStart(toManilaLocalInput(p.startDate));
     setNewCampaignEnd(toManilaLocalInput(p.expiresAt));
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Redemption history for one voucher (staff can read promo_redemptions through RLS)
+  const handleViewRedemptions = async (code: string) => {
+    if (redemptionView?.code === code) { setRedemptionView(null); return; }
+    setRedemptionView({ code, rows: [], loading: true });
+    const { data, error } = await supabase
+      .from('promo_redemptions')
+      .select('id, order_number, user_id, status, redeemed_at, voided_at')
+      .eq('promo_code', code)
+      .order('redeemed_at', { ascending: false })
+      .limit(100);
+    if (error) { alert('Could not load redemptions: ' + error.message); setRedemptionView(null); return; }
+    setRedemptionView({ code, rows: data || [], loading: false });
   };
 
   const handleTogglePromoEnabled = async (p: any) => {
@@ -1864,8 +1904,23 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Input Usage Limit (Optional)</label>
-                <input type="number" placeholder="e.g. 15 (Max inputs)" value={newVoucherUsageLimit} onChange={(e) => setNewVoucherUsageLimit(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
+                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Usage Per Account</label>
+                <select value={newVoucherPerAccount} onChange={(e) => setNewVoucherPerAccount(e.target.value as any)} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none">
+                  <option value="one_time">One-Time Use Per Account</option>
+                  <option value="multiple">Multiple Uses Per Account</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Total Usage Limit</label>
+                <div className="flex gap-1.5">
+                  <select value={newVoucherUsageMode} onChange={(e) => setNewVoucherUsageMode(e.target.value as any)} className="flex-1 bg-[#04140f] border border-emerald-800 rounded-xl px-2 py-2 text-xs text-lime-300 font-bold focus:outline-none">
+                    <option value="unlimited">Unlimited</option>
+                    <option value="limited">Limited</option>
+                  </select>
+                  {newVoucherUsageMode === 'limited' && (
+                    <input type="number" min="1" step="1" placeholder="Max redemptions" value={newVoucherUsageLimit} onChange={(e) => setNewVoucherUsageLimit(e.target.value)} required className="w-32 bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
+                  )}
+                </div>
               </div>
               <div className="sm:col-span-2 lg:col-span-3 border-t border-emerald-900/60 pt-3">
                 <span className="text-[10px] font-extrabold text-sky-300 uppercase tracking-wider">Promotional Campaign (optional) • all times are Asia/Manila</span>
@@ -1956,15 +2011,24 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                               <p className="text-[10px] text-sky-300">🗓 {formatManila(p.startDate)} → {endMs ? formatManila(endMs) : 'no end date'}</p>
                             )}
                             {p.minPurchase > 0 && <p className="text-[10px] text-emerald-300">Min. purchase: {formatPeso(p.minPurchase)}</p>}
-                            <p className="text-[10px] text-emerald-300">🔢 Usage: {p.usageCount || 0} / {p.usageLimit ? `${p.usageLimit} limit` : 'Unlimited'}</p>
+                            <div className="text-[10px] text-emerald-300 space-y-0.5 pt-0.5">
+                              <p>Usage Per Account: <strong className="text-white">{p.perPersonLimit === null || p.perPersonLimit === undefined ? 'Multiple Uses' : p.perPersonLimit === 1 ? 'One-Time' : `${p.perPersonLimit} per account`}</strong></p>
+                              <p>Total Usage: <strong className="text-white">{p.usageLimit ? 'Limited' : 'UNLIMITED'}</strong></p>
+                              {p.usageLimit ? <p>Maximum Redemptions: <strong className="text-white">{p.usageLimit}</strong></p> : null}
+                              <p>Successful Redemptions: <strong className="text-white">{p.usageCount || 0}</strong></p>
+                              {p.usageLimit ? <p>Remaining Redemptions: <strong className="text-white">{Math.max(0, p.usageLimit - (p.usageCount || 0))}</strong></p> : null}
+                              <p>Expiration: <strong className="text-white">{getPromoEndMs(p) ? formatManila(getPromoEndMs(p)) : 'Never expires'}</strong></p>
+                              <p>Status: <strong className={p.usageLimit && (p.usageCount || 0) >= p.usageLimit ? 'text-red-400' : 'text-lime-300'}>{p.usageLimit && (p.usageCount || 0) >= p.usageLimit ? 'USAGE LIMIT REACHED / UNAVAILABLE' : status.toUpperCase()}</strong></p>
+                            </div>
                             <p className="text-[10px] text-blue-300">Eligibility: {p.eligibility === 'registered' ? 'Registered Only' : 'All Customers'}</p>
                           </div>
                           <div className="flex flex-col gap-1.5 shrink-0">
-                            {isCampaignPromo(p) && (
-                              <button onClick={() => handleEditPromo(p)} className="text-lime-300 hover:text-lime-200 px-2 py-1 rounded-lg bg-[#082d22] border border-emerald-700 cursor-pointer text-[10px] font-bold">
-                                Edit
-                              </button>
-                            )}
+                            <button onClick={() => handleEditPromo(p)} className="text-lime-300 hover:text-lime-200 px-2 py-1 rounded-lg bg-[#082d22] border border-emerald-700 cursor-pointer text-[10px] font-bold">
+                              Edit
+                            </button>
+                            <button onClick={() => handleViewRedemptions(p.code)} className="text-sky-300 hover:text-sky-200 px-2 py-1 rounded-lg bg-sky-950/30 border border-sky-800/60 cursor-pointer text-[10px] font-bold">
+                              {redemptionView?.code === p.code ? 'Hide Redemptions' : 'Redemptions'}
+                            </button>
                             <button onClick={() => handleTogglePromoEnabled(p)} className="text-amber-300 hover:text-amber-200 px-2 py-1 rounded-lg bg-amber-950/30 border border-amber-800/60 cursor-pointer text-[10px] font-bold">
                               {p.isEnabled === false ? 'Enable' : 'Disable'}
                             </button>
@@ -1975,6 +2039,33 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                         </div>
                       );
                     })}
+                </div>
+              )}
+              {redemptionView && (
+                <div className="bg-[#061d16] border border-sky-800/60 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-[11px] font-extrabold text-sky-300 uppercase tracking-wider">Redemption history: {redemptionView.code}</h5>
+                    <button onClick={() => setRedemptionView(null)} className="text-[10px] font-bold text-emerald-300 hover:text-white cursor-pointer">Close</button>
+                  </div>
+                  {redemptionView.loading ? (
+                    <p className="text-[11px] text-emerald-300/70">Loading…</p>
+                  ) : redemptionView.rows.length === 0 ? (
+                    <p className="text-[11px] text-emerald-300/70">No redemptions recorded for this voucher yet.</p>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto space-y-1">
+                      {redemptionView.rows.map((r: any) => {
+                        const cust = customers.find((c: any) => c.auth_user_id && c.auth_user_id === r.user_id);
+                        return (
+                          <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 text-[11px] bg-[#04140f] border border-emerald-900/60 rounded-lg px-3 py-1.5">
+                            <span className="font-bold text-white">{r.order_number || 'Order'}</span>
+                            <span className="text-emerald-200">{cust ? cust.name : r.user_id ? 'Registered customer' : 'Walk-in'}</span>
+                            <span className="text-amber-300">{formatManila(Date.parse(r.redeemed_at))}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase ${r.status === 'redeemed' ? 'bg-lime-400/20 text-lime-400 border border-lime-400/40' : 'bg-slate-700/40 text-slate-300 border border-slate-500/50'}`}>{r.status === 'redeemed' ? 'redeemed' : 'voided (order cancelled)'}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -111,6 +111,8 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
 
   // ---------------- promos ----------------
   const [allPromos, setAllPromos] = useState<any[]>([]);
+  // Vouchers the selected customer account has already successfully redeemed (one-time vouchers are hidden)
+  const [redeemedCodes, setRedeemedCodes] = useState<string[]>([]);
   const [ownedCodes, setOwnedCodes] = useState<string[]>([]);
   const [milestone, setMilestone] = useState<any>(null);
   const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
@@ -185,7 +187,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
 
   // promos eligible for the selected customer
   useEffect(() => {
-    setSelectedCodes([]); setCodeError(''); setAllPromos([]); setOwnedCodes([]); setMilestone(null);
+    setSelectedCodes([]); setCodeError(''); setAllPromos([]); setOwnedCodes([]); setMilestone(null); setRedeemedCodes([]);
     if (!customer) return;
     if (customer.isWalkIn) {
       // walk-in: public promos only (the database enforces this too); no personal vouchers or milestone rewards
@@ -195,14 +197,16 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
     }
     let alive = true;
     (async () => {
-      const [promoRes, rewardRes, weeklyRes, milestoneRes] = await Promise.all([
+      const [promoRes, rewardRes, weeklyRes, milestoneRes, redeemedRes] = await Promise.all([
         supabase.from('promos').select('*'),
         supabase.from('loyalty_rewards').select('promo_code').eq('user_id', customer.authUserId).eq('status', 'claimed'),
         supabase.from('platinum_weekly_claims').select('promo_code').eq('user_id', customer.authUserId),
         supabase.rpc('preview_milestone_reward', { p_user_id: customer.authUserId }),
+        supabase.from('promo_redemptions').select('promo_code').eq('user_id', customer.authUserId).eq('status', 'redeemed'),
       ]);
       if (!alive) return;
       setAllPromos(promoRes.data || []);
+      setRedeemedCodes(Array.from(new Set((redeemedRes.data || []).map((r: any) => String(r.promo_code).toUpperCase()))));
       setOwnedCodes([...(rewardRes.data || []), ...(weeklyRes.data || [])].map((r: any) => String(r.promo_code || '').toUpperCase()).filter(Boolean));
       setMilestone(milestoneRes.data && milestoneRes.data.applies ? milestoneRes.data : null);
     })();
@@ -211,9 +215,15 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
 
   const promoUsable = (p: any) => {
     const now = Date.now();
+    if (p.is_enabled === false) return false;
     if (p.start_date && new Date(p.start_date).getTime() > now) return false;
-    if (Number(p.expiry_duration_ms) > 0 && now > Number(p.created_at) + Number(p.expiry_duration_ms)) return false;
+    // campaign end date wins; otherwise the legacy "minutes after creation" rule (same as the database)
+    if (p.expires_at) { if (now >= new Date(p.expires_at).getTime()) return false; }
+    else if (Number(p.expiry_duration_ms) > 0 && now > Number(p.created_at) + Number(p.expiry_duration_ms)) return false;
+    // total usage: NULL = unlimited
     if (p.usage_limit != null && Number(p.usage_count || 0) >= Number(p.usage_limit)) return false;
+    // one-time voucher already used by this customer account (walk-ins have no account, so no per-account rule)
+    if (p.per_person_limit === 1 && !customer?.isWalkIn && redeemedCodes.includes(String(p.code).toUpperCase())) return false;
     return true;
   };
   const eligiblePromos = useMemo(() => {
@@ -225,7 +235,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
       }));
     if (milestone) list.push({ code: milestone.code_label, type: 'percentage', value: Number(milestone.discount_value), target: 'subtotal', personal: true, milestone: true });
     return list;
-  }, [allPromos, ownedCodes, milestone]);
+  }, [allPromos, ownedCodes, milestone, redeemedCodes]);
 
   // slot capacity for the chosen date
   const loadSlotCaps = async (dk: string) => {
@@ -489,7 +499,9 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
     const found = allPromos.find((p: any) => String(p.code).toUpperCase() === code);
     if (!found) { setCodeError('Invalid promo code.'); return; }
     if (customer?.isWalkIn && found.visibility !== 'public') { setCodeError('Personal vouchers need a customer account. Walk-in orders can use public promos only.'); return; }
-    if (!promoUsable(found)) { setCodeError('This code is expired, not started yet, or fully used.'); return; }
+    if (found.per_person_limit === 1 && !customer?.isWalkIn && redeemedCodes.includes(code)) { setCodeError('This customer has already used this voucher. Each account is only allowed to redeem it once.'); return; }
+    if (found.usage_limit != null && Number(found.usage_count || 0) >= Number(found.usage_limit)) { setCodeError('Sorry! This voucher has reached its maximum redemption limit.'); return; }
+    if (!promoUsable(found)) { setCodeError('This code is expired, disabled, not started yet, or no longer available.'); return; }
     setSelectedCodes((prev) => [...prev, found.code]); setCodeInput(''); setCodeError('');
   };
 

@@ -33,6 +33,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const [search, setSearch] = useState('');
   const [currentMenuGrid, setCurrentMenuGrid] = useState<any[]>([]);
   const [availablePromos, setAvailablePromos] = useState<any[]>([]);
+  // Voucher codes this account has already successfully redeemed (the database re-checks this at checkout)
+  const [redeemedCodes, setRedeemedCodes] = useState<string[]>([]);
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [stamps, setStamps] = useState<any[]>([]);
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
@@ -174,6 +176,19 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     return () => clearInterval(timer);
   }, []);
 
+  // This account's successful redemptions (RLS only returns the signed-in customer's own rows)
+  const loadMyRedemptions = async () => {
+    try {
+      if (!currentUser || isGuest || !currentUser.authUserId) { setRedeemedCodes([]); return; }
+      const { data } = await supabase
+        .from('promo_redemptions')
+        .select('promo_code')
+        .eq('user_id', currentUser.authUserId)
+        .eq('status', 'redeemed');
+      setRedeemedCodes(Array.from(new Set((data || []).map((r: any) => String(r.promo_code).toUpperCase()))));
+    } catch (e) { /* the database still enforces the rule at checkout */ }
+  };
+
   const loadPromosFromCloud = async () => {
     try {
       const { data: cloudPromos, error } = await supabase.from('promos').select('*');
@@ -187,6 +202,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
           expiryDurationMs: Number(p.expiry_duration_ms),
           usageLimit: p.usage_limit ? Number(p.usage_limit) : null,
           usageCount: Number(p.usage_count || 0),
+          perPersonLimit: p.per_person_limit === null || p.per_person_limit === undefined ? null : Number(p.per_person_limit),
           createdAt: Number(p.created_at || Date.now()),
           name: p.name || '',
           description: p.description || '',
@@ -568,6 +584,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
   const setHistoryList = setOrderHistory || setInternalOrderHistory;
 
   const [orderPlaced, setOrderPlaced] = useState(false);
+  // Refresh this account's redeemed vouchers when the account changes and after every order
+  useEffect(() => { void loadMyRedemptions(); }, [currentUser?.authUserId, isGuest, orderPlaced]);
   const [placedOrderDetails, setPlacedOrderDetails] = useState(null);
 
   const userIdentifier = isGuest ? 'guest_session_user' : (currentUser.email || currentUser.name || 'admin').toLowerCase().trim();
@@ -997,7 +1015,12 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       return;
     }
     if (promoStatus === 'expired') {
-      setPromoError('This voucher code has expired.');
+      setPromoError('Sorry! This voucher has expired.');
+      return;
+    }
+    // One-time voucher already redeemed by this account (the database checks this again at checkout)
+    if (found.perPersonLimit === 1 && redeemedCodes.includes(String(found.code).toUpperCase())) {
+      setPromoError('You have already used this voucher. Each account is only allowed to redeem it once.');
       return;
     }
     if (found.minPurchase > 0 && total < found.minPurchase) {
@@ -1006,7 +1029,7 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
     }
 
     if (found.usageLimit && (found.usageCount || 0) >= found.usageLimit) {
-      setPromoError(`This voucher has reached its maximum global usage limit.`);
+      setPromoError('Sorry! This voucher has reached its maximum redemption limit.');
       return;
     }
 
@@ -1028,17 +1051,20 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
       return;
     }
 
-    if (promo.usageLimit && (promo.usageCount || 0) >= promo.usageLimit) {
-      alert('This voucher has already reached its maximum usage limit.');
+    if (promo.perPersonLimit === 1 && redeemedCodes.includes(String(promo.code).toUpperCase())) {
+      alert('You have already used this voucher. Each account is only allowed to redeem it once.');
       return;
     }
 
-    if (promo.expiryDurationMs && promo.expiryDurationMs > 0 && promo.createdAt) {
-      const expiresAt = promo.createdAt + promo.expiryDurationMs;
-      if (Date.now() > expiresAt) {
-        alert('This voucher has expired.');
-        return;
-      }
+    if (promo.usageLimit && (promo.usageCount || 0) >= promo.usageLimit) {
+      alert('Sorry! This voucher has reached its maximum redemption limit.');
+      return;
+    }
+
+    const claimEndMs = getPromoEndMs(promo);
+    if (claimEndMs !== null && Date.now() >= claimEndMs) {
+      alert('Sorry! This voucher has expired.');
+      return;
     }
 
     handleApplyPromoCodeString(promo.code);
@@ -1143,6 +1169,9 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
         void loadSlotCapacities();
       } else {
         alert(msg || 'Unable to place this order. Please try again.');
+        // A voucher rule can change while the customer is checking out (limit reached, already used, expired):
+        // refresh so the voucher list and the applied vouchers match the database.
+        if (/voucher|promo/i.test(msg)) { void loadPromosFromCloud(); void loadMyRedemptions(); }
       }
     } finally {
       placingOrderRef.current = false;
@@ -2175,6 +2204,8 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                   <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
                     {publicVouchersList.map((promo, pIdx) => {
                       const isAlreadyApplied = appliedPromos.some(p => p.code.toUpperCase() === promo.code.toUpperCase());
+                      const isUsedByMe = promo.perPersonLimit === 1 && redeemedCodes.includes(String(promo.code).toUpperCase());
+                      const isLimitReached = Boolean(promo.usageLimit) && (promo.usageCount || 0) >= promo.usageLimit;
 
                       // Calculate real-time countdown using the existing nowTimestamp state
                       let timeRemainingText = 'Never expires';
@@ -2212,17 +2243,23 @@ export function OrderingCounter({ showMyOrders, setShowMyOrders, orderHistory, s
                             {isAlreadyApplied && (
                               <p className="text-[9px] text-lime-300">✓ Stacked and applied.</p>
                             )}
+                            {isUsedByMe && !isAlreadyApplied && (
+                              <p className="text-[9px] text-amber-300">Already used on this account.</p>
+                            )}
+                            {isLimitReached && !isUsedByMe && (
+                              <p className="text-[9px] text-red-400">Redemption limit reached.</p>
+                            )}
                           </div>
                           <Button
                             type="button"
                             size="sm"
-                            disabled={isExpired || isAlreadyApplied}
+                            disabled={isExpired || isAlreadyApplied || isUsedByMe || isLimitReached}
                             onClick={() => handleClaimVoucher(promo)}
                             className={`bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-extrabold text-[10px] px-3 py-1 rounded-lg cursor-pointer ${
                               isExpired ? 'opacity-50 cursor-not-allowed bg-red-950/40 text-red-400 border-red-800 hover:bg-red-950/40 hover:text-red-400' : ''
                             }`}
                           >
-                            {isExpired ? 'Expired' : isAlreadyApplied ? 'Applied ✓' : 'Claim & Stack'}
+                            {isExpired ? 'Expired' : isAlreadyApplied ? 'Applied ✓' : isUsedByMe ? 'Used' : isLimitReached ? 'Unavailable' : 'Claim & Stack'}
                           </Button>
                         </div>
                       );
