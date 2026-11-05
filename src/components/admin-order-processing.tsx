@@ -232,7 +232,15 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
     const { data } = await supabase.from('slot_capacities').select('*').eq('date_key', dk);
     setSlotCaps(data || []);
   };
-  useEffect(() => { if (/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) loadSlotCaps(effectiveDate); }, [effectiveDate]);
+  useEffect(() => {
+    const ch = supabase
+      .channel('admin_proc_slot_caps_' + Math.random().toString(36).slice(2))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, () => {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) loadSlotCaps(effectiveDate);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [effectiveDate]);
 
   const slotInfo = (slot: string) => {
     const row = slotCaps.find((s: any) => s.slot_time === slot);
