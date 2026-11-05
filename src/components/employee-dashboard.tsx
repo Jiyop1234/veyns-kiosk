@@ -1009,10 +1009,18 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     const booked = cap ? Number(cap.booked_bowls) : 0;
     const same = !!editOrder && dateKey === editOrder.slotDate && slot === editOrder.slotTime;
     const mine = same ? editBowlsBefore() : 0; // this order's own bowls are already counted in its current slot
-    const closed = !!cap && !!cap.is_manually_fully_booked && !same;
-    const full = closed || booked - mine + editBowlsNow() > max;
+    const manuallyClosed = !!cap && !!cap.is_manually_fully_booked;
+    const room = Math.max(0, max - Math.max(0, booked - mine)); // most bowls this order could hold in this slot
+    // A closed slot accepts no extra bowls: the order may keep or reduce what it already has, nothing more.
+    const maxForOrder = manuallyClosed ? mine : room;
+    const over = editBowlsNow() > maxForOrder;
     const ended = !same && slotHasEnded(dateKey, slot);
-    return { same, ended, full, left: Math.max(0, max - (booked - mine)), disabled: ended || full };
+    return {
+      same, ended, closed: manuallyClosed, over,
+      full: over, left: maxForOrder,
+      // the current slot stays selectable so a smaller quantity can still be saved
+      disabled: ended || (!same && over)
+    };
   };
   const handleSaveEdit = async () => {
     if (!editOrder) return;
@@ -1027,6 +1035,13 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     } else {
       const slot = editEffectiveSlot();
       if (!slot || !editDate) { flash('err', 'Choose a date and a time slot.'); return; }
+      const slotCheck = editSlotInfo(editDate, slot);
+      if (slotCheck.over) {
+        flash('err', slotCheck.closed
+          ? `That time slot is closed by the administrator, so this order can hold at most ${slotCheck.left} bowl(s) there. Reduce the quantity or choose another time slot.`
+          : `Only ${slotCheck.left} bowl(s) are available for this order in that time slot. Reduce the quantity or choose another time slot.`);
+        return;
+      }
       changes.dateKey = editDate;
       changes.slotTime = slot;
       if (editMethod === 'pickup') {
@@ -2087,6 +2102,15 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     );
                   })}
                   <p className="text-[10px] text-emerald-400/80">Set a quantity to 0 to remove a line. Each line keeps its original price and add-ons.</p>
+                  {editMethod !== 'on-site' && editSlot && (() => {
+                    const si = editSlotInfo(editDate, editSlot);
+                    return si.over ? (
+                      <p className="text-[10px] font-bold text-red-400">
+                        {si.closed ? '⛔ This time slot is closed by the administrator. ' : '⛔ Not enough bowls in this time slot. '}
+                        This order can hold at most {si.left} bowl{si.left === 1 ? '' : 's'} here ({editBowlsNow()} entered).
+                      </p>
+                    ) : null;
+                  })()}
                 </div>
 
                 {/* Fulfillment */}
@@ -2188,7 +2212,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                               : selected ? 'bg-lime-400 text-black border-lime-400 shadow-md'
                               : 'bg-[#041913] text-emerald-300 border-emerald-800/60 hover:border-lime-400/50 cursor-pointer'}`}>
                             <span>{slot}</span>
-                            <span className="text-[9px] font-semibold mt-0.5">{a.same ? 'Current slot' : a.ended ? '⏰ Past' : a.full ? '⛔ Fully Booked' : `🟢 ${a.left} bowls left`}</span>
+                              <span className="text-[9px] font-semibold mt-0.5">{a.same
+                              ? (a.closed ? `🔒 Current slot • closed (max ${a.left})` : `Current slot • up to ${a.left} bowls`)
+                              : a.ended ? '⏰ Past'
+                              : a.closed ? '⛔ Closed by admin'
+                              : a.full ? `⛔ Only ${a.left} left`
+                              : `🟢 ${a.left} bowls left`}</span>
                           </button>
                         );
                       })}
@@ -2251,7 +2280,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
               <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
                 <Button onClick={() => setEditOrder(null)} className="flex-1 bg-emerald-950 text-emerald-200 font-bold py-2.5 rounded-xl text-xs cursor-pointer">Cancel</Button>
-                <Button disabled={busyOrderId === editOrder.id} onClick={handleSaveEdit}
+                <Button disabled={busyOrderId === editOrder.id || (editMethod !== 'on-site' && !!editSlot && editSlotInfo(editDate, editSlot).over)} onClick={handleSaveEdit}
                   className="flex-1 bg-lime-400 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed">
                   {busyOrderId === editOrder.id ? 'Saving…' : 'Save Changes'}
                 </Button>
@@ -2957,7 +2986,7 @@ function SlotCapacityCard({ slotTime, dateKey, initialMaxBowls, bookedBowls, ini
         </span>
         <div className="flex items-center gap-1.5">
           <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] uppercase ${isFullyBooked || remainingBowls === 0 ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'}`}>
-            {isFullyBooked || remainingBowls === 0 ? 'Fully Booked' : `${remainingBowls} Bowls Left`}
+            {remainingBowls === 0 ? 'Fully Booked' : isFullyBooked ? `Closed • ${remainingBowls} unused` : `${remainingBowls} Bowls Left`}
           </span>
           <Button
             size="sm"
