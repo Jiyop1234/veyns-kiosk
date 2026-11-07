@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
-import { Lock, LogOut, ShoppingBag, UtensilsCrossed, Settings, UserPlus, Edit3, KeyRound, ChevronDown, Facebook, Instagram, MessageSquare } from 'lucide-react';
+import { Lock, LogOut, ShoppingBag, UtensilsCrossed, Settings, UserPlus, User, Edit3, KeyRound, ChevronDown, Facebook, Instagram, MessageSquare } from 'lucide-react';
 import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
 
@@ -21,7 +21,7 @@ export function SiteHeader({
   currentUser?: any; 
   onOpenLoyalty?: () => void; 
   onLogout?: () => void;
-  onOpenAccountSettings?: (tab?: 'update' | 'password') => void;
+  onOpenAccountSettings?: (tab?: 'update' | 'password' | 'nickname') => void;
   onOpenSignUp?: () => void;
   onExitGuest?: () => void;
   onOpenFeedback?: () => void;
@@ -171,6 +171,16 @@ export function SiteHeader({
 
                       {accountSubmenuOpen && (
                         <div className="pl-4 py-1 space-y-1 border-l border-emerald-800/60 ml-3 my-1">
+                          <button
+                            onClick={() => {
+                              setSettingsOpen(false);
+                              setAccountSubmenuOpen(false);
+                              if (onOpenAccountSettings) onOpenAccountSettings('nickname');
+                            }}
+                            className="w-full text-left px-2.5 py-1.5 rounded-lg text-emerald-200 hover:bg-[#082d22] hover:text-lime-400 flex items-center gap-2 cursor-pointer font-medium"
+                          >
+                            <User className="size-3 text-lime-400" /> Edit Nickname
+                          </button>
                           <button
                             onClick={() => {
                               setSettingsOpen(false);

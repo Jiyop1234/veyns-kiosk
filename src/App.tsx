@@ -64,6 +64,12 @@ export function App() {
   const [currentPasswordInput, setCurrentPasswordInput] = useState('');
   const [newPasswordSettingInput, setNewPasswordSettingInput] = useState('');
   const [accountUpdateSuccess, setAccountUpdateSuccess] = useState(false);
+
+  // Edit Nickname (Settings -> My Account). Separate from the sign-up form's nicknameError above.
+  const [isEditingNickname, setIsEditingNickname] = useState(false);
+  const [nicknameInput, setNicknameInput] = useState('');
+  const [nicknameFormError, setNicknameFormError] = useState('');
+  const [isSavingNickname, setIsSavingNickname] = useState(false);
   
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
   const [resetTrigger, setResetTrigger] = useState(0);
@@ -389,6 +395,71 @@ export function App() {
       setCurrentPasswordInput(''); 
       setNewPasswordSettingInput(''); 
     }, 2000);
+  };
+
+  // ---- Edit Nickname -------------------------------------------------------------------------------
+  // The nickname is profiles.name. Rules match the rest of the app: trimmed and not blank (sign-up and the
+  // staff editor), at most 80 characters (staff account creation). The write goes through the
+  // update_my_nickname() database function, which can only change the signed-in customer's own profiles.name.
+  // It never touches the email, password or any other column.
+  const NICKNAME_MAX = 80;
+  const normalizeNickname = (raw: string) => raw.replace(/\s+/g, ' ').trim();
+
+  const openNicknameEditor = () => {
+    const current = String(currentUser?.name || '').trim();
+    // Invited customers start with their email as nickname: leave the box empty so they simply type a new one.
+    setNicknameInput(current.includes('@') || current === 'Valued Customer' ? '' : current);
+    setNicknameFormError('');
+    setIsEditingNickname(true);
+    setIsUpdatingIdentifier(false);
+    setIsResettingPassword(false);
+  };
+
+  const closeNicknameEditor = () => {
+    setIsEditingNickname(false);
+    setNicknameInput('');
+    setNicknameFormError('');
+  };
+
+  const handleSaveNicknameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSavingNickname) return;
+    if (!currentUser || currentUser.type === 'guest') return;
+    const value = normalizeNickname(nicknameInput);
+    if (!value) { setNicknameFormError('Nickname cannot be blank.'); return; }
+    if (value.length > NICKNAME_MAX) { setNicknameFormError(`Nickname must be ${NICKNAME_MAX} characters or fewer.`); return; }
+    if (/[\u0000-\u001f\u007f]/.test(value)) { setNicknameFormError('Nickname contains characters that are not allowed.'); return; }
+    if (value === String(currentUser.name || '').trim()) { setNicknameFormError('That is already your nickname.'); return; }
+
+    setNicknameFormError('');
+    setIsSavingNickname(true);
+    try {
+      const { data, error } = await supabase.rpc('update_my_nickname', { p_name: value });
+      if (error) {
+        console.error('Nickname update failed:', error.code, error.message);
+        const msg = String(error.message || '');
+        if (error.code === '23505') setNicknameFormError('That nickname is already taken. Please choose another one.');
+        else if (/invalid_nickname/i.test(msg)) setNicknameFormError(`Enter a nickname of 1 to ${NICKNAME_MAX} characters.`);
+        else if (/profile_not_found|not_authenticated/i.test(msg)) setNicknameFormError('We could not find your account profile. Please log out and sign in again.');
+        else if (error.code === 'PGRST202' || /could not find the function/i.test(msg)) setNicknameFormError('Nickname saving is not available right now. Please try again later.');
+        else setNicknameFormError(msg || 'Could not save your nickname. Please try again.');
+        return;
+      }
+      const saved = typeof data === 'string' && data ? data : value;
+      // Header greeting, feedback dialog and order forms all read currentUser.name, so they update immediately.
+      setCurrentUser((prev: any) => (prev ? { ...prev, name: saved } : prev));
+      setAccountUpdateSuccess(true);
+      setTimeout(() => {
+        setAccountUpdateSuccess(false);
+        closeNicknameEditor();
+      }, 2000);
+      // Keep the auth profile's display name in step so a later session restore shows the same nickname.
+      // This only merges { name } into user_metadata; the email and password are not touched.
+      const { error: metaError } = await supabase.auth.updateUser({ data: { name: saved } });
+      if (metaError) console.error('Nickname saved, but the auth metadata copy was not updated:', metaError.message);
+    } finally {
+      setIsSavingNickname(false);
+    }
   };
 
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
@@ -848,6 +919,7 @@ export function App() {
             setShowAccountSettingsPanel(true);
             setIsUpdatingIdentifier(false);
             setIsResettingPassword(false);
+            setIsEditingNickname(false);
           }}
           onLogout={handleLogout}
           onOpenAccountSettings={(tab) => {
@@ -858,11 +930,15 @@ export function App() {
             loadUserStampsAndPenalties(currentUser);
             setShowLoyaltyModal(true);
             setShowAccountSettingsPanel(true);
-            if (tab === 'update') {
+            if (tab === 'nickname') {
+              openNicknameEditor();
+            } else if (tab === 'update') {
+              setIsEditingNickname(false);
               setIsUpdatingIdentifier(true);
               setIsResettingPassword(false);
               setNewEmailInput('');
             } else if (tab === 'password') {
+              setIsEditingNickname(false);
               setIsResettingPassword(true);
               setIsUpdatingIdentifier(false);
             }
@@ -943,8 +1019,15 @@ export function App() {
                         <p className="font-bold text-lime-400 text-[11px]">Successfully updated!</p>
                       </div>
                     )}
-                    {!isUpdatingIdentifier && !isResettingPassword && (
+                    {!isUpdatingIdentifier && !isResettingPassword && !isEditingNickname && (
                       <div className="grid grid-cols-2 gap-2 pt-1">
+                        <Button
+                          type="button"
+                          onClick={openNicknameEditor}
+                          className="col-span-2 bg-[#04261d] hover:bg-emerald-900 text-lime-400 border border-emerald-700 font-bold py-2.5 rounded-xl text-[11px] cursor-pointer flex items-center justify-center gap-1"
+                        >
+                          <User className="h-3.5 w-3.5" /> Edit Nickname
+                        </Button>
                         <Button
                           type="button"
                           onClick={() => {
@@ -996,6 +1079,58 @@ export function App() {
                             className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer shadow"
                           >
                             Save New Email
+                          </Button>
+                        </div>
+                      </form>
+                    )}
+                    {isEditingNickname && !isUpdatingIdentifier && !isResettingPassword && (
+                      <form onSubmit={handleSaveNicknameSubmit} className="space-y-3 pt-2 border-t border-emerald-900/60">
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-emerald-400 uppercase tracking-wider block font-bold">Current Nickname</span>
+                          <p className="text-xs font-bold text-white bg-[#041913] p-2.5 rounded-xl border border-emerald-800/80 break-all">
+                            {currentUser?.name || 'Not set'}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <label htmlFor="edit-nickname-input" className="font-bold text-lime-400 uppercase tracking-wider block text-[10px]">
+                            New Nickname
+                          </label>
+                          <p className="text-[10px] text-emerald-300/80 mb-1">
+                            This is the name shown across the site. Your email and password stay the same.
+                          </p>
+                          <input
+                            id="edit-nickname-input"
+                            type="text"
+                            autoFocus
+                            autoComplete="nickname"
+                            maxLength={NICKNAME_MAX}
+                            value={nicknameInput}
+                            onChange={(e) => {
+                              setNicknameInput(e.target.value);
+                              if (nicknameFormError) setNicknameFormError('');
+                            }}
+                            className={`w-full bg-[#041913] border rounded-xl p-2.5 text-white focus:outline-none text-xs ${
+                              nicknameFormError ? 'border-red-500 focus:border-red-500' : 'border-emerald-800 focus:border-lime-400'
+                            }`}
+                            placeholder="Enter your preferred nickname"
+                          />
+                          {nicknameFormError && <p className="text-[10px] text-red-400 mt-1 font-semibold">{nicknameFormError}</p>}
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <Button
+                            type="button"
+                            onClick={closeNicknameEditor}
+                            disabled={isSavingNickname}
+                            className="flex-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold py-2 rounded-xl text-[11px] cursor-pointer"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="submit"
+                            disabled={isSavingNickname}
+                            className="flex-1 bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2 rounded-xl text-[11px] cursor-pointer shadow disabled:opacity-60"
+                          >
+                            {isSavingNickname ? 'Saving...' : 'Save Changes'}
                           </Button>
                         </div>
                       </form>
