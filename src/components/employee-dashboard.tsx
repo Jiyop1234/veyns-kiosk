@@ -179,6 +179,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [editDiscType, setEditDiscType] = useState<'none' | 'percent' | 'amount'>('none');
   const [editDiscValue, setEditDiscValue] = useState('');
   const [editDiscLabel, setEditDiscLabel] = useState('');
+  // Promos / vouchers staff can still add to this order (the customer may have forgotten them)
+  const [editAvailPromos, setEditAvailPromos] = useState<any[]>([]);
+  const [editAvailLoading, setEditAvailLoading] = useState(false);
+  const [editAvailError, setEditAvailError] = useState('');
+  const [editAddPromos, setEditAddPromos] = useState<string[]>([]);
+  const editPromoReq = useRef(0);
   // Delete Order confirmation
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deleteAck, setDeleteAck] = useState(false);
@@ -1026,18 +1032,55 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     setEditDiscType(order.manualDiscountType === 'percent' || order.manualDiscountType === 'amount' ? order.manualDiscountType : 'none');
     setEditDiscValue(order.manualDiscountValue ? String(order.manualDiscountValue) : '');
     setEditDiscLabel(order.manualDiscountLabel || '');
+    setEditAddPromos([]);
+    setEditAvailPromos([]);
+    setEditAvailError('');
+    loadEditAvailablePromos(order.id);
     setEditOrder(order);
+  };
+  // The database decides which promos / vouchers this customer can really use on this order right now.
+  const loadEditAvailablePromos = async (orderId: string) => {
+    const req = ++editPromoReq.current;
+    setEditAvailLoading(true);
+    const { data, error } = await supabase.rpc('admin_available_promos_for_order', { p_order_id: orderId });
+    if (req !== editPromoReq.current) return; // another order was opened meanwhile
+    setEditAvailLoading(false);
+    if (error) {
+      setEditAvailPromos([]);
+      setEditAvailError(error.message || 'Could not load the available promos and vouchers.');
+      return;
+    }
+    setEditAvailError('');
+    setEditAvailPromos(Array.isArray(data) ? data : []);
+  };
+  const toggleEditPromo = (code: string) => {
+    setEditAddPromos((cur) => (cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code]));
   };
   const editEstSubtotal = () => (editOrder?.items || []).reduce((s: number, it: any, i: number) => s + itemUnit(it) * (Number(editQty[i]) || 0), 0);
   const editFeeNow = () => (editMethod === 'our' ? (editPinFee ? Number(editPinFee.fee) || 0 : Number(editFee) || 0) : 0);
   // Preview only: the discount applies to the food subtotal AFTER promo codes, never to the delivery fee.
+  // Promos already on the order (scaled to the new quantities) + the ones staff picked in this edit.
+  const editOldPromoScaled = () => {
+    const sub = editEstSubtotal();
+    const oldSub = Number(editOrder?.subtotal || 0);
+    return oldSub > 0 ? Math.min(sub, Number(editOrder?.promoDiscount || 0) * sub / oldSub) : 0;
+  };
+  const editPromoAmount = (p: any, base: number) =>
+    p.type === 'percentage' ? base * Number(p.discountValue || 0) / 100 : Number(p.discountValue || 0);
+  const editNewFoodPromo = () => editAddPromos.reduce((s: number, code: string) => {
+    const p = editAvailPromos.find((x: any) => x.code === code);
+    return p && p.targetType !== 'delivery' ? s + editPromoAmount(p, editEstSubtotal()) : s;
+  }, 0);
+  const editNewDeliveryPromo = () => editAddPromos.reduce((s: number, code: string) => {
+    const p = editAvailPromos.find((x: any) => x.code === code);
+    return p && p.targetType === 'delivery' ? s + editPromoAmount(p, editFeeNow()) : s;
+  }, 0);
+  const editFoodPromoNow = () => Math.min(editEstSubtotal(), editOldPromoScaled() + editNewFoodPromo());
+  const editDeliveryPromoNow = () => Math.min(editFeeNow(), Number(editOrder?.deliveryDiscount || 0) + editNewDeliveryPromo());
   const editDiscountPreview = () => {
     const v = Number(editDiscValue);
     if (editDiscType === 'none' || !(v > 0)) return 0;
-    const sub = editEstSubtotal();
-    const oldSub = Number(editOrder?.subtotal || 0);
-    const promo = oldSub > 0 ? Math.min(sub, Number(editOrder?.promoDiscount || 0) * sub / oldSub) : 0;
-    const base = Math.max(0, sub - promo);
+    const base = Math.max(0, editEstSubtotal() - editFoodPromoNow());
     return editDiscType === 'percent' ? Math.round(base * Math.min(v, 100)) / 100 : Math.min(base, v);
   };
   const editBowlsNow = () => Object.values(editQty).reduce((s: number, n: any) => s + (Number(n) || 0), 0);
@@ -1113,6 +1156,17 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
     changes.manualDiscount = editDiscType === 'none'
       ? { type: 'none' }
       : { type: editDiscType, value: Number(editDiscValue), label: editDiscLabel.trim() || null };
+    if (editAddPromos.length > 0) {
+      const sub = editEstSubtotal();
+      for (const code of editAddPromos) {
+        const p = editAvailPromos.find((x: any) => x.code === code);
+        if (p && Number(p.minPurchase || 0) > sub) {
+          flash('err', `${code} needs a minimum purchase of ${formatPeso(Number(p.minPurchase))}. Remove it or increase the order.`);
+          return;
+        }
+      }
+      changes.addPromoCodes = editAddPromos;
+    }
     setBusyOrderId(editOrder.id);
     const { data, error } = await supabase.rpc('admin_edit_order', { p_order_id: editOrder.id, p_changes: changes });
     setBusyOrderId(null);
@@ -2335,6 +2389,54 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     onChange={(e) => setEditDiscLabel(e.target.value)} placeholder="Reason (optional), e.g. Forgot to apply loyalty discount"
                     className="w-full bg-[#03120d] border border-emerald-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-lime-400 disabled:opacity-40" />
                   <p className="text-[10px] text-emerald-400/80">Choose "No discount" to remove an existing discount. It is added to the order, never changes the bowl quantity, and is logged.</p>
+
+                  {/* Promos & vouchers the customer may have forgotten to add (only ones this customer can really use right now) */}
+                  <div className="border-t border-emerald-900/60 pt-2 space-y-2">
+                    <label className="font-bold text-lime-400 uppercase tracking-wider block">Available Promos &amp; Vouchers</label>
+                    {editOrder.promoCode ? (
+                      <p className="text-[10px] text-emerald-300">Already on this order: <strong className="text-white">{editOrder.promoCode}</strong></p>
+                    ) : (
+                      <p className="text-[10px] text-emerald-400/80">No promo or voucher is on this order yet.</p>
+                    )}
+                    {editAvailLoading ? (
+                      <p className="text-[10px] text-emerald-300">Checking which promos and vouchers this customer can use…</p>
+                    ) : editAvailError ? (
+                      <p className="text-[10px] text-red-400">{editAvailError}</p>
+                    ) : editAvailPromos.length === 0 ? (
+                      <p className="text-[10px] text-emerald-400/80">No other promo or voucher is available for this customer right now.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {editAvailPromos.map((p: any) => {
+                          const picked = editAddPromos.includes(p.code);
+                          const needsMore = Number(p.minPurchase || 0) > editEstSubtotal();
+                          const off = p.type === 'percentage' ? `${Number(p.discountValue)}% off` : `${formatPeso(Number(p.discountValue))} off`;
+                          const where = p.targetType === 'delivery' ? 'delivery fee' : 'food';
+                          return (
+                            <div key={p.code} className={`flex items-center justify-between gap-2 rounded-lg border p-2 ${picked ? 'border-lime-400 bg-lime-400/10' : 'border-emerald-800 bg-[#03120d]'}`}>
+                              <div className="min-w-0">
+                                <p className="font-bold text-white text-xs truncate">
+                                  {p.code}{p.name ? ` · ${p.name}` : ''}
+                                  {p.personal && <span className="ml-1.5 text-[9px] font-bold uppercase text-lime-300">Customer's voucher</span>}
+                                </p>
+                                <p className="text-[10px] text-emerald-300">
+                                  {off} on {where}
+                                  {Number(p.minPurchase || 0) > 0 ? ` · min. ${formatPeso(Number(p.minPurchase))}` : ''}
+                                  {p.oneTimePerAccount ? ' · one-time per account' : ''}
+                                  {p.remaining !== null && p.remaining !== undefined ? ` · ${p.remaining} left` : ''}
+                                </p>
+                                {needsMore && !picked && <p className="text-[10px] text-amber-300">Order is below this promo's minimum purchase.</p>}
+                              </div>
+                              <button type="button" disabled={needsMore && !picked} onClick={() => toggleEditPromo(p.code)}
+                                className={`shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${picked ? 'bg-lime-400 text-black' : 'bg-emerald-950 border border-emerald-700 text-emerald-100 hover:border-lime-400'}`}>
+                                {picked ? 'Added ✓' : 'Add'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                        <p className="text-[10px] text-emerald-400/80">A promo or voucher added here counts as used by this customer (limits and one-time rules apply) and is logged.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Note */}
@@ -2355,6 +2457,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                     <span>Estimated delivery fee</span>
                     <span className="font-bold text-white">{editMethod === 'our' ? formatPeso(editPinFee ? editPinFee.fee : (Number(editFee) || 0)) : formatPeso(0)}</span>
                   </div>
+                  {(editNewFoodPromo() + editNewDeliveryPromo()) > 0 && (
+                    <div className="flex justify-between text-lime-300">
+                      <span>Added promo / voucher ({editAddPromos.join(', ')})</span>
+                      <span className="font-bold">−{formatPeso(Math.min(editEstSubtotal() - editOldPromoScaled(), editNewFoodPromo()) + Math.min(editFeeNow(), editNewDeliveryPromo()))}</span>
+                    </div>
+                  )}
                   {editDiscountPreview() > 0 && (
                     <div className="flex justify-between text-amber-300">
                       <span>Customer discount{editDiscType === 'percent' ? ` (${Number(editDiscValue)}%)` : ''}</span>
@@ -2363,7 +2471,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                   )}
                   <div className="flex justify-between text-emerald-200 border-t border-emerald-900/60 pt-1">
                     <span>Estimated total</span>
-                    <span className="font-bold text-lime-400">{formatPeso(Math.max(0, editEstSubtotal() - (Number(editOrder?.subtotal || 0) > 0 ? Math.min(editEstSubtotal(), Number(editOrder?.promoDiscount || 0) * editEstSubtotal() / Number(editOrder.subtotal)) : 0) - editDiscountPreview() + editFeeNow() - Number(editOrder?.deliveryDiscount || 0)))}</span>
+                    <span className="font-bold text-lime-400">{formatPeso(Math.max(0, editEstSubtotal() - editFoodPromoNow() - editDiscountPreview() + editFeeNow() - editDeliveryPromoNow()))}</span>
                   </div>
                   <p className="text-[10px] text-emerald-400/80">Preview only. Promos and the PWD discount are recalculated by the database when you save, and the final total is shown afterwards.</p>
                 </div>
