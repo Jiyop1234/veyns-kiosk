@@ -13,7 +13,7 @@ export function SiteFooter() {
         </div>
         <div className="space-y-2 text-sm text-emerald-300/80">
           <p className="flex items-center gap-2">
-            <MapPin className="size-4 text-lime-400 shrink-0" /> Julio B. Alinsug, Basak, Mandaue City, Cebu 6014[cite: 11]
+            <MapPin className="size-4 text-lime-400 shrink-0" /> Julio B. Alinsug, Basak, Mandaue City, Cebu 6014
           </p>
           <p className="flex items-center gap-2">
             <Phone className="size-4 text-lime-400 shrink-0" /> (032) 123-4567
