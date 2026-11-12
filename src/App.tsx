@@ -1,15 +1,12 @@
 // @ts-nocheck
+// App — the auth gate only (Step 1 of the store split, no behavior change).
+// It restores the session, shows the login screens or the staff dashboard,
+// and hands everything the customer store shows to <StorePage />.
 import React, { useState, useEffect } from 'react';
-import { SiteHeader } from '@/components/layout/site-header';
-import { OrderingCounter } from '@/components/ordering-counter';
 import { EmployeeDashboard } from '@/components/employee-dashboard';
-import { CartProvider } from '@/lib/cart';
-import { AccountSettingsDialog } from '@/components/store/account-settings-dialog';
 import { supabase } from '@/lib/supabase';
-import { FeedbackPage } from '@/components/feedback-page';
-import { FloatingSupportButton } from '@/components/floating-support-button';
-import { ExtrasPage } from '@/components/extras-page';
-import { LoginPage, ResetPasswordDialog } from '@/components/login-page';
+import { LoginPage } from '@/components/login-page';
+import { StorePage } from '@/components/store/store-page';
 
 export function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
@@ -19,23 +16,12 @@ export function App() {
   const [authMode, setAuthMode] = useState<'select' | 'regular' | 'guest' | 'employee' | 'forgot'>('select');
   const [currentUser, setCurrentUser] = useState<any>(null);
 
-  // Recovery states
-  const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
+  // Password-recovery link opened: StorePage shows the reset dialog + password form when this goes above 0.
+  const [passwordRecoveryTick, setPasswordRecoveryTick] = useState(0);
 
   // Validation & Error States
   const [loginError, setLoginError] = useState('');
 
-  const [showMyOrders, setShowMyOrders] = useState(false);
-  const [showFeedback, setShowFeedback] = useState(false);
-  const [showExtras, setShowExtras] = useState(false);
-
-  // Account Settings dialog: open flag + which section it should start on.
-  // All of its forms, handlers and state live in store/account-settings-dialog.tsx.
-  const [showAccountSettings, setShowAccountSettings] = useState(false);
-  const [accountSettingsTab, setAccountSettingsTab] = useState<'nickname' | 'update' | 'password' | null>(null);
-
-  const [orderHistory, setOrderHistory] = useState<any[]>([]);
-  const [resetTrigger, setResetTrigger] = useState(0);
   const [stamps, setStamps] = useState<any[]>([]);
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
 
@@ -48,7 +34,7 @@ export function App() {
     }
     const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
-        setIsResetPasswordOpen(true);
+        setPasswordRecoveryTick((t) => t + 1);
       }
     });
     return () => {
@@ -127,10 +113,6 @@ export function App() {
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) setTimeout(() => {
         void restoreAuthUser(session);
-        if (event === 'PASSWORD_RECOVERY') {
-          setAccountSettingsTab('password');
-          setShowAccountSettings(true);
-        }
       }, 0);
     });
     try {
@@ -138,34 +120,11 @@ export function App() {
         const savedGuest = localStorage.getItem('veyns_current_user');
         if (savedGuest) setCurrentUser(JSON.parse(savedGuest));
         setAuthMode('guest');
-        const sessionOrders = sessionStorage.getItem('veyns_guest_order_history');
-        if (sessionOrders) setOrderHistory(JSON.parse(sessionOrders));
+        // The guest's saved order history is restored inside StorePage.
       }
     } catch (e) { console.error(e); }
     return () => { alive = false; listener.subscription.unsubscribe(); };
   }, []);
-
-  // Openers for the Account Settings dialog. The header only calls these;
-  // the dialog itself owns every form and handler.
-  const handleOpenLoyalty = () => {
-    if (!currentUser || currentUser.type === 'guest') {
-      alert('Guests cannot access account settings or loyalty stamps. Please create an account to unlock loyalty rewards!');
-      return;
-    }
-    loadUserStampsAndPenalties(currentUser);
-    setAccountSettingsTab(null);
-    setShowAccountSettings(true);
-  };
-
-  const handleOpenAccountSettings = (tab?: 'update' | 'password' | 'nickname') => {
-    if (!currentUser || currentUser.type === 'guest') {
-      alert('Guests cannot access account settings. Please create an account to unlock this feature!');
-      return;
-    }
-    loadUserStampsAndPenalties(currentUser);
-    setAccountSettingsTab(tab ?? null);
-    setShowAccountSettings(true);
-  };
 
   const handleGuestLogin = () => {
     const guestData = { name: 'Guest Diner', identifier: 'guest_trial', type: 'guest' };
@@ -175,7 +134,6 @@ export function App() {
     localStorage.setItem('veyns_auth_mode', 'guest');
     setStamps([]);
     setFairPlayPenalty(null);
-    setOrderHistory([]);
     sessionStorage.removeItem('veyns_guest_order_history');
   };
 
@@ -187,20 +145,16 @@ export function App() {
     setLoginError('');
     setStamps([]);
     setFairPlayPenalty(null);
-    setOrderHistory([]);
     localStorage.removeItem('veyns_current_user');
     localStorage.removeItem('veyns_auth_mode');
     sessionStorage.removeItem('veyns_guest_order_history');
   };
 
-  const handleResetMenu = () => {
-    setShowMyOrders(false);
-    setShowAccountSettings(false);
-    setResetTrigger((prev) => prev + 1);
-  };
-
-  const recordOrderForLoyalty = async () => {
-    if (currentUser && currentUser.type !== 'guest') await loadUserStampsAndPenalties(currentUser);
+  const handleOpenSignUp = () => {
+    setCurrentUser(null);
+    setAuthMode('regular');
+    setIsSignUp(true);
+    setLoginError('');
   };
 
   // Login screens (front door, customer login/sign-up, forgot password, staff door)
@@ -236,65 +190,17 @@ export function App() {
     );
   }
 
-  // Main Store Interface
+  // Customer store
   return (
-    <CartProvider>
-      <div className="min-h-screen bg-[#071F19] text-white flex flex-col">
-        <SiteHeader
-          onOpenOrders={() => setShowMyOrders(true)}
-          onResetMenu={handleResetMenu}
-          currentUser={currentUser}
-          onOpenLoyalty={handleOpenLoyalty}
-          onLogout={handleLogout}
-          onOpenAccountSettings={handleOpenAccountSettings}
-          onOpenSignUp={() => {
-            setCurrentUser(null);
-            setAuthMode('regular');
-            setIsSignUp(true);
-            setLoginError('');
-          }}
-          onExitGuest={handleLogout}
-          onOpenFeedback={() => setShowFeedback(true)}
-          onOpenExtras={() => setShowExtras(true)}
-        />
-        <main className="flex-1">
-          <OrderingCounter
-            onOpenExtras={() => setShowExtras(true)}
-            showMyOrders={showMyOrders}
-            setShowMyOrders={setShowMyOrders}
-            orderHistory={orderHistory}
-            setOrderHistory={(newHistory) => {
-              setOrderHistory(newHistory);
-              if (currentUser && currentUser.type === 'guest') {
-                sessionStorage.setItem('veyns_guest_order_history', JSON.stringify(newHistory));
-              } else if (currentUser && currentUser.type === 'regular') {
-                localStorage.setItem('veyns_order_history', JSON.stringify(newHistory));
-              }
-            }}
-            resetKey={resetTrigger}
-            currentUser={currentUser}
-            onOrderPlacedSuccess={recordOrderForLoyalty}
-            onOpenRegister={() => {
-              setCurrentUser(null);
-              setAuthMode('regular');
-              setIsSignUp(true);
-              setLoginError('');
-            }}
-          />
-        </main>
-        {showFeedback && <FeedbackPage onBack={() => setShowFeedback(false)} currentUser={currentUser} />}
-        {showExtras && <ExtrasPage onBack={() => setShowExtras(false)} onReviewOrder={() => { setShowExtras(false); setShowMyOrders(true); }} />}
-        <FloatingSupportButton />
-        <AccountSettingsDialog
-          open={showAccountSettings}
-          onClose={() => setShowAccountSettings(false)}
-          currentUser={currentUser}
-          initialTab={accountSettingsTab}
-          onNicknameSaved={(name) => setCurrentUser((prev: any) => (prev ? { ...prev, name } : prev))}
-        />
-        {isResetPasswordOpen && <ResetPasswordDialog onFinished={() => setIsResetPasswordOpen(false)} />}
-      </div>
-    </CartProvider>
+    <StorePage
+      currentUser={currentUser}
+      onLogout={handleLogout}
+      onOpenSignUp={handleOpenSignUp}
+      onNicknameSaved={(name) => setCurrentUser((prev: any) => (prev ? { ...prev, name } : prev))}
+      loadUserStampsAndPenalties={loadUserStampsAndPenalties}
+      passwordRecoveryTick={passwordRecoveryTick}
+      onPasswordRecoveryHandled={() => setPasswordRecoveryTick(0)}
+    />
   );
 }
 
