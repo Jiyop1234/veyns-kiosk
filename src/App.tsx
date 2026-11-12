@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { SiteHeader } from '@/components/site-header';
+import { SiteHeader } from '@/components/layout/site-header';
 import { OrderingCounter } from '@/components/ordering-counter';
 import { EmployeeDashboard } from '@/components/employee-dashboard';
 import { CartProvider } from '@/lib/cart';
