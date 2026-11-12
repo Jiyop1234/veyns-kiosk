@@ -1,11 +1,11 @@
 // @ts-nocheck
-// Login page: everything about getting in (front door, customer login/sign-up, forgot password,
-// staff door, and the 'set new password' box that opens from the recovery email link).
+// Login page: everything about getting in (front door, one Login form for customers and staff, sign-up,
+// forgot password, and the 'set new password' box that opens from the recovery email link).
 // This file was split out of App.tsx without changing behavior. // @ts-nocheck is kept on purpose,
 // because App.tsx had it; remove it later once the code is typed.
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { User, ShieldAlert, Sparkles, CheckCircle2, KeyRound, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { User, Sparkles, CheckCircle2, KeyRound, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
 
@@ -60,6 +60,15 @@ export function LoginPage({
   };
 
   // Editing a login field removes that field's red border; the message goes once no border is left.
+  // Double-submit lock, plus a short wait after a failed login (slows down password guessing).
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
   const clearLoginFeedback = (field: 'email' | 'password') => {
     if (loginFieldError.email || loginFieldError.password) {
       const next = { ...loginFieldError, [field]: false };
@@ -70,26 +79,7 @@ export function LoginPage({
     }
   };
 
-  // After a failed sign-in, ask the rate-limited server check which field was wrong. Anything unexpected
-  // (rate limited, offline, server error) returns 'unavailable' and the UI shows the generic message.
-  const classifyLoginFailure = async (email: string): Promise<'email_not_found' | 'email_found' | 'unavailable'> => {
-    try {
-      const res = await fetch('/api/login-check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      if (!res.ok) return 'unavailable';
-      const json = await res.json();
-      if (json?.result === 'email_not_found') return 'email_not_found';
-      if (json?.result === 'email_found') return 'email_found';
-      return 'unavailable';
-    } catch {
-      return 'unavailable';
-    }
-  };
-
-  const handleRegularAuth = async (e: React.FormEvent) => {
+  const submitAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setNicknameError('');
     setIdentifierError('');
@@ -120,7 +110,8 @@ export function LoginPage({
         }
       });
       if (error) {
-        setIdentifierError(error.message);
+        const rateLimited = (error as any)?.status === 429 || /rate limit/i.test(error.message || '');
+        setIdentifierError(rateLimited ? 'Too many attempts. Please wait a minute and try again.' : 'Something went wrong. Please try again.');
         return;
       }
       if (!data.session) {
@@ -134,7 +125,7 @@ export function LoginPage({
       const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
       const profile = Array.isArray(profileData) ? profileData[0] : profileData;
       if (profileError || !profile) {
-        setIdentifierError(profileError?.message || 'Unable to load profile.');
+        setIdentifierError('Something went wrong. Please try again.');
         return;
       }
       const userObj = {
@@ -154,26 +145,21 @@ export function LoginPage({
       return;
     }
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: authEmailInput,
+      email,
       password: authPassword,
     });
     if (error) {
       const wrongCredentials = (error as any)?.code === 'invalid_credentials' || /invalid login credentials/i.test(error.message || '');
       if (!wrongCredentials) {
-        setLoginError(error.message); // e.g. email not confirmed: shown as before
+        const notConfirmed = (error as any)?.code === 'email_not_confirmed' || /not confirmed/i.test(error.message || '');
+        const rateLimited = (error as any)?.status === 429 || /rate limit/i.test(error.message || '');
+        setLoginError(notConfirmed ? error.message : rateLimited ? 'Too many attempts. Please wait a minute and try again.' : 'Something went wrong. Please try again.');
         return;
       }
-      const verdict = await classifyLoginFailure(email);
-      if (verdict === 'email_not_found') {
-        setLoginFieldError({ email: true, password: false });
-        setLoginError('Incorrect email.');
-      } else if (verdict === 'email_found') {
-        setLoginFieldError({ email: false, password: true });
-        setLoginError('Incorrect password.');
-      } else {
-        setLoginFieldError({ email: true, password: true });
-        setLoginError('Invalid credentials.');
-      }
+      // Same message for an unknown email and a wrong password, so nobody can tell which emails exist.
+      setLoginFieldError({ email: true, password: true });
+      setLoginError('Invalid email or password.');
+      setCooldown(5);
       return;
     }
     if (data?.user) {
@@ -204,6 +190,17 @@ export function LoginPage({
     }
   };
 
+  const handleRegularAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmitting || cooldown > 0) return;
+    setIsSubmitting(true);
+    try {
+      await submitAuth(e);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const email = forgotEmailInput.trim().toLowerCase();
@@ -213,36 +210,8 @@ export function LoginPage({
     setForgotSuccess(true);
   };
 
-  const handleEmployeeAuth = async () => {
-    const email = authEmailInput.trim().toLowerCase();
-    if (!email || !authPassword) { setLoginError('Enter your staff email and password.'); return; }
-    const credentials = { email, password: authPassword };
-    const { data, error } = await supabase.auth.signInWithPassword(credentials);
-    if (error || !data.user) { setLoginError('Staff sign-in failed. Check your credentials.'); return; }
-    const { data: profileData, error: profileError } = await supabase.rpc('claim_veyns_profile');
-    const profile = Array.isArray(profileData) ? profileData[0] : profileData;
-    if (profileError || !profile || !['employee', 'admin'].includes(profile.role)) {
-      await supabase.auth.signOut(); 
-      setLoginError('This account does not have staff access.'); 
-      return;
-    }
-
-    const userObj = {
-      id: profile?.id,
-      authUserId: data.user.id,
-      email: data.user.email,
-      identifier: profile?.identifier || data.user.email,
-      role: profile.role,
-      type: 'regular',
-      name: profile?.name || data.user.email?.split('@')[0] || 'Staff'
-    };
-    setCurrentUser(userObj);
-    setAuthMode('employee'); 
-    setIsAdminDashboardOpen(true);
-  };
-
   // Entry screen
-  if (authMode === 'select') {
+  if (authMode === 'select' || authMode === 'employee') {
     return (
       <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
         <div className="max-w-md w-full bg-[#051813] border border-emerald-800/80 rounded-3xl p-8 shadow-2xl space-y-6 text-center">
@@ -271,19 +240,13 @@ export function LoginPage({
               className="w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-white border border-emerald-700/80 py-4 px-3 h-auto rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 transition-all shadow-lg cursor-pointer text-center"
             >
               <User className="size-4 text-lime-400 shrink-0" />
-              <span className="leading-tight">Login as Regular <span className="block sm:inline font-normal opacity-90">(Earn Stamps & History)</span></span>
+              <span className="leading-tight">Login</span>
             </Button>
             <Button
               onClick={handleGuestLogin}
               className="w-full bg-[#061d16] hover:bg-[#0a3629] text-emerald-200 border border-emerald-800/60 py-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2.5 transition-all cursor-pointer"
             >
               <Sparkles className="size-4 text-lime-400" /> Continue as Guest (Trial Mode)
-            </Button>
-            <Button
-              onClick={() => setAuthMode('employee')}
-              className="w-full bg-transparent hover:bg-emerald-950/40 text-emerald-400/80 border border-emerald-900/60 py-3 rounded-2xl font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-            >
-              <ShieldAlert className="size-3.5" /> Login as Employee / Admin
             </Button>
           </div>
         </div>
@@ -432,9 +395,10 @@ export function LoginPage({
             </div>
             <button
               type="submit"
-              className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs py-3 rounded-xl uppercase tracking-wider transition cursor-pointer"
+              disabled={isSubmitting || cooldown > 0}
+              className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs py-3 rounded-xl uppercase tracking-wider transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {isSignUp ? 'Create an Account' : 'Login to My Account'}
+              {isSubmitting ? 'Please wait...' : cooldown > 0 ? `Try again in ${cooldown}s` : (isSignUp ? 'Create an Account' : 'Login to My Account')}
             </button>
           </form>
           <div className="text-center pt-2 border-t border-emerald-900/60 space-y-2">
@@ -468,7 +432,7 @@ export function LoginPage({
                 }}
                 className="text-[11px] text-emerald-400/60 hover:text-white cursor-pointer"
               >
-                ← Back to role selection
+                ← Back
               </button>
             </div>
           </div>
@@ -529,62 +493,7 @@ export function LoginPage({
     );
   }
 
-  // Staff door (kept as-is for now; merged into the single Login in the next commit)
-  return (
-    <div className="min-h-screen bg-[#03120d] text-white flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full bg-[#051813] border border-red-900/40 rounded-3xl p-8 shadow-2xl space-y-6 text-center">
-        <div className="space-y-3 flex flex-col items-center">
-          <div className="w-12 h-12 rounded-2xl bg-red-950/40 border border-red-800/60 flex items-center justify-center text-red-500 shadow-lg">
-            <ShieldAlert className="size-6" />
-          </div>
-          <div className="space-y-2 text-center w-full">
-            <div className="inline-block bg-red-950/60 border border-red-900/60 px-6 py-2 rounded-xl shadow-inner">
-              <h2 className="font-display text-lg md:text-xl font-black tracking-wider text-red-500 uppercase leading-tight">AUTHORIZED</h2>
-              <h2 className="font-display text-lg md:text-xl font-black tracking-wider text-red-500 uppercase leading-tight">PERSONEL ONLY</h2>
-            </div>
-            <p className="font-display text-sm font-bold text-white uppercase tracking-wide pt-2">security clearance required</p>
-            <div className="text-xs text-emerald-300/80 italic max-w-xs mx-auto pt-1 leading-relaxed text-center space-y-0.5">
-              <p>"Every action is logged. Every mistake leaves a trace."</p>
-              <p>You have been warned.</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-[#041913] border border-emerald-800/60 rounded-2xl p-5 text-xs text-emerald-200 space-y-3">
-          <label className="font-bold text-lime-400 uppercase tracking-wider text-[11px] block text-center">staff Supabase Auth sign-in</label>
-          <input 
-            type="email" 
-            autoComplete="username" 
-            value={authEmailInput} 
-            onChange={(e) => setAuthEmailInput(e.target.value)} 
-            placeholder="Staff email" 
-            className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" 
-          />
-          <input 
-            type="password" 
-            autoComplete="current-password" 
-            value={authPassword} 
-            onChange={(e) => setAuthPassword(e.target.value)} 
-            onKeyDown={(e) => { if (e.key === 'Enter') void handleEmployeeAuth(); }} 
-            placeholder="Password" 
-            className="w-full rounded-xl border border-emerald-800 bg-black/60 px-4 py-3 text-white" 
-          />
-          {loginError && <p className="text-red-400">{loginError}</p>}
-          <Button 
-            onClick={() => void handleEmployeeAuth()} 
-            className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-3 rounded-xl text-xs transition-all shadow-lg cursor-pointer mt-1"
-          >
-            Sign in
-          </Button>
-        </div>
-        <button
-          onClick={() => setAuthMode('select')}
-          className="text-xs font-bold text-emerald-400/80 hover:text-white transition-colors cursor-pointer block mx-auto"
-        >
-          back to the front
-        </button>
-      </div>
-    </div>
-  );
+  return null;
 }
 
 export function ResetPasswordDialog({ onFinished }) {
