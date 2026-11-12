@@ -237,16 +237,17 @@ export function LoginPage({
                 setAuthMode('regular'); 
                 setIsSignUp(false); 
               }}
-              className="w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-white border border-emerald-700/80 py-4 px-3 h-auto rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 transition-all shadow-lg cursor-pointer text-center"
+              className="relative w-full bg-[#082d22] hover:bg-lime-400 hover:text-black text-white border border-emerald-700/80 py-4 px-10 h-auto rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 transition-all shadow-lg cursor-pointer text-center"
             >
-              <User className="size-4 text-lime-400 shrink-0" />
+              <User className="size-4 text-lime-400 shrink-0 absolute left-5 top-1/2 -translate-y-1/2" />
               <span className="leading-tight">Login</span>
             </Button>
             <Button
               onClick={handleGuestLogin}
-              className="w-full bg-[#061d16] hover:bg-[#0a3629] text-emerald-200 border border-emerald-800/60 py-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2.5 transition-all cursor-pointer"
+              className="relative w-full bg-[#061d16] hover:bg-[#0a3629] text-emerald-200 border border-emerald-800/60 py-4 px-10 rounded-2xl font-bold text-xs flex items-center justify-center gap-2.5 transition-all cursor-pointer text-center"
             >
-              <Sparkles className="size-4 text-lime-400" /> Continue as Guest (Trial Mode)
+              <Sparkles className="size-4 text-lime-400 shrink-0 absolute left-5 top-1/2 -translate-y-1/2" />
+              <span>Continue as Guest (Trial Mode)</span>
             </Button>
           </div>
         </div>
