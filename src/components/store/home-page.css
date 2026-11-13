@@ -1,0 +1,53 @@
+/* HomePage styles: the infinite marquee only. Colors and fonts come from Tailwind classes in the components. */
+
+/* Content moves to the RIGHT (left to right). */
+@keyframes veyns-marquee-ltr {
+  from { transform: translate3d(-50%, 0, 0); }
+  to   { transform: translate3d(0, 0, 0); }
+}
+
+/* Content moves to the LEFT (right to left). */
+@keyframes veyns-marquee-rtl {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+
+.veyns-marquee {
+  --gap: 0.75rem;
+  overflow: hidden;
+}
+
+.veyns-marquee-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation-duration: var(--marquee-duration, 60s);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.veyns-marquee-ltr { animation-name: veyns-marquee-ltr; }
+.veyns-marquee-rtl { animation-name: veyns-marquee-rtl; }
+
+/* Each group ends with the same gap that sits between tiles, so sliding by -50% loops exactly. */
+.veyns-marquee-group {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--gap);
+  padding-right: var(--gap);
+}
+
+@media (min-width: 640px) {
+  .veyns-marquee { --gap: 1rem; }
+}
+
+/* Smaller tiles on phones: shorten the loop so the speed feels the same. */
+@media (max-width: 639px) {
+  .veyns-marquee-track { animation-duration: calc(var(--marquee-duration, 60s) * 0.7); }
+}
+
+/* People who ask their device for less motion get a still row they can scroll by hand. */
+@media (prefers-reduced-motion: reduce) {
+  .veyns-marquee-track { animation: none; }
+  .veyns-marquee { overflow-x: auto; }
+}

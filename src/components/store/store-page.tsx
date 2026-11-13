@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { SiteHeader } from '@/components/store/site-header';
 import { StoreData } from '@/components/store/store-data';
+import { HomePage } from '@/components/store/home-page';
 import { CartProvider } from '@/lib/cart';
 import { AccountSettingsDialog } from '@/components/store/account-settings-dialog';
 import { FeedbackPage } from '@/components/store/feedback-page';
@@ -123,6 +124,9 @@ export function StorePage({
           onOpenExtras={() => setShowExtras(true)}
         />
         <main className="flex-1">
+          <HomePage />
+          {/* Scroll target for the hero's "Explore menu" button. Zero height, no layout change. */}
+          <div id="menu" className="scroll-mt-20" />
           <StoreData
             onOpenExtras={() => setShowExtras(true)}
             orderHistory={orderHistory}
