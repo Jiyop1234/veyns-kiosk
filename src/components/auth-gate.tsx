@@ -1,5 +1,5 @@
 // @ts-nocheck
-// App — the auth gate only (Step 1 of the store split, no behavior change).
+// AuthGate — the auth gate (Step 6 of the store split: moved from src/App.tsx, no behavior change).
 // It restores the session, shows the login screens or the staff dashboard,
 // and hands everything the customer store shows to <StorePage />.
 import React, { useState, useEffect } from 'react';
@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { LoginPage } from '@/components/login-page';
 import { StorePage } from '@/components/store/store-page';
 
-export function App() {
+export function AuthGate() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
 
@@ -204,4 +204,4 @@ export function App() {
   );
 }
 
-export default App;
+export default AuthGate;
