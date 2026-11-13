@@ -1,20 +1,25 @@
 // @ts-nocheck
-// TestimonialsMarquee — a slowly switching coverflow of 5-star customer reviews (Step 9, redesigned in Step 9F).
+// TestimonialsMarquee — a continuously, slowly moving coverflow of 5-star customer reviews (Step 9, redesigned in Step 9F, made continuous in Step 9G).
 // Reads the latest published 5-star posts from feedback_posts (same table and 'published' rule as the Feedback page).
 // No database change: anon visitors can already read these columns (RLS policy "feedback_posts public read").
 // Hidden completely when there are no published 5-star reviews or the request fails.
 // Step 9C: the section fills exactly one screen (minus the header) and snaps into place.
 // Step 9F: one sharp card in the center, blurred cards on both sides; a card clears as it reaches the center.
 //          Only rating = 5 is shown. No CSS file change: all styling is Tailwind classes and inline styles.
+// Step 9G: no more "wait 5 s, then jump to the next card". The row now drifts left continuously at a slow, steady speed
+//          and loops forever. Size, blur and brightness are calculated every frame from each card's distance to the
+//          center, so a card sharpens smoothly while it travels to the middle. Clicks, dots, arrows and swipes glide
+//          to the chosen card, then the drift carries on. Pause on hover / touch is kept (it eases to a stop and back).
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Stars } from '@/lib/feedback';
 
-const MAX_REVIEWS = 12;      // newest published 5-star reviews used by the carousel
-const MIN_CARDS = 5;         // fewer reviews than this are repeated so the left/center/right cards always exist
-const MAX_CHARS = 220;       // long comments are cut here (the full text stays on the Feedback page)
-const AUTOPLAY_MS = 5000;    // time between automatic switches
-const SLIDE_MS = 1100;       // length of the slide + blur-to-sharp transition
+const MAX_REVIEWS = 12;          // newest published 5-star reviews used by the carousel
+const MIN_CARDS = 5;             // fewer reviews than this are repeated so the left/center/right cards always exist
+const MAX_CHARS = 220;           // long comments are cut here (the full text stays on the Feedback page)
+const DRIFT_MS_PER_CARD = 4500;  // SPEED: time the row takes to move by one card. Bigger = slower, smaller = faster.
+const GLIDE_MS = 450;            // how quickly a click / dot / arrow / swipe glides to its card (smaller = snappier)
+const EASE_MS = 350;             // how quickly the drift eases to a stop when paused and back up when resumed
 
 // Cut a comment at about MAX_CHARS, at a word boundary when there is one, and add an ellipsis.
 function shorten(text: string): string {
@@ -43,41 +48,46 @@ function useMedia(query: string): boolean {
   return matches;
 }
 
-function ReviewCard({ review, d, compact, reduce, onPick }: any) {
+// Position, size, blur and brightness of one card for a signed distance d from the center (in cards, can be a fraction).
+// Center: full size, sharp. One card away: smaller, blurred, dimmer. Two or more away: smaller still, and invisible.
+// Every value is blended smoothly between those points, which is what makes the movement look continuous.
+function cardLook(d: number, step: number) {
+  const abs = Math.abs(d);
+  let scale: number, blur: number, opacity: number;
+  if (abs <= 1) {
+    scale = 1 - 0.16 * abs;
+    blur = 6 * abs;
+    opacity = 1 - 0.4 * abs;
+  } else if (abs <= 2) {
+    scale = 0.84 - 0.14 * (abs - 1);
+    blur = 6 + 4 * (abs - 1);
+    opacity = 0.6 * (2 - abs);
+  } else {
+    scale = 0.7;
+    blur = 10;
+    opacity = 0;
+  }
+  return { abs, scale, blur, opacity, x: d * step };
+}
+
+// Static look of a card. Position, scale, blur and opacity are written straight onto the element by the animation
+// loop below (so React does not re-render 60 times a second); that is why none of them appear in this style object.
+function ReviewCard({ review, compact, setEl, onPick }: any) {
   const name = review.is_guest ? 'Guest' : review.display_name || 'Customer';
   const width = compact ? 250 : 340;
   const height = compact ? 310 : 330;
-  const step = compact ? 215 : 350;
-  const abs = Math.abs(d);
-  const isCenter = d === 0;
-  const isNear = abs === 1;
-
-  // Center: full size, sharp. Neighbors: smaller, blurred, dimmer. Everything further out waits invisible.
-  const scale = isCenter ? 1 : isNear ? 0.84 : 0.7;
-  const blur = isCenter ? 0 : isNear ? 6 : 10;
-  const opacity = isCenter ? 1 : isNear ? 0.6 : 0;
-  const transition = reduce
-    ? 'none'
-    : `transform ${SLIDE_MS}ms cubic-bezier(0.45, 0, 0.2, 1), filter ${SLIDE_MS}ms ease, opacity ${SLIDE_MS}ms ease`;
 
   return (
     <article
-      aria-hidden={isCenter ? undefined : 'true'}
+      ref={setEl}
       onClick={onPick}
-      className={`absolute left-1/2 top-1/2 flex flex-col overflow-hidden rounded-3xl border border-white/15 p-5 text-white shadow-[0_24px_60px_-20px_rgba(0,0,0,0.8)] sm:p-6 ${
-        isNear ? 'cursor-pointer' : ''
-      }`}
+      className="absolute left-1/2 top-1/2 flex flex-col overflow-hidden rounded-3xl border border-white/15 p-5 text-white shadow-[0_24px_60px_-20px_rgba(0,0,0,0.8)] sm:p-6"
       style={{
         width,
         height,
         background: 'linear-gradient(170deg, #5f9283 0%, #36645a 38%, #123027 72%, #0a1c16 100%)',
-        transform: `translate(-50%, -50%) translateX(${d * step}px) scale(${scale})`,
-        filter: `blur(${blur}px)`,
-        opacity,
-        zIndex: isCenter ? 30 : isNear ? 20 : 10,
-        pointerEvents: abs > 1 ? 'none' : 'auto',
-        transition,
         willChange: 'transform, filter, opacity',
+        visibility: 'hidden', // shown by the animation loop as soon as it has placed the card
       }}
     >
       {/* Big faded quote mark in the corner. */}
@@ -121,10 +131,19 @@ export function TestimonialsMarquee() {
   const [reviews, setReviews] = useState<any[] | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
   const [seen, setSeen] = useState(false);
-  const [active, setActive] = useState(0);
-  const [paused, setPaused] = useState(false);
+  const [active, setActive] = useState(0); // index of the card nearest the center (only used for the dots)
   const compact = useMedia('(max-width: 639px)');
   const reduce = useMedia('(prefers-reduced-motion: reduce)');
+
+  // Animation state lives in refs so moving the cards never causes a React re-render.
+  const posRef = useRef(0);            // which card is at the center, as a fraction (2.5 = halfway between card 2 and 3)
+  const targetRef = useRef<number | null>(null); // where a click / swipe is gliding to (null = just drifting)
+  const speedRef = useRef(1);          // 0 = stopped, 1 = full drift speed (eased)
+  const pausedRef = useRef(false);     // hover / touch pause
+  const onScreenRef = useRef(false);   // true while the section is on screen
+  const lastActiveRef = useRef(0);
+  const cardEls = useRef<any[]>([]);
+  const rafRef = useRef<number | null>(null);
 
   // Swipe / tap bookkeeping (refs so they never cause a re-render).
   const startX = useRef<number | null>(null);
@@ -154,20 +173,19 @@ export function TestimonialsMarquee() {
     };
   }, []);
 
-  // Fade in and start switching only when the section scrolls into view (same idea as the hero).
+  // Fade in the first time the section is on screen; keep tracking whether it is on screen so the drift only runs then.
   useEffect(() => {
     const el = sectionRef.current;
     if (!el) return;
     if (typeof IntersectionObserver === 'undefined') {
+      onScreenRef.current = true;
       setSeen(true);
       return;
     }
     const io = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          setSeen(true);
-          io.disconnect();
-        }
+        onScreenRef.current = entry.isIntersecting;
+        if (entry.isIntersecting) setSeen(true);
       },
       { threshold: 0.15 }
     );
@@ -183,27 +201,119 @@ export function TestimonialsMarquee() {
   }, [reviews]);
   const n = cards.length;
 
-  // Automatic slow switching. Off for "Reduce motion", while paused, and in a hidden browser tab.
+  // The animation loop: places every card each frame and, unless paused, moves the row slowly and steadily.
   useEffect(() => {
-    if (!seen || paused || reduce || n < 2) return;
-    const t = setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      setActive((a) => (a + 1) % n);
-    }, AUTOPLAY_MS);
-    return () => clearInterval(t);
-  }, [seen, paused, reduce, n]);
+    if (n === 0) return;
+    const step = compact ? 215 : 350;
+
+    // Write the position, scale, blur and brightness of every card for the current center position.
+    const place = () => {
+      const pos = posRef.current;
+      for (let i = 0; i < n; i++) {
+        const el = cardEls.current[i];
+        if (!el) continue;
+        // Signed distance from the center, wrapped so the row loops. The wrap point is half the row away,
+        // where cards are invisible, so nothing visibly jumps.
+        let d = (((i - pos) % n) + n) % n;
+        if (d > n / 2) d -= n;
+        const { abs, scale, blur, opacity, x } = cardLook(d, step);
+        if (opacity <= 0.005) {
+          if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
+          continue;
+        }
+        el.style.visibility = 'visible';
+        el.style.transform = `translate(-50%, -50%) translateX(${x.toFixed(2)}px) scale(${scale.toFixed(4)})`;
+        el.style.filter = blur < 0.05 ? 'none' : `blur(${blur.toFixed(2)}px)`;
+        el.style.opacity = opacity.toFixed(3);
+        el.style.zIndex = String(Math.max(1, Math.round(30 - abs * 10)));
+        el.style.pointerEvents = abs > 1.5 ? 'none' : 'auto';
+        el.style.cursor = abs > 0.5 ? 'pointer' : 'default';
+        const hide = abs > 0.5 ? 'true' : null;
+        if (el.getAttribute('aria-hidden') !== hide) {
+          if (hide) el.setAttribute('aria-hidden', 'true');
+          else el.removeAttribute('aria-hidden');
+        }
+      }
+      // Tell the dots which card is nearest the center (only re-renders when it actually changes).
+      const nearest = ((Math.round(pos) % n) + n) % n;
+      if (nearest !== lastActiveRef.current) {
+        lastActiveRef.current = nearest;
+        setActive(nearest);
+      }
+    };
+
+    place();
+    let last = 0;
+    const frame = (now: number) => {
+      rafRef.current = requestAnimationFrame(frame);
+      const dt = last ? Math.min(now - last, 50) : 16; // cap so coming back to a tab does not cause a leap
+      last = now;
+      if (!onScreenRef.current) return;
+
+      if (targetRef.current != null) {
+        // Gliding to a chosen card.
+        if (reduce) {
+          posRef.current = targetRef.current;
+        } else {
+          posRef.current += (targetRef.current - posRef.current) * (1 - Math.exp(-dt / (GLIDE_MS / 3)));
+        }
+        if (Math.abs(targetRef.current - posRef.current) < 0.002) {
+          posRef.current = targetRef.current;
+          targetRef.current = null;
+        }
+      } else if (!reduce) {
+        // Steady drift, eased to a stop while paused and eased back up when resumed.
+        const wanted = pausedRef.current ? 0 : 1;
+        speedRef.current += (wanted - speedRef.current) * (1 - Math.exp(-dt / EASE_MS));
+        posRef.current += (dt / DRIFT_MS_PER_CARD) * speedRef.current;
+      }
+      // Keep the number small so it never loses precision after hours on the page.
+      if (posRef.current >= n) {
+        posRef.current -= n;
+        if (targetRef.current != null) targetRef.current -= n;
+      } else if (posRef.current < 0) {
+        posRef.current += n;
+        if (targetRef.current != null) targetRef.current += n;
+      }
+      place();
+    };
+    rafRef.current = requestAnimationFrame(frame);
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    };
+  }, [n, compact, reduce]);
 
   useEffect(() => () => clearTimeout(resumeTimer.current), []);
 
   if (!reviews || reviews.length === 0) return null;
 
-  const go = (dir: number) => setActive((a) => (a + dir + n) % n);
-
-  // Signed distance of card i from the active one, wrapped so the row loops: -2 .. 2 for 5 cards.
-  const offsetOf = (i: number) => {
-    let d = (((i - active) % n) + n) % n;
+  // Shortest signed distance (in cards) from the current position to card index i, going whichever way is closer.
+  const deltaTo = (i: number) => {
+    let d = (((i - posRef.current) % n) + n) % n;
     if (d > n / 2) d -= n;
     return d;
+  };
+  const glideToCard = (i: number) => {
+    targetRef.current = posRef.current + deltaTo(i);
+  };
+  // For the dots: the nearest copy of review k (short lists are repeated, so there can be several).
+  const glideToReview = (k: number) => {
+    let best = k;
+    let bestAbs = Infinity;
+    for (let c = k; c < n; c += reviews.length) {
+      const a = Math.abs(deltaTo(c));
+      if (a < bestAbs) {
+        bestAbs = a;
+        best = c;
+      }
+    }
+    glideToCard(best);
+  };
+  // One card left / right. Repeated presses stack up from where the last glide is heading.
+  const go = (dir: number) => {
+    const base = targetRef.current != null ? targetRef.current : Math.round(posRef.current);
+    targetRef.current = base + dir;
   };
 
   const onPointerDown = (e: any) => {
@@ -211,7 +321,7 @@ export function TestimonialsMarquee() {
     dragged.current = false;
     if (e.pointerType !== 'mouse') {
       clearTimeout(resumeTimer.current);
-      setPaused(true);
+      pausedRef.current = true;
     }
   };
   const finishPointer = (e: any, clientX: number | null) => {
@@ -225,7 +335,9 @@ export function TestimonialsMarquee() {
     startX.current = null;
     if (e.pointerType !== 'mouse') {
       clearTimeout(resumeTimer.current);
-      resumeTimer.current = setTimeout(() => setPaused(false), 4000);
+      resumeTimer.current = setTimeout(() => {
+        pausedRef.current = false;
+      }, 4000);
     }
   };
 
@@ -254,31 +366,34 @@ export function TestimonialsMarquee() {
           if (e.key === 'ArrowRight') go(1);
           if (e.key === 'ArrowLeft') go(-1);
         }}
-        onPointerEnter={(e) => e.pointerType === 'mouse' && setPaused(true)}
-        onPointerLeave={(e) => e.pointerType === 'mouse' && setPaused(false)}
+        onPointerEnter={(e) => {
+          if (e.pointerType === 'mouse') pausedRef.current = true;
+        }}
+        onPointerLeave={(e) => {
+          if (e.pointerType === 'mouse') pausedRef.current = false;
+        }}
         onPointerDown={onPointerDown}
         onPointerUp={(e) => finishPointer(e, e.clientX)}
         onPointerCancel={(e) => finishPointer(e, null)}
       >
-        {cards.map((r, i) => {
-          const d = offsetOf(i);
-          return (
-            <ReviewCard
-              key={`${r.id}-${i}`}
-              review={r}
-              d={d}
-              compact={compact}
-              reduce={reduce}
-              onPick={() => {
-                if (dragged.current) {
-                  dragged.current = false;
-                  return;
-                }
-                if (d !== 0) setActive(i);
-              }}
-            />
-          );
-        })}
+        {cards.map((r, i) => (
+          <ReviewCard
+            key={`${r.id}-${i}`}
+            review={r}
+            compact={compact}
+            setEl={(el: any) => {
+              cardEls.current[i] = el;
+            }}
+            onPick={() => {
+              if (dragged.current) {
+                dragged.current = false;
+                return;
+              }
+              // Only side cards react to a tap; the center card is already the one being read.
+              if (Math.abs(deltaTo(i)) > 0.5) glideToCard(i);
+            }}
+          />
+        ))}
       </div>
 
       {reviews.length > 1 && (
@@ -289,7 +404,7 @@ export function TestimonialsMarquee() {
               type="button"
               aria-label={`Show review ${k + 1} of ${reviews.length}`}
               aria-current={k === dotsActive ? 'true' : undefined}
-              onClick={() => setActive(k)}
+              onClick={() => glideToReview(k)}
               className={`h-2 rounded-full transition-all duration-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-lime-400 ${
                 k === dotsActive ? 'w-6 bg-[#d4af37]' : 'w-2 bg-emerald-700/50 hover:bg-emerald-500/60'
               }`}
