@@ -17,7 +17,7 @@ import { requestCustomerGeocode } from '@/lib/order-geocode';
 import { useTimeSlots, slotHasEnded, slotOrderBlock, isStoreOpenNow, todayKeyManila, useMinuteTick, STORE_OPEN_LABEL } from '@/lib/time-slots';
 
 // SECTION 3: Main ordering experience, including menu browsing, checkout, order history, and loyalty UI.
-export function OrderingCounter({ orderHistory, setOrderHistory, resetKey, currentUser, onOrderPlacedSuccess, onOpenRegister, onOpenExtras }: any) {
+export function StoreData({ orderHistory, setOrderHistory, resetKey, currentUser, onOrderPlacedSuccess, onOpenRegister, onOpenExtras }: any) {
   // SECTION 4: Cart access and local state for menu browsing, promotions, loyalty, and slot availability.
   const [availablePromos, setAvailablePromos] = useState<any[]>([]);
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);

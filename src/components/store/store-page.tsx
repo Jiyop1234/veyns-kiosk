@@ -1,11 +1,11 @@
 // @ts-nocheck
 // StorePage — the storefront shell (Step 3).
-// Owns everything the store shows: header, menu (OrderingCounter for now),
+// Owns everything the store shows: header, menu (StoreData, formerly OrderingCounter),
 // feedback/extras overlays, account settings, order history and the recovery dialog.
 // App.tsx is only the auth gate and passes the auth-bridge props below.
 import React, { useState, useEffect } from 'react';
 import { SiteHeader } from '@/components/store/site-header';
-import { OrderingCounter } from '@/components/ordering-counter';
+import { StoreData } from '@/components/store/store-data';
 import { CartProvider } from '@/lib/cart';
 import { AccountSettingsDialog } from '@/components/store/account-settings-dialog';
 import { FeedbackPage } from '@/components/store/feedback-page';
@@ -123,7 +123,7 @@ export function StorePage({
           onOpenExtras={() => setShowExtras(true)}
         />
         <main className="flex-1">
-          <OrderingCounter
+          <StoreData
             onOpenExtras={() => setShowExtras(true)}
             orderHistory={orderHistory}
             setOrderHistory={updateOrderHistory}
