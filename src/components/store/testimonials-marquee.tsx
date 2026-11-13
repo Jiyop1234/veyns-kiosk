@@ -49,24 +49,21 @@ function useMedia(query: string): boolean {
 }
 
 // Position, size, blur and brightness of one card for a signed distance d from the center (in cards, can be a fraction).
-// Center: full size, sharp. One card away: smaller, blurred, dimmer. Two or more away: smaller still, and invisible.
-// Every value is blended smoothly between those points, which is what makes the movement look continuous.
+// Center: full size and perfectly sharp. As a card travels in, it clears up slowly; as it travels out, it blurs slowly.
+// Everything is blended with a smooth S-curve (smoothstep) so there is no sudden change anywhere, and there is a small
+// "dead zone" around the center where the card stays completely sharp.
+const SHARP_ZONE = 0.12;  // cards: how far from the center a card is still 100% sharp
+const MAX_BLUR = 8;       // px of blur on cards two positions away (about half of that at one position away)
+function smooth(t: number) {
+  const x = Math.min(1, Math.max(0, t));
+  return x * x * (3 - 2 * x);
+}
 function cardLook(d: number, step: number) {
   const abs = Math.abs(d);
-  let scale: number, blur: number, opacity: number;
-  if (abs <= 1) {
-    scale = 1 - 0.16 * abs;
-    blur = 6 * abs;
-    opacity = 1 - 0.4 * abs;
-  } else if (abs <= 2) {
-    scale = 0.84 - 0.14 * (abs - 1);
-    blur = 6 + 4 * (abs - 1);
-    opacity = 0.6 * (2 - abs);
-  } else {
-    scale = 0.7;
-    blur = 10;
-    opacity = 0;
-  }
+  const s = smooth((abs - SHARP_ZONE) / (2 - SHARP_ZONE)); // 0 at the center, 1 two cards away
+  const scale = 1 - 0.3 * s;                                // 1 at the center, 0.85 one away, 0.7 two away
+  const blur = MAX_BLUR * s;
+  const opacity = abs <= 1 ? 1 - 0.4 * smooth((abs - SHARP_ZONE) / (1 - SHARP_ZONE)) : Math.max(0, 0.6 * (2 - abs));
   return { abs, scale, blur, opacity, x: d * step };
 }
 
