@@ -2,6 +2,7 @@
 // HeroMarquee — two rows of food photos looping forever, with "Explore menu" in the middle (Step 8).
 // Top row moves left to right, bottom row right to left. Pure CSS animation (see home-page.css).
 // Step 8A: it sits below the welcome section and only fades in and starts moving once it scrolls into view.
+// Step 8D: tall portrait tiles packed tightly, the button sits on the seam between the two rows, soft fade at both edges.
 // Photos come from menu_items.image_url, falling back to the bundled images in lib/menu-images.ts.
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -33,14 +34,14 @@ function Row({ tiles, direction, seconds, running }: { tiles: (string | null)[];
             {tiles.map((src, i) => (
               <div
                 key={i}
-                className="relative h-36 w-52 shrink-0 overflow-hidden rounded-2xl bg-[#0d2e26] sm:h-52 sm:w-72"
+                className="relative h-44 w-36 shrink-0 overflow-hidden rounded-lg bg-[#0d2e26] sm:h-64 sm:w-52 lg:h-72 lg:w-60"
               >
                 {src && (
                   <img
                     src={src}
                     alt=""
-                    width={288}
-                    height={208}
+                    width={240}
+                    height={288}
                     loading="lazy"
                     decoding="async"
                     draggable={false}
@@ -122,26 +123,38 @@ export function HeroMarquee() {
       id="home-hero"
       ref={sectionRef}
       aria-label="Featured dishes"
-      className={`relative overflow-hidden bg-[#03120d] py-6 transition-opacity duration-700 motion-reduce:transition-none sm:py-10 ${seen ? 'opacity-100' : 'opacity-0'}`}
+      className={`relative overflow-hidden bg-[#03120d] py-4 transition-opacity duration-700 motion-reduce:transition-none sm:py-6 ${seen ? 'opacity-100' : 'opacity-0'}`}
     >
-      <Row tiles={top} direction="ltr" seconds={70} running={seen} />
+      {/* The two rows sit almost touching; the button is centered on the seam between them. */}
+      <div className="relative flex flex-col gap-2 sm:gap-2.5">
+        <Row tiles={top} direction="ltr" seconds={60} running={seen} />
+        <Row tiles={bottom} direction="rtl" seconds={60} running={seen} />
 
-      <div className="relative z-10 flex justify-center py-8 sm:py-12">
-        {/* Soft dark pool behind the button so it stays readable over the photos. */}
+        {/* Soft fade at both edges. */}
         <div
           aria-hidden="true"
-          className="absolute inset-x-0 top-1/2 h-44 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgba(3,18,13,0.95)_25%,transparent_70%)]"
+          className="pointer-events-none absolute inset-y-0 left-0 z-[5] w-12 bg-gradient-to-r from-[#03120d] to-transparent sm:w-32"
         />
-        <button
-          type="button"
-          onClick={scrollToMenu}
-          className="relative rounded-full bg-lime-400 px-10 py-5 font-display text-lg font-bold text-[#03120d] shadow-[0_10px_40px_-10px_rgba(163,230,53,0.6)] transition-transform duration-200 hover:scale-[1.03] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white active:scale-[0.98] sm:px-14 sm:py-6 sm:text-2xl"
-        >
-          Explore menu
-        </button>
-      </div>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 right-0 z-[5] w-12 bg-gradient-to-l from-[#03120d] to-transparent sm:w-32"
+        />
 
-      <Row tiles={bottom} direction="rtl" seconds={70} running={seen} />
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          {/* Light dark pool behind the button so it stays readable over the photos. */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-x-0 top-1/2 h-40 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgba(3,18,13,0.6)_15%,transparent_70%)]"
+          />
+          <button
+            type="button"
+            onClick={scrollToMenu}
+            className="pointer-events-auto relative rounded-full bg-lime-400 px-10 py-5 font-display text-lg font-bold text-[#03120d] shadow-[0_10px_40px_-10px_rgba(163,230,53,0.6)] transition-transform duration-200 hover:scale-[1.03] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white active:scale-[0.98] sm:px-14 sm:py-6 sm:text-2xl"
+          >
+            Explore menu
+          </button>
+        </div>
+      </div>
     </section>
   );
 }
