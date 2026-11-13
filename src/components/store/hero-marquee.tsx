@@ -6,7 +6,7 @@
 // Step 9A: a centered heading block above the rows, and the button is now see-through glass that lights up lime when touched.
 // Step 9B: the button is small, rectangular, all capitals, and almost fully see-through; the dark pool behind it is gone so the photos show through.
 // Step 9C: the section fills exactly one screen (minus the header) and snaps into place; tile size follows the screen height (see home-page.css).
-// Step 9D: the heading block (title, divider, paragraph) rises in from blurred and transparent each time it scrolls into view.
+// Step 9D/9E: the heading block (title, divider, paragraph) fades in and rises each time it scrolls into view (no blur).
 // Photos come from menu_items.image_url, falling back to the bundled images in lib/menu-images.ts.
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -68,7 +68,7 @@ export function HeroMarquee() {
   // false until the hero scrolls into view; then the rows fade in and start moving.
   const sectionRef = useRef<HTMLElement>(null);
   const [seen, setSeen] = useState(false);
-  // Heading block: true while it is on screen, so the blur-to-sharp rise plays again on every visit.
+  // Heading block: true while it is on screen, so the fade-in and rise plays again on every visit.
   const headingRef = useRef<HTMLDivElement>(null);
   const [headingIn, setHeadingIn] = useState(false);
 
@@ -103,9 +103,9 @@ export function HeroMarquee() {
     const io = new IntersectionObserver(
       ([entry]) => {
         if (entry.intersectionRatio >= 0.5) setHeadingIn(true); // half of it is on screen: play
-        else if (entry.intersectionRatio === 0) setHeadingIn(false); // fully gone: get ready to play again
+        else if (entry.intersectionRatio < 0.25) setHeadingIn(false); // mostly gone: get ready to play again
       },
-      { threshold: [0, 0.5] }
+      { threshold: [0, 0.25, 0.5] }
     );
     io.observe(el);
     return () => io.disconnect();
@@ -139,9 +139,9 @@ export function HeroMarquee() {
     };
   }, []);
 
-  // Blurred, transparent and 24px low at rest; sharp, opaque and in place when visible. Each piece starts a little later.
+  // Transparent and 24px low at rest; opaque and in place when visible. Each piece starts a little later.
   const reveal = (delayMs: number) => ({
-    className: `transition-[opacity,filter,transform] duration-1000 ease-out ${headingIn ? 'translate-y-0 opacity-100 blur-0' : 'translate-y-6 opacity-0 blur-md'}`,
+    className: `transition-[opacity,transform] duration-1000 ease-out ${headingIn ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'}`,
     style: { transitionDelay: headingIn ? `${delayMs}ms` : '0ms' },
   });
 
