@@ -124,7 +124,7 @@ export function StorePage({
           onOpenExtras={() => setShowExtras(true)}
         />
         <main className="flex-1">
-          <HomePage />
+          <HomePage currentUser={currentUser} />
           {/* Scroll target for the hero's "Explore menu" button. Zero height, no layout change. */}
           <div id="menu" className="scroll-mt-20" />
           <StoreData

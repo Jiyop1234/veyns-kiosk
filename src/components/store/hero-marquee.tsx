@@ -1,8 +1,9 @@
 // @ts-nocheck
 // HeroMarquee — two rows of food photos looping forever, with "Explore menu" in the middle (Step 8).
 // Top row moves left to right, bottom row right to left. Pure CSS animation (see home-page.css).
+// Step 8A: it sits below the welcome section and only fades in and starts moving once it scrolls into view.
 // Photos come from menu_items.image_url, falling back to the bundled images in lib/menu-images.ts.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { menuImages } from '@/lib/menu-images';
 
@@ -19,12 +20,12 @@ function scrollToMenu() {
   document.getElementById('menu')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
 }
 
-function Row({ tiles, direction, seconds }: { tiles: (string | null)[]; direction: 'ltr' | 'rtl'; seconds: number }) {
+function Row({ tiles, direction, seconds, running }: { tiles: (string | null)[]; direction: 'ltr' | 'rtl'; seconds: number; running: boolean }) {
   return (
     <div className="veyns-marquee" aria-hidden="true">
       <div
         className={`veyns-marquee-track ${direction === 'ltr' ? 'veyns-marquee-ltr' : 'veyns-marquee-rtl'}`}
-        style={{ ['--marquee-duration' as any]: `${seconds}s` }}
+        style={{ ['--marquee-duration' as any]: `${seconds}s`, animationPlayState: running ? 'running' : 'paused' }}
       >
         {/* Two identical groups: the track slides by exactly one group, then starts over. */}
         {[0, 1].map((copy) => (
@@ -59,6 +60,29 @@ function Row({ tiles, direction, seconds }: { tiles: (string | null)[]; directio
 export function HeroMarquee() {
   // null = still loading (dark placeholder tiles); an array = ready (possibly the bundled fallback).
   const [photos, setPhotos] = useState<string[] | null>(null);
+  // false until the hero scrolls into view; then the rows fade in and start moving.
+  const sectionRef = useRef<HTMLElement>(null);
+  const [seen, setSeen] = useState(false);
+
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setSeen(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setSeen(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.15 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -94,8 +118,13 @@ export function HeroMarquee() {
   const bottom = pick(list, Math.floor(list.length / 2) + PER_ROW);
 
   return (
-    <section aria-label="Featured dishes" className="relative overflow-hidden bg-[#071F19] py-6 sm:py-10">
-      <Row tiles={top} direction="ltr" seconds={70} />
+    <section
+      id="home-hero"
+      ref={sectionRef}
+      aria-label="Featured dishes"
+      className={`relative overflow-hidden bg-[#071F19] py-6 transition-opacity duration-700 motion-reduce:transition-none sm:py-10 ${seen ? 'opacity-100' : 'opacity-0'}`}
+    >
+      <Row tiles={top} direction="ltr" seconds={70} running={seen} />
 
       <div className="relative z-10 flex justify-center py-8 sm:py-12">
         {/* Soft dark pool behind the button so it stays readable over the photos. */}
@@ -112,7 +141,7 @@ export function HeroMarquee() {
         </button>
       </div>
 
-      <Row tiles={bottom} direction="rtl" seconds={70} />
+      <Row tiles={bottom} direction="rtl" seconds={70} running={seen} />
     </section>
   );
 }
