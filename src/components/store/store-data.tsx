@@ -17,7 +17,7 @@ import { requestCustomerGeocode } from '@/lib/order-geocode';
 import { useTimeSlots, slotHasEnded, slotOrderBlock, isStoreOpenNow, todayKeyManila, useMinuteTick, STORE_OPEN_LABEL } from '@/lib/time-slots';
 
 // SECTION 3: Main ordering experience, including menu browsing, checkout, order history, and loyalty UI.
-export function StoreData({ orderHistory, setOrderHistory, resetKey, currentUser, onOrderPlacedSuccess, onOpenRegister, onOpenExtras }: any) {
+export function StoreData({ orderHistory, setOrderHistory, resetKey, currentUser, onOrderPlacedSuccess, onOpenRegister, onOpenExtras, openCheckoutTick = 0 }: any) {
   // SECTION 4: Cart access and local state for menu browsing, promotions, loyalty, and slot availability.
   const [availablePromos, setAvailablePromos] = useState<any[]>([]);
   const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
@@ -170,6 +170,10 @@ export function StoreData({ orderHistory, setOrderHistory, resetKey, currentUser
       setShowCheckout(false);
     }
   }, [resetKey]);
+  // The header's cart icon asks to open checkout by bumping openCheckoutTick.
+  useEffect(() => {
+    if (openCheckoutTick > 0) setShowCheckout(true);
+  }, [openCheckoutTick]);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">

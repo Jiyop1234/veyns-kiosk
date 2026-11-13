@@ -35,6 +35,8 @@ export function StorePage({
   const [showMyOrders, setShowMyOrders] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showExtras, setShowExtras] = useState(false);
+  // The header's cart icon bumps this; StoreData opens checkout when it changes.
+  const [openCheckoutTick, setOpenCheckoutTick] = useState(0);
 
   // Account Settings dialog: open flag + which section it should start on.
   const [showAccountSettings, setShowAccountSettings] = useState(false);
@@ -94,6 +96,12 @@ export function StorePage({
     setResetTrigger((prev) => prev + 1);
   };
 
+  // Home and Menu in the header close the Feedback and Extras pages first.
+  const closeOverlays = () => {
+    setShowFeedback(false);
+    setShowExtras(false);
+  };
+
   const recordOrderForLoyalty = async () => {
     if (currentUser && currentUser.type !== 'guest') await loadUserStampsAndPenalties(currentUser);
   };
@@ -110,7 +118,7 @@ export function StorePage({
 
   return (
     <CartProvider>
-      <div className="min-h-screen bg-[#071F19] text-white flex flex-col">
+      <div className="min-h-screen bg-[#03120d] text-white flex flex-col">
         <SiteHeader
           onOpenOrders={() => setShowMyOrders(true)}
           onResetMenu={handleResetMenu}
@@ -122,6 +130,8 @@ export function StorePage({
           onExitGuest={onLogout}
           onOpenFeedback={() => setShowFeedback(true)}
           onOpenExtras={() => setShowExtras(true)}
+          onOpenCart={() => setOpenCheckoutTick((t) => t + 1)}
+          onCloseOverlays={closeOverlays}
         />
         <main className="flex-1">
           <HomePage currentUser={currentUser} />
@@ -135,6 +145,7 @@ export function StorePage({
             currentUser={currentUser}
             onOrderPlacedSuccess={recordOrderForLoyalty}
             onOpenRegister={onOpenSignUp}
+            openCheckoutTick={openCheckoutTick}
           />
         </main>
         {showFeedback && <FeedbackPage onBack={() => setShowFeedback(false)} currentUser={currentUser} />}

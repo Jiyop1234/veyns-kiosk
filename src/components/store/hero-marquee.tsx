@@ -122,7 +122,7 @@ export function HeroMarquee() {
       id="home-hero"
       ref={sectionRef}
       aria-label="Featured dishes"
-      className={`relative overflow-hidden bg-[#071F19] py-6 transition-opacity duration-700 motion-reduce:transition-none sm:py-10 ${seen ? 'opacity-100' : 'opacity-0'}`}
+      className={`relative overflow-hidden bg-[#03120d] py-6 transition-opacity duration-700 motion-reduce:transition-none sm:py-10 ${seen ? 'opacity-100' : 'opacity-0'}`}
     >
       <Row tiles={top} direction="ltr" seconds={70} running={seen} />
 
@@ -130,7 +130,7 @@ export function HeroMarquee() {
         {/* Soft dark pool behind the button so it stays readable over the photos. */}
         <div
           aria-hidden="true"
-          className="absolute inset-x-0 top-1/2 h-44 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgba(7,31,25,0.95)_25%,transparent_70%)]"
+          className="absolute inset-x-0 top-1/2 h-44 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgba(3,18,13,0.95)_25%,transparent_70%)]"
         />
         <button
           type="button"

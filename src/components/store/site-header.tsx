@@ -1,153 +1,247 @@
 // @ts-nocheck
+// SiteHeader — Step 8C redesign.
+// No logo and no greeting. Home / Menu / Feedback in the center; cart, order history and profile icons on the right.
+// On phones the three links move into a menu button on the left. Same color as the page (#03120d).
 import React, { useState, useRef, useEffect } from 'react';
-import { Lock, LogOut, ShoppingBag, UtensilsCrossed, Settings, UserPlus, User, Edit3, KeyRound, ChevronDown, Facebook, Instagram, MessageSquare } from 'lucide-react';
-import { useCart } from "@/lib/cart";
-import { Button } from "@/components/ui/button";
+import { LogOut, ShoppingCart, History, User, UserPlus, Settings, Edit3, KeyRound, ChevronDown, Menu as MenuIcon, X } from 'lucide-react';
+import { useCart } from '@/lib/cart';
 
-export function SiteHeader({ 
-  onOpenOrders, 
-  onResetMenu, 
-  currentUser, 
-  onOpenLoyalty, 
+const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const scrollBehavior = () => (reducedMotion() ? 'auto' : 'smooth');
+
+const FOCUS = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime-400';
+const LINK = `rounded-full px-4 py-2 text-sm font-semibold text-emerald-100/80 transition-colors hover:text-lime-400 cursor-pointer ${FOCUS}`;
+const ICON_BTN = `relative flex size-10 items-center justify-center rounded-full text-white transition-colors hover:bg-[#0d2e26] hover:text-lime-400 cursor-pointer ${FOCUS}`;
+const ITEM = 'w-full text-left px-3 py-2 rounded-xl text-white hover:bg-[#082d22] hover:text-lime-400 transition-colors flex items-center gap-2 font-semibold cursor-pointer';
+
+export function SiteHeader({
+  onOpenOrders,
+  onResetMenu,
+  currentUser,
   onLogout,
   onOpenAccountSettings,
   onOpenSignUp,
   onExitGuest,
   onOpenFeedback,
-  onOpenExtras
-}: { 
-  onOpenOrders?: () => void; 
-  onResetMenu?: () => void; 
-  currentUser?: any; 
-  onOpenLoyalty?: () => void; 
+  onOpenCart,
+  onCloseOverlays
+}: {
+  onOpenOrders?: () => void;
+  onResetMenu?: () => void;
+  currentUser?: any;
   onLogout?: () => void;
   onOpenAccountSettings?: (tab?: 'update' | 'password' | 'nickname') => void;
   onOpenSignUp?: () => void;
   onExitGuest?: () => void;
   onOpenFeedback?: () => void;
+  onOpenCart?: () => void;
+  onCloseOverlays?: () => void;
+  // Still passed by store-page but no longer used by the header (the old header did not use them either).
+  onOpenLoyalty?: () => void;
   onOpenExtras?: () => void;
 }) {
   const cart = useCart() || {};
   const count = cart.count || 0;
-  
   const isGuest = !currentUser || currentUser?.type === 'guest';
-  const nickname = currentUser?.name && currentUser.name !== 'Valued Customer' 
-    ? currentUser.name.split(' ')[0] 
-    : (currentUser?.email ? currentUser.email.split('@')[0].toUpperCase() : 'USER');
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [accountSubmenuOpen, setAccountSubmenuOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [cartHint, setCartHint] = useState(false);
 
-  // Close dropdown when clicking outside
+  const mobileRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+  const cartRef = useRef<HTMLDivElement>(null);
+  const hintTimer = useRef<number | undefined>(undefined);
+
+  // A thin line appears under the header only once the page has scrolled.
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setSettingsOpen(false);
-        setAccountSubmenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // Close any open dropdown on an outside click or Escape.
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (mobileRef.current && !mobileRef.current.contains(t)) setMobileOpen(false);
+      if (profileRef.current && !profileRef.current.contains(t)) {
+        setProfileOpen(false);
+        setAccountSubmenuOpen(false);
+      }
+      if (cartRef.current && !cartRef.current.contains(t)) setCartHint(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileOpen(false);
+        setProfileOpen(false);
+        setAccountSubmenuOpen(false);
+        setCartHint(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, []);
+
+  useEffect(() => () => window.clearTimeout(hintTimer.current), []);
+
+  const closeAll = () => {
+    setMobileOpen(false);
+    setProfileOpen(false);
+    setAccountSubmenuOpen(false);
+    setCartHint(false);
+  };
+
+  // Home: close overlays and dialogs, reset the menu (what the old logo did), then scroll to the top.
+  const goHome = () => {
+    closeAll();
+    if (onCloseOverlays) onCloseOverlays();
+    if (onResetMenu) onResetMenu();
+    window.scrollTo({ top: 0, behavior: scrollBehavior() });
+  };
+
+  // Menu: same target as the hero's "Explore menu" button.
+  const goMenu = () => {
+    closeAll();
+    if (onCloseOverlays) onCloseOverlays();
+    document.getElementById('menu')?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
+  };
+
+  const openFeedback = () => {
+    closeAll();
+    if (onOpenFeedback) onOpenFeedback();
+  };
+
+  // Cart: opens checkout when there is something in it, otherwise shows a short "empty" note.
+  const handleCart = () => {
+    setMobileOpen(false);
+    setProfileOpen(false);
+    if (count > 0) {
+      setCartHint(false);
+      if (onOpenCart) onOpenCart();
+      return;
+    }
+    setCartHint(true);
+    window.clearTimeout(hintTimer.current);
+    hintTimer.current = window.setTimeout(() => setCartHint(false), 3000);
+  };
+
+  const handleHistory = () => {
+    closeAll();
+    if (onOpenOrders) onOpenOrders();
+  };
+
   return (
-    <header className="sticky top-0 z-40 border-b border-emerald-900/60 bg-[#03120d]">
-      <div className="mx-auto flex h-auto min-h-[5rem] max-w-[1440px] items-center justify-between px-3 py-3 sm:px-8">
-        <a href="/" onClick={(e) => { e.preventDefault(); if (onResetMenu) onResetMenu(); }} className="flex items-center gap-2 cursor-pointer shrink-0">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-lime-400 text-black">
-            <UtensilsCrossed className="size-4" />
-          </span>
-          <span className="font-display text-xl sm:text-2xl font-extrabold text-white">VEYNS<span className="text-lime-400">.</span></span>
-        </a>
-
-        <nav className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm font-medium flex-wrap justify-end relative">
-          
-          {/* Non-clickable Greeting for Guest or Regular Customer */}
-          {isGuest ? (
-            <span 
-              className="text-lime-400 font-extrabold text-xs sm:text-sm tracking-wide select-none"
-            >
-              Hi, GUEST!
-            </span>
-          ) : currentUser ? (
-            <span 
-              className="text-lime-400 font-extrabold text-xs sm:text-sm tracking-wide select-none"
-            >
-              Hi, {nickname}
-            </span>
-          ) : null}
-
-          {/* Customer Feedback / Reviews */}
-          <Button
-            variant="outline"
-            onClick={onOpenFeedback}
-            className="flex items-center gap-1.5 bg-[#061d16] border-emerald-700/80 text-white hover:border-lime-400 hover:bg-[#082a20] cursor-pointer px-3 sm:px-4 py-1.5 h-9 text-xs rounded-full"
-            title="Feedback"
+    <header className={`sticky top-0 z-40 bg-[#03120d] border-b transition-colors duration-200 ${scrolled ? 'border-emerald-900/60' : 'border-transparent'}`}>
+      <div className="relative mx-auto grid h-16 max-w-[1440px] grid-cols-[1fr_auto_1fr] items-center px-3 sm:h-20 sm:px-8">
+        {/* Left: menu button on phones only (holds Home, Menu, Feedback). */}
+        <div className="col-start-1 flex items-center justify-start" ref={mobileRef}>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileOpen(!mobileOpen);
+              setProfileOpen(false);
+              setCartHint(false);
+            }}
+            className={`${ICON_BTN} md:hidden`}
+            aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}
+            aria-expanded={mobileOpen}
+            title="Menu"
           >
-            <MessageSquare className="size-4 text-lime-400 shrink-0" />
-            <span className="hidden sm:inline">Feedback</span>
-          </Button>
+            {mobileOpen ? <X className="size-5" /> : <MenuIcon className="size-5" />}
+          </button>
 
-          {/* Oval My Order / Shopping Bag Button */}
-          <Button 
-            variant="outline"
-            onClick={onOpenOrders}
-            className="relative flex items-center gap-1.5 bg-[#061d16] border-emerald-700/80 text-white hover:border-lime-400 hover:bg-[#082a20] cursor-pointer px-3 sm:px-4 py-1.5 h-9 text-xs rounded-full"
-            title="My order"
-          >
-            <ShoppingBag className="size-4 text-lime-400 shrink-0" />
-            <span className="hidden sm:inline">My order</span>
-            {count > 0 && (
-              <span className="absolute -right-1 -top-1 flex size-4 sm:size-5 items-center justify-center rounded-full bg-lime-400 text-[10px] sm:text-xs font-bold text-black">
-                {count}
-              </span>
-            )}
-          </Button>
+          {mobileOpen && (
+            <div className="absolute left-3 top-full mt-1 w-52 rounded-2xl border border-emerald-800/80 bg-[#051813] p-2 text-sm shadow-2xl z-50 md:hidden">
+              <button type="button" onClick={goHome} className={ITEM}>Home</button>
+              <button type="button" onClick={goMenu} className={ITEM}>Menu</button>
+              <button type="button" onClick={openFeedback} className={ITEM}>Feedback</button>
+            </div>
+          )}
+        </div>
 
-          {/* Settings Dropdown Button */}
-          <div className="relative" ref={dropdownRef}>
-            <Button 
-              variant="ghost" 
-              onClick={() => {
-                setSettingsOpen(!settingsOpen);
-                setAccountSubmenuOpen(false);
-              }}
-              className="text-white hover:text-lime-400 hover:bg-[#061d16] rounded-full px-2.5 sm:px-3 py-1.5 cursor-pointer transition-colors text-xs sm:text-sm h-9 flex items-center gap-1.5"
-              title="Settings"
+        {/* Center: main links (tablet and desktop). */}
+        <nav aria-label="Main" className="col-start-2 hidden items-center gap-1 md:flex">
+          <button type="button" onClick={goHome} className={LINK}>Home</button>
+          <button type="button" onClick={goMenu} className={LINK}>Menu</button>
+          <button type="button" onClick={openFeedback} className={LINK}>Feedback</button>
+        </nav>
+
+        {/* Right: cart, order history, profile. */}
+        <div className="col-start-3 flex items-center justify-end gap-1 sm:gap-2">
+          <div className="relative" ref={cartRef}>
+            <button
+              type="button"
+              onClick={handleCart}
+              className={ICON_BTN}
+              aria-label={count > 0 ? `Cart, ${count} item${count === 1 ? '' : 's'}` : 'Cart'}
+              title="Cart"
             >
-              <Settings className="size-4 text-lime-400 shrink-0" />
-              <span className="hidden sm:inline">Settings</span>
-              <ChevronDown className={`size-3 transition-transform hidden sm:inline ${settingsOpen ? 'rotate-180' : ''}`} />
-            </Button>
+              <ShoppingCart className="size-5" />
+              {count > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-lime-400 text-[11px] font-bold text-black">
+                  {count}
+                </span>
+              )}
+            </button>
 
-            {settingsOpen && (
-              <div className="absolute right-0 mt-2 w-64 bg-[#051813] border border-emerald-800/80 rounded-2xl shadow-2xl p-2 z-50 text-xs space-y-1">
-                {/* Menu Option */}
-                <button
-                  onClick={() => {
-                    if (onResetMenu) onResetMenu();
-                    setSettingsOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-xl text-white hover:bg-[#082d22] hover:text-lime-400 transition-colors flex items-center gap-2 font-semibold cursor-pointer"
-                >
-                  <UtensilsCrossed className="size-3.5 text-lime-400" /> Menu
+            {cartHint && (
+              <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-emerald-800/80 bg-[#051813] p-3 text-xs shadow-2xl z-50" role="status">
+                <p className="font-semibold text-white">Your cart is empty.</p>
+                <button type="button" onClick={goMenu} className="mt-2 font-semibold text-lime-400 hover:underline cursor-pointer">
+                  Browse the menu
                 </button>
+              </div>
+            )}
+          </div>
 
+          <button type="button" onClick={handleHistory} className={ICON_BTN} aria-label="Order history" title="Order history">
+            <History className="size-5" />
+          </button>
+
+          <div className="relative" ref={profileRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setProfileOpen(!profileOpen);
+                setAccountSubmenuOpen(false);
+                setMobileOpen(false);
+                setCartHint(false);
+              }}
+              className={ICON_BTN}
+              aria-label="Profile"
+              aria-haspopup="menu"
+              aria-expanded={profileOpen}
+              title="Profile"
+            >
+              <User className="size-5" />
+            </button>
+
+            {profileOpen && (
+              <div className="absolute right-0 mt-2 w-64 space-y-1 rounded-2xl border border-emerald-800/80 bg-[#051813] p-2 text-xs shadow-2xl z-50" role="menu">
                 {isGuest ? (
                   <>
                     <button
+                      type="button"
                       onClick={() => {
-                        setSettingsOpen(false);
+                        closeAll();
                         if (onOpenSignUp) onOpenSignUp();
                       }}
-                      className="w-full text-left px-3 py-2 rounded-xl text-white hover:bg-[#082d22] hover:text-lime-400 transition-colors flex items-center gap-2 font-semibold cursor-pointer"
+                      className={ITEM}
                     >
                       <UserPlus className="size-3.5 text-lime-400" /> Create an Account
                     </button>
                     <button
+                      type="button"
                       onClick={() => {
-                        setSettingsOpen(false);
+                        closeAll();
                         if (onExitGuest) onExitGuest();
                       }}
                       className="w-full text-left px-3 py-2 rounded-xl text-red-400 hover:bg-red-950/40 transition-colors flex items-center gap-2 font-semibold cursor-pointer border-t border-emerald-900/60 mt-1 pt-2"
@@ -157,11 +251,12 @@ export function SiteHeader({
                   </>
                 ) : (
                   <>
-                    {/* My Account Submenu / Toggle */}
-                    <div className="border-t border-emerald-900/60 pt-1 mt-1">
+                    <div>
                       <button
+                        type="button"
                         onClick={() => setAccountSubmenuOpen(!accountSubmenuOpen)}
                         className="w-full text-left px-3 py-2 rounded-xl text-white hover:bg-[#082d22] hover:text-lime-400 transition-colors flex items-center justify-between font-semibold cursor-pointer"
+                        aria-expanded={accountSubmenuOpen}
                       >
                         <span className="flex items-center gap-2">
                           <Settings className="size-3.5 text-lime-400" /> My Account
@@ -172,9 +267,9 @@ export function SiteHeader({
                       {accountSubmenuOpen && (
                         <div className="pl-4 py-1 space-y-1 border-l border-emerald-800/60 ml-3 my-1">
                           <button
+                            type="button"
                             onClick={() => {
-                              setSettingsOpen(false);
-                              setAccountSubmenuOpen(false);
+                              closeAll();
                               if (onOpenAccountSettings) onOpenAccountSettings('nickname');
                             }}
                             className="w-full text-left px-2.5 py-1.5 rounded-lg text-emerald-200 hover:bg-[#082d22] hover:text-lime-400 flex items-center gap-2 cursor-pointer font-medium"
@@ -182,9 +277,9 @@ export function SiteHeader({
                             <User className="size-3 text-lime-400" /> Edit Nickname
                           </button>
                           <button
+                            type="button"
                             onClick={() => {
-                              setSettingsOpen(false);
-                              setAccountSubmenuOpen(false);
+                              closeAll();
                               if (onOpenAccountSettings) onOpenAccountSettings('update');
                             }}
                             className="w-full text-left px-2.5 py-1.5 rounded-lg text-emerald-200 hover:bg-[#082d22] hover:text-lime-400 flex items-center gap-2 cursor-pointer font-medium"
@@ -192,9 +287,9 @@ export function SiteHeader({
                             <Edit3 className="size-3 text-lime-400" /> Update Email
                           </button>
                           <button
+                            type="button"
                             onClick={() => {
-                              setSettingsOpen(false);
-                              setAccountSubmenuOpen(false);
+                              closeAll();
                               if (onOpenAccountSettings) onOpenAccountSettings('password');
                             }}
                             className="w-full text-left px-2.5 py-1.5 rounded-lg text-emerald-200 hover:bg-[#082d22] hover:text-amber-400 flex items-center gap-2 cursor-pointer font-medium"
@@ -205,10 +300,10 @@ export function SiteHeader({
                       )}
                     </div>
 
-                    {/* Log Out button */}
                     <button
+                      type="button"
                       onClick={() => {
-                        setSettingsOpen(false);
+                        closeAll();
                         if (onLogout) onLogout();
                       }}
                       className="w-full text-left px-3 py-2 rounded-xl text-red-400 hover:bg-red-950/40 transition-colors flex items-center gap-2 font-semibold cursor-pointer border-t border-emerald-900/60 mt-1 pt-2"
@@ -220,7 +315,7 @@ export function SiteHeader({
               </div>
             )}
           </div>
-        </nav>
+        </div>
       </div>
     </header>
   );
