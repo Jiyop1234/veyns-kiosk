@@ -2,6 +2,7 @@
 // WelcomeSection — the first screen of the store (Step 8A, replaces welcome-modal.tsx).
 // 'Hi, [nickname]!' and 'Welcome back.' on the plain page background. It stays on the page (no timer,
 // no box). The hero image marquee sits below it and only shows once the customer scrolls down.
+// Step 8E: a see-through, shining 'Scroll down' text sits above the bouncing arrow (styles in home-page.css).
 import React, { useEffect, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -63,8 +64,9 @@ export function WelcomeSection({ currentUser }: { currentUser?: any }) {
         type='button'
         onClick={scrollDown}
         aria-label='Scroll down to the menu'
-        className='absolute bottom-6 text-emerald-300/70 transition-colors hover:text-lime-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white'
+        className='absolute bottom-6 flex flex-col items-center gap-1 text-emerald-300/70 transition-colors hover:text-lime-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white'
       >
+        <span className='veyns-shine-text text-sm font-semibold uppercase tracking-[0.3em] sm:text-base'>Scroll down</span>
         <ChevronDown className='h-8 w-8 animate-bounce motion-reduce:animate-none' />
       </button>
     </section>
