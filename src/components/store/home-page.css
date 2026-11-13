@@ -92,3 +92,21 @@
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
   animation: veyns-shine 3.2s linear infinite;
 }
+
+/* Step 9, testimonials row: wider gaps between review cards than between photo tiles (rule is more specific than .veyns-marquee, so it wins at every width). */
+.veyns-marquee.veyns-testimonials { --gap: 1rem; }
+@media (min-width: 640px) {
+  .veyns-marquee.veyns-testimonials { --gap: 1.25rem; }
+}
+
+/* Stay paused until the row has scrolled into view; pause under the mouse so a review can be read. */
+.veyns-testimonials[data-running='false'] .veyns-marquee-track { animation-play-state: paused; }
+@media (hover: hover) {
+  .veyns-testimonials:hover .veyns-marquee-track { animation-play-state: paused; }
+}
+
+/* Reduced motion: a still row that scrolls by hand, without the duplicate copy of the reviews. */
+@media (prefers-reduced-motion: reduce) {
+  .veyns-testimonials .veyns-marquee-group[aria-hidden='true'] { display: none; }
+  .veyns-testimonials .veyns-marquee-track { padding: 0 1rem; }
+}
