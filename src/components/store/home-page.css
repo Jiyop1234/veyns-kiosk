@@ -110,3 +110,41 @@
   .veyns-testimonials .veyns-marquee-group[aria-hidden='true'] { display: none; }
   .veyns-testimonials .veyns-marquee-track { padding: 0 1rem; }
 }
+
+/* Step 9A, "Explore menu" glass button: see-through, blurred, with a bright top edge. It fills with lime when touched, hovered or focused. */
+.veyns-glass-btn {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -1px 0 rgba(255, 255, 255, 0.08), 0 10px 32px -8px rgba(0, 0, 0, 0.5);
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+/* Lit state: pressed (finger or mouse down), keyboard focus, and hover on devices that have a mouse. */
+.veyns-glass-btn:active,
+.veyns-glass-btn:focus-visible {
+  background: rgba(163, 230, 53, 0.92);
+  color: #03120d;
+  border-color: rgba(217, 249, 157, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 0 0 1px rgba(163, 230, 53, 0.4), 0 10px 40px -6px rgba(163, 230, 53, 0.75);
+}
+.veyns-glass-btn:active { transform: scale(0.97); }
+
+@media (hover: hover) {
+  .veyns-glass-btn:hover {
+    background: rgba(163, 230, 53, 0.92);
+    color: #03120d;
+    border-color: rgba(217, 249, 157, 0.9);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 0 0 1px rgba(163, 230, 53, 0.4), 0 10px 40px -6px rgba(163, 230, 53, 0.75);
+    transform: scale(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .veyns-glass-btn { transition: none; }
+  .veyns-glass-btn:hover, .veyns-glass-btn:active { transform: none; }
+}

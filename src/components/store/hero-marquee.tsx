@@ -3,6 +3,7 @@
 // Top row moves left to right, bottom row right to left. Pure CSS animation (see home-page.css).
 // Step 8A: it sits below the welcome section and only fades in and starts moving once it scrolls into view.
 // Step 8D: tall portrait tiles packed tightly, the button sits on the seam between the two rows, soft fade at both edges.
+// Step 9A: a centered heading block above the rows, and the button is now see-through glass that lights up lime when touched.
 // Photos come from menu_items.image_url, falling back to the bundled images in lib/menu-images.ts.
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -125,6 +126,17 @@ export function HeroMarquee() {
       aria-label="Featured dishes"
       className={`relative overflow-hidden bg-[#03120d] py-4 transition-opacity duration-700 motion-reduce:transition-none sm:py-6 ${seen ? 'opacity-100' : 'opacity-0'}`}
     >
+      {/* Heading block above the photos: spaced capitals, a thin divider and one short paragraph. */}
+      <div className="mx-auto max-w-3xl px-6 pb-8 pt-6 text-center sm:pb-12 sm:pt-10">
+        <h2 className="font-serif text-xl font-light uppercase tracking-[0.2em] text-white sm:text-4xl sm:tracking-[0.3em]">
+          A unique experience
+        </h2>
+        <div aria-hidden="true" className="mx-auto mt-4 h-px w-16 bg-white/40" />
+        <p className="mx-auto mt-4 max-w-xl text-xs leading-relaxed text-emerald-100/70 sm:text-sm">
+          Rice and noodle bowls made fresh for every order. Pick a favorite, make it yours, and taste the care in every bite.
+        </p>
+      </div>
+
       {/* The two rows sit almost touching; the button is centered on the seam between them. */}
       <div className="relative flex flex-col gap-2 sm:gap-2.5">
         <Row tiles={top} direction="ltr" seconds={60} running={seen} />
@@ -141,15 +153,15 @@ export function HeroMarquee() {
         />
 
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          {/* Light dark pool behind the button so it stays readable over the photos. */}
+          {/* Soft dark pool behind the glass button so the white label stays readable over bright photos. */}
           <div
             aria-hidden="true"
-            className="absolute inset-x-0 top-1/2 h-40 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgba(3,18,13,0.6)_15%,transparent_70%)]"
+            className="absolute inset-x-0 top-1/2 h-40 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgba(3,18,13,0.35)_15%,transparent_70%)]"
           />
           <button
             type="button"
             onClick={scrollToMenu}
-            className="pointer-events-auto relative rounded-full bg-lime-400 px-10 py-5 font-display text-lg font-bold text-[#03120d] shadow-[0_10px_40px_-10px_rgba(163,230,53,0.6)] transition-transform duration-200 hover:scale-[1.03] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white active:scale-[0.98] sm:px-14 sm:py-6 sm:text-2xl"
+            className="veyns-glass-btn pointer-events-auto relative rounded-full px-10 py-5 font-display text-lg font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white sm:px-14 sm:py-6 sm:text-2xl"
           >
             Explore menu
           </button>
