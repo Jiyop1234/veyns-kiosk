@@ -28,7 +28,7 @@ export function SiteFooter() {
     "underline-offset-4 transition-colors hover:text-lime-400 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white";
 
   return (
-    <footer className="mt-20 border-t border-emerald-900/60 bg-[#03120d] text-white">
+    <footer className="mt-20 bg-[#03120d] text-white">
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 sm:grid-cols-3">
         <div>
           <p className="font-display text-lg font-semibold text-white">VEYNS<span className="text-lime-400">.</span></p>
@@ -51,7 +51,7 @@ export function SiteFooter() {
           <p>Closed on Mondays</p>
         </div>
       </div>
-      <div className="border-t border-emerald-900/60 py-4 text-center text-xs text-emerald-400/60">
+      <div className="py-4 text-center text-xs text-emerald-400/60">
         <p>© {new Date().getFullYear()} VEYNS. All rights reserved.</p>
         <p className="mt-2 flex items-center justify-center gap-4">
           <button type="button" onClick={() => setLegal("privacy")} className={legalLinkClass}>
