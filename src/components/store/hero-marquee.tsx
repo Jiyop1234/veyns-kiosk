@@ -4,6 +4,7 @@
 // Step 8A: it sits below the welcome section and only fades in and starts moving once it scrolls into view.
 // Step 8D: tall portrait tiles packed tightly, the button sits on the seam between the two rows, soft fade at both edges.
 // Step 9A: a centered heading block above the rows, and the button is now see-through glass that lights up lime when touched.
+// Step 9B: the button is small, rectangular, all capitals, and almost fully see-through; the dark pool behind it is gone so the photos show through.
 // Photos come from menu_items.image_url, falling back to the bundled images in lib/menu-images.ts.
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -153,15 +154,10 @@ export function HeroMarquee() {
         />
 
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          {/* Soft dark pool behind the glass button so the white label stays readable over bright photos. */}
-          <div
-            aria-hidden="true"
-            className="absolute inset-x-0 top-1/2 h-40 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgba(3,18,13,0.35)_15%,transparent_70%)]"
-          />
           <button
             type="button"
             onClick={scrollToMenu}
-            className="veyns-glass-btn pointer-events-auto relative rounded-full px-10 py-5 font-display text-lg font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white sm:px-14 sm:py-6 sm:text-2xl"
+            className="veyns-glass-btn pointer-events-auto relative rounded-sm px-6 py-2.5 font-display text-xs font-semibold uppercase tracking-[0.25em] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white sm:px-8 sm:py-3 sm:text-sm"
           >
             Explore menu
           </button>
