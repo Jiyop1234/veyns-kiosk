@@ -6,6 +6,7 @@
 // Step 9A: a centered heading block above the rows, and the button is now see-through glass that lights up lime when touched.
 // Step 9B: the button is small, rectangular, all capitals, and almost fully see-through; the dark pool behind it is gone so the photos show through.
 // Step 9C: the section fills exactly one screen (minus the header) and snaps into place; tile size follows the screen height (see home-page.css).
+// Step 9D: the heading block (title, divider, paragraph) rises in from blurred and transparent each time it scrolls into view.
 // Photos come from menu_items.image_url, falling back to the bundled images in lib/menu-images.ts.
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -67,6 +68,9 @@ export function HeroMarquee() {
   // false until the hero scrolls into view; then the rows fade in and start moving.
   const sectionRef = useRef<HTMLElement>(null);
   const [seen, setSeen] = useState(false);
+  // Heading block: true while it is on screen, so the blur-to-sharp rise plays again on every visit.
+  const headingRef = useRef<HTMLDivElement>(null);
+  const [headingIn, setHeadingIn] = useState(false);
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -83,6 +87,25 @@ export function HeroMarquee() {
         }
       },
       { threshold: 0.15 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = headingRef.current;
+    if (!el) return;
+    // No animation for people who ask for less motion, or in browsers without IntersectionObserver.
+    if (typeof IntersectionObserver === 'undefined' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setHeadingIn(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.intersectionRatio >= 0.5) setHeadingIn(true); // half of it is on screen: play
+        else if (entry.intersectionRatio === 0) setHeadingIn(false); // fully gone: get ready to play again
+      },
+      { threshold: [0, 0.5] }
     );
     io.observe(el);
     return () => io.disconnect();
@@ -116,6 +139,12 @@ export function HeroMarquee() {
     };
   }, []);
 
+  // Blurred, transparent and 24px low at rest; sharp, opaque and in place when visible. Each piece starts a little later.
+  const reveal = (delayMs: number) => ({
+    className: `transition-[opacity,filter,transform] duration-1000 ease-out ${headingIn ? 'translate-y-0 opacity-100 blur-0' : 'translate-y-6 opacity-0 blur-md'}`,
+    style: { transitionDelay: headingIn ? `${delayMs}ms` : '0ms' },
+  });
+
   const list = photos ?? [];
   // The bottom row starts halfway through the list so the two rows do not show the same dish above each other.
   const top = pick(list, 0);
@@ -129,12 +158,22 @@ export function HeroMarquee() {
       className={`veyns-fullscreen veyns-hero relative overflow-hidden bg-[#03120d] py-4 transition-opacity duration-700 motion-reduce:transition-none sm:py-6 ${seen ? 'opacity-100' : 'opacity-0'}`}
     >
       {/* Heading block above the photos: spaced capitals, a thin divider and one short paragraph. */}
-      <div className="mx-auto max-w-3xl px-6 pb-8 pt-6 text-center sm:pb-12 sm:pt-10">
-        <h2 className="font-serif text-xl font-light uppercase tracking-[0.2em] text-white sm:text-4xl sm:tracking-[0.3em]">
+      <div ref={headingRef} className="mx-auto max-w-3xl px-6 pb-8 pt-6 text-center sm:pb-12 sm:pt-10">
+        <h2
+          className={`font-serif text-xl font-light uppercase tracking-[0.2em] text-white sm:text-4xl sm:tracking-[0.3em] ${reveal(0).className}`}
+          style={reveal(0).style}
+        >
           A unique experience
         </h2>
-        <div aria-hidden="true" className="mx-auto mt-4 h-px w-16 bg-white/40" />
-        <p className="mx-auto mt-4 max-w-xl text-xs leading-relaxed text-emerald-100/70 sm:text-sm">
+        <div
+          aria-hidden="true"
+          className={`mx-auto mt-4 h-px w-16 bg-white/40 ${reveal(200).className}`}
+          style={reveal(200).style}
+        />
+        <p
+          className={`mx-auto mt-4 max-w-xl text-xs leading-relaxed text-emerald-100/70 sm:text-sm ${reveal(400).className}`}
+          style={reveal(400).style}
+        >
           Rice and noodle bowls made fresh for every order. Pick a favorite, make it yours, and taste the care in every bite.
         </p>
       </div>
