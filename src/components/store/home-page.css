@@ -190,3 +190,6 @@ html.veyns-snap-page { scroll-snap-type: y mandatory; scroll-padding-top: 4rem; 
   .veyns-hero { --tile-h: clamp(9rem, calc((var(--screen-h) - 22rem) / 2), 18rem); }
 }
 .veyns-tile { height: var(--tile-h); width: calc(var(--tile-h) * 0.8333); }
+
+/* Step 11: the site footer is the last snap stop (aligned to the bottom of the page) so snap scrolling can reach it. */
+.veyns-snap-end { scroll-snap-align: end; }

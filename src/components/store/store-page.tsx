@@ -7,6 +7,8 @@ import React, { useState, useEffect } from 'react';
 import { SiteHeader } from '@/components/store/site-header';
 import { StoreData } from '@/components/store/store-data';
 import { HomePage } from '@/components/store/home-page';
+import { ThankYouSection } from '@/components/store/thank-you-section';
+import { SiteFooter } from '@/components/store/site-footer';
 import { CartProvider } from '@/lib/cart';
 import { AccountSettingsDialog } from '@/components/store/account-settings-dialog';
 import { FeedbackPage } from '@/components/store/feedback-page';
@@ -150,7 +152,13 @@ export function StorePage({
               openCheckoutTick={openCheckoutTick}
             />
           </div>
+          {/* Step 11: last screen after the menu. */}
+          <ThankYouSection />
         </main>
+        {/* Step 11: the site footer (rights text, contact, hours) under the thank-you screen; it is its own snap stop so it can be reached. */}
+        <div className="veyns-snap-end">
+          <SiteFooter />
+        </div>
         {showFeedback && <FeedbackPage onBack={() => setShowFeedback(false)} currentUser={currentUser} />}
         {showExtras && <ExtrasPage onBack={() => setShowExtras(false)} onReviewOrder={() => { setShowExtras(false); setShowMyOrders(true); }} />}
         <ProfilePage
