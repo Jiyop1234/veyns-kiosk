@@ -11,6 +11,7 @@ import { AccountSettingsDialog } from '@/components/store/account-settings-dialo
 import { FeedbackPage } from '@/components/store/feedback-page';
 import { FloatingSupportButton } from '@/components/floating-support-button';
 import { ExtrasPage } from '@/components/extras-page';
+import { ProfilePage } from '@/components/store/profile-page';
 import { ResetPasswordDialog } from '@/components/login-page';
 
 export function StorePage({
@@ -96,6 +97,16 @@ export function StorePage({
     if (currentUser && currentUser.type !== 'guest') await loadUserStampsAndPenalties(currentUser);
   };
 
+  // One place that updates the order list and mirrors it to storage (used by checkout and My Order History).
+  const updateOrderHistory = (newHistory: any[]) => {
+    setOrderHistory(newHistory);
+    if (currentUser && currentUser.type === 'guest') {
+      sessionStorage.setItem('veyns_guest_order_history', JSON.stringify(newHistory));
+    } else if (currentUser && currentUser.type === 'regular') {
+      localStorage.setItem('veyns_order_history', JSON.stringify(newHistory));
+    }
+  };
+
   return (
     <CartProvider>
       <div className="min-h-screen bg-[#071F19] text-white flex flex-col">
@@ -114,17 +125,8 @@ export function StorePage({
         <main className="flex-1">
           <OrderingCounter
             onOpenExtras={() => setShowExtras(true)}
-            showMyOrders={showMyOrders}
-            setShowMyOrders={setShowMyOrders}
             orderHistory={orderHistory}
-            setOrderHistory={(newHistory) => {
-              setOrderHistory(newHistory);
-              if (currentUser && currentUser.type === 'guest') {
-                sessionStorage.setItem('veyns_guest_order_history', JSON.stringify(newHistory));
-              } else if (currentUser && currentUser.type === 'regular') {
-                localStorage.setItem('veyns_order_history', JSON.stringify(newHistory));
-              }
-            }}
+            setOrderHistory={updateOrderHistory}
             resetKey={resetTrigger}
             currentUser={currentUser}
             onOrderPlacedSuccess={recordOrderForLoyalty}
@@ -133,6 +135,13 @@ export function StorePage({
         </main>
         {showFeedback && <FeedbackPage onBack={() => setShowFeedback(false)} currentUser={currentUser} />}
         {showExtras && <ExtrasPage onBack={() => setShowExtras(false)} onReviewOrder={() => { setShowExtras(false); setShowMyOrders(true); }} />}
+        <ProfilePage
+          open={showMyOrders}
+          onOpenChange={setShowMyOrders}
+          currentUser={currentUser}
+          orderHistory={orderHistory}
+          setOrderHistory={updateOrderHistory}
+        />
         <FloatingSupportButton />
         <AccountSettingsDialog
           open={showAccountSettings}
