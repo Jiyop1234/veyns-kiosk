@@ -2,9 +2,9 @@
 // WelcomeSection — the first screen of the store (Step 8A, replaces welcome-modal.tsx).
 // 'Hi, [nickname]!' and 'Welcome back.' on the plain page background. It stays on the page (no timer,
 // no box). The hero image marquee sits below it and only shows once the customer scrolls down.
-// Step 8E: a see-through, shining 'Scroll down' text sits above the bouncing arrow (styles in home-page.css).
+// Step 8E: a see-through, shining 'Scroll down' text sits above the arrow (styles in home-page.css).
+// Step 8F: the section is exactly one screen minus the header (no scrolling to see 'Scroll down'), and the arrow shines instead of bouncing.
 import React, { useEffect, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 const NAME_WAIT_MS = 1500;
@@ -49,7 +49,7 @@ export function WelcomeSection({ currentUser }: { currentUser?: any }) {
   };
 
   return (
-    <section aria-label='Welcome' className='relative flex min-h-[100svh] flex-col items-center justify-center px-6 text-center'>
+    <section aria-label='Welcome' className='veyns-welcome relative flex flex-col items-center justify-center px-6 text-center'>
       {/* Fades in from the middle and floats up once, then stays. */}
       <div
         className={`transition-all duration-700 ease-out motion-reduce:transition-none ${
@@ -67,7 +67,7 @@ export function WelcomeSection({ currentUser }: { currentUser?: any }) {
         className='absolute bottom-6 flex flex-col items-center gap-1 text-emerald-300/70 transition-colors hover:text-lime-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white'
       >
         <span className='veyns-shine-text text-sm font-semibold uppercase tracking-[0.3em] sm:text-base'>Scroll down</span>
-        <ChevronDown className='h-8 w-8 animate-bounce motion-reduce:animate-none' />
+        <span aria-hidden='true' className='veyns-shine-arrow' />
       </button>
     </section>
   );

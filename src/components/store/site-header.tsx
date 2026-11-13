@@ -2,6 +2,8 @@
 // SiteHeader — Step 8C redesign.
 // No logo and no greeting. Home / Menu / Feedback in the center; cart, order history and profile icons on the right.
 // On phones the three links move into a menu button on the left. Same color as the page (#03120d).
+// Step 8F: the header is fixed to the top of the window (a spacer keeps its place in the page) and has no border;
+// the thin line is a separate element that only fades in after the page scrolls.
 import React, { useState, useRef, useEffect } from 'react';
 import { LogOut, ShoppingCart, History, User, UserPlus, Settings, Edit3, KeyRound, ChevronDown, Menu as MenuIcon, X } from 'lucide-react';
 import { useCart } from '@/lib/cart';
@@ -139,7 +141,9 @@ export function SiteHeader({
   };
 
   return (
-    <header className={`sticky top-0 z-40 bg-[#03120d] border-b transition-colors duration-200 ${scrolled ? 'border-emerald-900/60' : 'border-transparent'}`}>
+    <>
+    <div aria-hidden="true" className="h-16 sm:h-20" />
+    <header className="fixed inset-x-0 top-0 z-40 bg-[#03120d]">
       <div className="relative mx-auto grid h-16 max-w-[1440px] grid-cols-[1fr_auto_1fr] items-center px-3 sm:h-20 sm:px-8">
         {/* Left: menu button on phones only (holds Home, Menu, Feedback). */}
         <div className="col-start-1 flex items-center justify-start" ref={mobileRef}>
@@ -317,6 +321,9 @@ export function SiteHeader({
           </div>
         </div>
       </div>
+      {/* Thin line under the header, drawn only after the page has scrolled. */}
+      <div aria-hidden="true" className={`pointer-events-none absolute inset-x-0 bottom-0 h-px bg-emerald-900/60 transition-opacity duration-200 ${scrolled ? 'opacity-100' : 'opacity-0'}`} />
     </header>
+    </>
   );
 }
