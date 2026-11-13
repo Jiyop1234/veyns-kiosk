@@ -2,8 +2,8 @@
 // SiteHeader — Step 8C redesign.
 // No logo and no greeting. Home / Menu / Feedback in the center; cart, order history and profile icons on the right.
 // On phones the three links move into a menu button on the left. Same color as the page (#03120d).
-// Step 8F: the header is fixed to the top of the window (a spacer keeps its place in the page) and has no border;
-// the thin line is a separate element that only fades in after the page scrolls.
+// Step 8F: the header is fixed to the top of the window (a spacer keeps its place in the page) and has no border.
+// Step 8G: after the page scrolls, a soft fade (no hard line) blends the header into the content under it.
 import React, { useState, useRef, useEffect } from 'react';
 import { LogOut, ShoppingCart, History, User, UserPlus, Settings, Edit3, KeyRound, ChevronDown, Menu as MenuIcon, X } from 'lucide-react';
 import { useCart } from '@/lib/cart';
@@ -321,8 +321,12 @@ export function SiteHeader({
           </div>
         </div>
       </div>
-      {/* Thin line under the header, drawn only after the page has scrolled. */}
-      <div aria-hidden="true" className={`pointer-events-none absolute inset-x-0 bottom-0 h-px bg-emerald-900/60 transition-opacity duration-200 ${scrolled ? 'opacity-100' : 'opacity-0'}`} />
+      {/* Soft fade under the header, shown only after the page has scrolled (no hard line). */}
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-x-0 top-full h-8 transition-opacity duration-300 ${scrolled ? 'opacity-100' : 'opacity-0'}`}
+        style={{ background: 'linear-gradient(to bottom, #03120d, rgba(3, 18, 13, 0))' }}
+      />
     </header>
     </>
   );
