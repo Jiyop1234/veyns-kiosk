@@ -137,16 +137,19 @@ export function StorePage({
           <HomePage currentUser={currentUser} />
           {/* Scroll target for the hero's "Explore menu" button. Zero height, no layout change. */}
           <div id="menu" className="scroll-mt-20" />
-          <StoreData
-            onOpenExtras={() => setShowExtras(true)}
-            orderHistory={orderHistory}
-            setOrderHistory={updateOrderHistory}
-            resetKey={resetTrigger}
-            currentUser={currentUser}
-            onOrderPlacedSuccess={recordOrderForLoyalty}
-            onOpenRegister={onOpenSignUp}
-            openCheckoutTick={openCheckoutTick}
-          />
+          {/* Step 9C: the whole menu is one snap section (it is taller than a screen, so it scrolls freely inside). */}
+          <div className="veyns-snap">
+            <StoreData
+              onOpenExtras={() => setShowExtras(true)}
+              orderHistory={orderHistory}
+              setOrderHistory={updateOrderHistory}
+              resetKey={resetTrigger}
+              currentUser={currentUser}
+              onOrderPlacedSuccess={recordOrderForLoyalty}
+              onOpenRegister={onOpenSignUp}
+              openCheckoutTick={openCheckoutTick}
+            />
+          </div>
         </main>
         {showFeedback && <FeedbackPage onBack={() => setShowFeedback(false)} currentUser={currentUser} />}
         {showExtras && <ExtrasPage onBack={() => setShowExtras(false)} onReviewOrder={() => { setShowExtras(false); setShowMyOrders(true); }} />}

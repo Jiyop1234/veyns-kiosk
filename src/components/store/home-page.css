@@ -151,3 +151,42 @@
   .veyns-glass-btn { transition: none; }
   .veyns-glass-btn:hover, .veyns-glass-btn:active { transform: none; }
 }
+
+/* Step 9C: one section per screen. Snapping is switched on by HomePage (html.veyns-snap-page) only while the store is shown.
+   scroll-padding equals the fixed header height, so a section's top lands right under the header.
+   If it ever feels too sticky, change 'mandatory' to 'proximity' (it then only snaps when you stop near a section). */
+html.veyns-snap-page { scroll-snap-type: y mandatory; scroll-padding-top: 4rem; }
+@media (min-width: 640px) {
+  html.veyns-snap-page { scroll-padding-top: 5rem; }
+}
+
+.veyns-welcome { scroll-snap-align: start; scroll-snap-stop: always; }
+
+/* The menu: one snap section as tall as the whole menu, so scrolling inside it is free. */
+.veyns-snap { scroll-snap-align: start; }
+
+/* Full-screen sections (hero and testimonials): exactly one screen minus the header, content centered. */
+.veyns-fullscreen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: calc(100vh - 4rem);
+  min-height: calc(100svh - 4rem);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+@media (min-width: 640px) {
+  .veyns-fullscreen { min-height: calc(100vh - 5rem); min-height: calc(100svh - 5rem); }
+}
+
+/* Hero tiles: the height follows the screen height so both photo rows plus the heading fit one screen
+   (screen - header - heading block - paddings, split over two rows), never taller than 18rem. Width keeps the old 240:288 shape. */
+.veyns-hero { --screen-h: 100vh; }
+@supports (height: 100svh) {
+  .veyns-hero { --screen-h: 100svh; }
+}
+.veyns-hero { --tile-h: clamp(8rem, calc((var(--screen-h) - 18rem) / 2), 18rem); }
+@media (min-width: 640px) {
+  .veyns-hero { --tile-h: clamp(9rem, calc((var(--screen-h) - 22rem) / 2), 18rem); }
+}
+.veyns-tile { height: var(--tile-h); width: calc(var(--tile-h) * 0.8333); }

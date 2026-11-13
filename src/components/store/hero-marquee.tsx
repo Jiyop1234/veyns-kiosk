@@ -5,6 +5,7 @@
 // Step 8D: tall portrait tiles packed tightly, the button sits on the seam between the two rows, soft fade at both edges.
 // Step 9A: a centered heading block above the rows, and the button is now see-through glass that lights up lime when touched.
 // Step 9B: the button is small, rectangular, all capitals, and almost fully see-through; the dark pool behind it is gone so the photos show through.
+// Step 9C: the section fills exactly one screen (minus the header) and snaps into place; tile size follows the screen height (see home-page.css).
 // Photos come from menu_items.image_url, falling back to the bundled images in lib/menu-images.ts.
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -36,7 +37,7 @@ function Row({ tiles, direction, seconds, running }: { tiles: (string | null)[];
             {tiles.map((src, i) => (
               <div
                 key={i}
-                className="relative h-44 w-36 shrink-0 overflow-hidden rounded-lg bg-[#0d2e26] sm:h-64 sm:w-52 lg:h-72 lg:w-60"
+                className="veyns-tile relative shrink-0 overflow-hidden rounded-lg bg-[#0d2e26]"
               >
                 {src && (
                   <img
@@ -125,7 +126,7 @@ export function HeroMarquee() {
       id="home-hero"
       ref={sectionRef}
       aria-label="Featured dishes"
-      className={`relative overflow-hidden bg-[#03120d] py-4 transition-opacity duration-700 motion-reduce:transition-none sm:py-6 ${seen ? 'opacity-100' : 'opacity-0'}`}
+      className={`veyns-fullscreen veyns-hero relative overflow-hidden bg-[#03120d] py-4 transition-opacity duration-700 motion-reduce:transition-none sm:py-6 ${seen ? 'opacity-100' : 'opacity-0'}`}
     >
       {/* Heading block above the photos: spaced capitals, a thin divider and one short paragraph. */}
       <div className="mx-auto max-w-3xl px-6 pb-8 pt-6 text-center sm:pb-12 sm:pt-10">

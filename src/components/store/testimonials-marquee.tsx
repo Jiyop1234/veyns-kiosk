@@ -3,6 +3,7 @@
 // Reads the latest published posts from feedback_posts (same table and 'published' rule as the Feedback page).
 // No database change: anon visitors can already read these columns (RLS policy "feedback_posts public read").
 // Hidden completely when there are no published reviews or the request fails.
+// Step 9C: the section fills exactly one screen (minus the header) and snaps into place.
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Stars } from '@/lib/feedback';
@@ -101,7 +102,7 @@ export function TestimonialsMarquee() {
       id="home-reviews"
       ref={sectionRef}
       aria-label="Customer reviews"
-      className={`relative overflow-hidden bg-[#03120d] py-10 transition-opacity duration-700 motion-reduce:transition-none sm:py-14 ${seen ? 'opacity-100' : 'opacity-0'}`}
+      className={`veyns-fullscreen relative overflow-hidden bg-[#03120d] py-10 transition-opacity duration-700 motion-reduce:transition-none sm:py-14 ${seen ? 'opacity-100' : 'opacity-0'}`}
     >
       <div className="mx-auto mb-6 max-w-6xl px-4 text-center sm:mb-8">
         <h2 className="font-display text-2xl font-bold text-white sm:text-3xl">What our customers say</h2>
