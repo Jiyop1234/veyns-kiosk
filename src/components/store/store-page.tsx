@@ -134,7 +134,7 @@ export function StorePage({
           onCloseOverlays={closeOverlays}
         />
         <main className="flex-1">
-          <HomePage currentUser={currentUser} />
+          <HomePage currentUser={currentUser} orderHistory={orderHistory} onReviewOrder={() => setOpenCheckoutTick((t) => t + 1)} />
           {/* Scroll target for the hero's "Explore menu" button. Zero height, no layout change. */}
           <div id="menu" className="scroll-mt-20" />
           {/* Step 9C: the whole menu is one snap section (it is taller than a screen, so it scrolls freely inside). */}
