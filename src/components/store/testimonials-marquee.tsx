@@ -58,13 +58,36 @@ function smooth(t: number) {
   const x = Math.min(1, Math.max(0, t));
   return x * x * (3 - 2 * x);
 }
-function cardLook(d: number, step: number) {
-  const abs = Math.abs(d);
+const GAP = 28;           // px of empty space between two neighbouring cards (desktop). Always the same, at every moment.
+const GAP_COMPACT = 16;   // same, on phones
+function scaleAt(abs: number) {
   const s = smooth((abs - SHARP_ZONE) / (2 - SHARP_ZONE)); // 0 at the center, 1 two cards away
-  const scale = 1 - 0.3 * s;                                // 1 at the center, 0.85 one away, 0.7 two away
+  return 1 - 0.3 * s;                                       // 1 at the center, 0.85 one away, 0.7 two away
+}
+// Horizontal position (px from the center) of a card at distance d. Cards shrink as they leave the center, so a fixed
+// spacing would make the gaps uneven (that was the bug). Instead each card is placed so that the empty space between it
+// and its neighbour is exactly `gap`, whatever their sizes are at that moment. The first part is the position inside
+// one card-width of the center (mirrored left/right); the loops add or remove one neighbour-to-neighbour distance at a time.
+function layoutX(d: number, w: number, gap: number) {
+  const sc = (v: number) => scaleAt(Math.abs(v));
+  const between = (a: number, b: number) => (w * (sc(a) + sc(b))) / 2 + gap; // center-to-center of two neighbours
+  const P = between(0, 1);
+  const base = Math.floor(d);
+  const r = d - base; // 0 <= r < 1
+  let x = between(r, 1 - r) / 2 + P * (r - 0.5);
+  for (let j = 1; j <= base; j++) x += between(r + j - 1, r + j);
+  for (let k = base; k < 0; k++) x -= between(r + k, r + k + 1);
+  return x;
+}
+function cardLook(d: number, w: number, gap: number) {
+  const abs = Math.abs(d);
+  const s = smooth((abs - SHARP_ZONE) / (2 - SHARP_ZONE));
+  const scale = scaleAt(abs);
   const blur = MAX_BLUR * s;
   const opacity = abs <= 1 ? 1 - 0.4 * smooth((abs - SHARP_ZONE) / (1 - SHARP_ZONE)) : Math.max(0, 0.6 * (2 - abs));
-  return { abs, scale, blur, opacity, x: d * step };
+  // Cards two or more away are invisible, so skip the position maths for them.
+  const x = opacity <= 0.005 ? 0 : layoutX(d, w, gap);
+  return { abs, scale, blur, opacity, x };
 }
 
 // Static look of a card. Position, scale, blur and opacity are written straight onto the element by the animation
@@ -201,7 +224,8 @@ export function TestimonialsMarquee() {
   // The animation loop: places every card each frame and, unless paused, moves the row slowly and steadily.
   useEffect(() => {
     if (n === 0) return;
-    const step = compact ? 215 : 350;
+    const cardW = compact ? 250 : 340; // must match the card width in ReviewCard
+    const gap = compact ? GAP_COMPACT : GAP;
 
     // Write the position, scale, blur and brightness of every card for the current center position.
     const place = () => {
@@ -213,7 +237,7 @@ export function TestimonialsMarquee() {
         // where cards are invisible, so nothing visibly jumps.
         let d = (((i - pos) % n) + n) % n;
         if (d > n / 2) d -= n;
-        const { abs, scale, blur, opacity, x } = cardLook(d, step);
+        const { abs, scale, blur, opacity, x } = cardLook(d, cardW, gap);
         if (opacity <= 0.005) {
           if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
           continue;
