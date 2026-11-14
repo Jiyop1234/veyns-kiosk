@@ -10,7 +10,7 @@
 //          and loops forever. Size, blur and brightness are calculated every frame from each card's distance to the
 //          center, so a card sharpens smoothly while it travels to the middle. Clicks, dots, arrows and swipes glide
 //          to the chosen card, then the drift carries on. Pause on hover / touch is kept (it eases to a stop and back).
-// Step 9G-3: the dots are removed; silver shining arrows on the left and right (plus swipe, keys and tapping a side card).
+// Step 9G-3: the dots are removed; silver arrows (a shine sweeps across them, no glow) on the left and right (plus swipe, keys and tapping a side card).
 //          Slower drift, and cards start clearing up as soon as they appear. Text in the carousel can no longer be
 //          highlighted by accident while swiping.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -149,8 +149,13 @@ function ReviewCard({ review, compact, setEl, onPick }: any) {
   );
 }
 
-// A thin silver chevron with a soft pulsing glow behind it (Tailwind animate-pulse, switched off for "Reduce motion").
-function SilverArrow({ dir, onClick }: any) {
+// A thin silver chevron with a bright shine that sweeps across it every few seconds (like the "Scroll down" arrow).
+// No glow. The sweep is a moving highlight inside the SVG gradient (SVG animation, so no CSS file change).
+// It is left out when the visitor has "Reduce motion" turned on.
+const ARROW_BASE = '#98a6a2';   // resting silver
+const ARROW_SHINE = '#ffffff';  // the sweeping highlight
+const SHINE_SECONDS = 3;        // time for one full sweep + rest
+function SilverArrow({ dir, onClick, reduce }: any) {
   const id = dir < 0 ? 'veyns-silver-left' : 'veyns-silver-right';
   return (
     <button
@@ -163,24 +168,32 @@ function SilverArrow({ dir, onClick }: any) {
         dir < 0 ? 'left-0 sm:left-3' : 'right-0 sm:right-3'
       }`}
     >
-      <span
-        aria-hidden="true"
-        className="absolute inset-1 animate-pulse rounded-full bg-white/10 blur-md motion-reduce:animate-none"
-      />
       <svg
         viewBox="0 0 24 24"
-        className="relative h-7 w-7 sm:h-8 sm:w-8"
+        className="h-7 w-7 sm:h-8 sm:w-8"
         fill="none"
-        strokeWidth="1.6"
+        strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
-        style={{ filter: 'drop-shadow(0 0 5px rgba(226,232,240,0.85)) drop-shadow(0 0 12px rgba(203,213,225,0.45))' }}
+        aria-hidden="true"
       >
         <defs>
-          <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="45%" stopColor="#b8c0cc" />
-            <stop offset="100%" stopColor="#f1f5f9" />
+          <linearGradient id={id} x1="0" y1="0" x2="1" y2="0.4">
+            <stop offset="0" stopColor={ARROW_BASE} />
+            <stop offset="0.38" stopColor={ARROW_BASE} />
+            <stop offset="0.5" stopColor={ARROW_SHINE} />
+            <stop offset="0.62" stopColor={ARROW_BASE} />
+            <stop offset="1" stopColor={ARROW_BASE} />
+            {!reduce && (
+              <animateTransform
+                attributeName="gradientTransform"
+                type="translate"
+                values="-1 0; 1 0; 1 0"
+                keyTimes="0; 0.55; 1"
+                dur={`${SHINE_SECONDS}s`}
+                repeatCount="indefinite"
+              />
+            )}
           </linearGradient>
         </defs>
         <path d={dir < 0 ? 'M15 4 L7 12 L15 20' : 'M9 4 L17 12 L9 20'} stroke={`url(#${id})`} />
@@ -417,9 +430,9 @@ export function TestimonialsMarquee() {
         onPointerUp={(e) => finishPointer(e, e.clientX)}
         onPointerCancel={(e) => finishPointer(e, null)}
       >
-        {/* Silver, softly shining arrows. Same job as swiping: one card back / forward. */}
-        <SilverArrow dir={-1} onClick={() => go(-1)} />
-        <SilverArrow dir={1} onClick={() => go(1)} />
+        {/* Silver arrows with a shine that sweeps across. Same job as swiping: one card back / forward. */}
+        <SilverArrow dir={-1} reduce={reduce} onClick={() => go(-1)} />
+        <SilverArrow dir={1} reduce={reduce} onClick={() => go(1)} />
         {cards.map((r, i) => (
           <ReviewCard
             key={`${r.id}-${i}`}
