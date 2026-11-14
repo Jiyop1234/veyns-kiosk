@@ -193,3 +193,46 @@ html.veyns-snap-page { scroll-snap-type: y mandatory; scroll-padding-top: 4rem; 
 
 /* Step 11: the site footer is the last snap stop (aligned to the bottom of the page) so snap scrolling can reach it. */
 .veyns-snap-end { scroll-snap-align: end; }
+
+/* Step 12: the loyalty card section. The card box is a size container, so everything on the card is sized in cqw (1% of its width)
+   and scales like a picture. The card keeps the 1029 x 660 shape of the artwork. */
+.veyns-lc-section { --screen-h: 100vh; }
+@supports (height: 100svh) {
+  .veyns-lc-section { --screen-h: 100svh; }
+}
+/* Never taller than one screen: the width is limited by the screen height (about 24rem is the header, heading, text under the card and padding). */
+.veyns-lc-wrap { max-width: clamp(300px, calc((var(--screen-h) - 24rem) * 1.559), 600px); }
+
+.veyns-lc-card { container-type: inline-size; container-name: lc; width: 100%; }
+
+/* The flip: the card turns around its vertical axis. The hidden face is also made invisible (after half the turn) so its buttons cannot be tabbed to. */
+.veyns-flip { perspective: 1400px; }
+.veyns-flip-inner {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1029 / 660;
+  transform-style: preserve-3d;
+  transition: transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.veyns-flipped .veyns-flip-inner { transform: rotateY(180deg); }
+.veyns-flip-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 4.2cqw;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.85);
+  transition: visibility 0s linear 0.4s;
+}
+.veyns-flip-back { transform: rotateY(180deg); visibility: hidden; }
+.veyns-flipped .veyns-flip-back { visibility: visible; }
+.veyns-flipped .veyns-flip-front { visibility: hidden; }
+
+/* Platinum and Diamond backs: the full layout needs a wide card; phones get the compact one. */
+@container lc (max-width: 479px) { .veyns-lc-full { display: none; } }
+@container lc (min-width: 480px) { .veyns-lc-compact { display: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .veyns-flip-inner, .veyns-flip-face { transition: none; }
+}
