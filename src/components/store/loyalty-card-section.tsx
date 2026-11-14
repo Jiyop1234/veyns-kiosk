@@ -6,6 +6,7 @@
 // for "How this works" / "See all vouchers", so no loyalty logic is duplicated here. No database change.
 // Everything on the card is sized in cqw (1% of the card width) so the layout scales like a picture.
 // Step 12A: smoother flip (see home-page.css), a shining 'Tap to flip' text instead of the button box, and no stamp counter.
+// Step 12B: the text says 'Tap to flip' on touch screens and 'Click to flip' where a mouse is the main input (decided by CSS, see home-page.css).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CreditCard, Star } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -384,7 +385,8 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
                 aria-label={flipped ? 'Flip card to the front' : 'Flip card to the back'}
                 className="veyns-silver-shine cursor-pointer select-none bg-transparent px-4 py-2 font-display text-xs font-semibold uppercase tracking-[0.3em] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white sm:text-sm"
               >
-                Tap to flip
+                <span className="veyns-label-touch">Tap to flip</span>
+                <span className="veyns-label-mouse">Click to flip</span>
               </button>
             </div>
           </>
