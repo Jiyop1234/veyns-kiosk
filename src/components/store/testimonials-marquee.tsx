@@ -13,9 +13,9 @@
 // Step 9G-3: the dots are removed; silver arrows (a shine sweeps across them, no glow) on the left and right (plus swipe, keys and tapping a side card).
 //          Slower drift, and cards start clearing up as soon as they appear. Text in the carousel can no longer be
 //          highlighted by accident while swiping.
+// Step 9G-5: new card design (outlined card, stars in the top border, centered text, "- name", quote badge at the corner).
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Stars } from '@/lib/feedback';
 
 const MAX_REVIEWS = 12;          // newest published 5-star reviews used by the carousel
 const MIN_CARDS = 5;             // fewer reviews than this are repeated so the left/center/right cards always exist
@@ -93,58 +93,73 @@ function cardLook(d: number, w: number, gap: number) {
   return { abs, scale, blur, opacity, x };
 }
 
+// Card design (Step 9G-5): an outlined card on the page background, five stars sitting in a gap of the top border,
+// the review centered, "- name" under it, and a rounded quote badge hanging off the bottom-right corner.
+const CARD_BG = '#03120d';       // same as the section background, so the stars "cut" the border cleanly
+const BORDER_COLOR = '#ffffff';  // card outline
+const STAR_COLOR = '#ffffff';    // the five stars (use '#d4af37' for the gold you used before)
+const BADGE_BG = '#6b6b6b';      // quote badge
+const STAR_PATH = '12 2 15.1 8.6 22 9.3 16.8 14 18.2 21 12 17.4 5.8 21 7.2 14 2 9.3 8.9 8.6';
+
+function StarRow({ size }: { size: number }) {
+  return (
+    <span className="flex items-center gap-0.5" aria-label="5 out of 5 stars" role="img">
+      {[0, 1, 2, 3, 4].map((k) => (
+        <svg key={k} viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+          <polygon points={STAR_PATH} fill={STAR_COLOR} stroke={STAR_COLOR} strokeWidth="2" strokeLinejoin="round" />
+        </svg>
+      ))}
+    </span>
+  );
+}
+
 // Static look of a card. Position, scale, blur and opacity are written straight onto the element by the animation
 // loop below (so React does not re-render 60 times a second); that is why none of them appear in this style object.
 function ReviewCard({ review, compact, setEl, onPick }: any) {
   const name = review.is_guest ? 'Guest' : review.display_name || 'Customer';
   const width = compact ? 250 : 340;
-  const height = compact ? 310 : 330;
+  const height = compact ? 285 : 300;
 
   return (
     <article
       ref={setEl}
       onClick={onPick}
-      className="absolute left-1/2 top-1/2 flex flex-col overflow-hidden rounded-3xl border border-white/15 p-5 text-white shadow-[0_24px_60px_-20px_rgba(0,0,0,0.8)] sm:p-6"
+      className="absolute left-1/2 top-1/2 flex flex-col items-center justify-center rounded-[28px] px-6 pb-8 pt-9 text-center text-white sm:px-8"
       style={{
         width,
         height,
-        background: 'linear-gradient(170deg, #5f9283 0%, #36645a 38%, #123027 72%, #0a1c16 100%)',
+        background: CARD_BG,
+        border: `2px solid ${BORDER_COLOR}`,
         willChange: 'transform, filter, opacity',
         visibility: 'hidden', // shown by the animation loop as soon as it has placed the card
       }}
     >
-      {/* Big faded quote mark in the corner. */}
+      {/* Stars sit in the top border. */}
       <span
-        aria-hidden="true"
-        className="pointer-events-none absolute -bottom-8 right-3 select-none font-serif text-[11rem] leading-none text-white/[0.07]"
+        className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 px-3"
+        style={{ background: CARD_BG }}
       >
-        {'\u201D'}
+        <StarRow size={compact ? 18 : 20} />
       </span>
 
-      <div className="relative flex items-center gap-3">
-        <span
-          aria-hidden="true"
-          className="select-none font-serif text-6xl leading-[0.6] text-white/35"
-          style={{ marginTop: '0.35rem' }}
-        >
-          {'\u201C'}
+      <div className="flex min-h-0 flex-1 items-center overflow-hidden">
+        <p className="break-words text-[15px] leading-snug text-white sm:text-[17px] sm:leading-relaxed">
+          {shorten(review.comment)}
+        </p>
+      </div>
+
+      <p className="mt-3 max-w-full truncate text-[15px] text-white/90 sm:text-base">- {name}</p>
+
+      {/* Quote badge hanging off the bottom-right corner. */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-5 -right-4 flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg sm:-right-5 sm:h-16 sm:w-16"
+        style={{ background: BADGE_BG }}
+      >
+        <span className="select-none font-serif text-5xl font-bold leading-none text-white" style={{ marginTop: '0.5rem' }}>
+          {'\u201D'}
         </span>
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/25 bg-[#0d2e26] text-base font-extrabold text-[#d4af37]">
-          {name[0].toUpperCase()}
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-white sm:text-base">{name}</p>
-          <p className="truncate text-xs text-emerald-100/70">VEYNS customer</p>
-        </div>
-      </div>
-
-      <p className="relative mt-5 flex-1 overflow-hidden break-words text-sm leading-relaxed text-white/95 sm:text-[15px]">
-        {shorten(review.comment)}
-      </p>
-
-      <div className="relative mt-3">
-        <Stars value={5} size={18} />
-      </div>
+      </span>
     </article>
   );
 }
