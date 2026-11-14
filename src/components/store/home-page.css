@@ -212,19 +212,22 @@ html.veyns-snap-page { scroll-snap-type: y mandatory; scroll-padding-top: 4rem; 
   width: 100%;
   aspect-ratio: 1029 / 660;
   transform-style: preserve-3d;
-  transition: transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+  /* Step 12A: even ease-in-out (slow start, slow end) and the browser told ahead of time that this layer will turn. */
+  transition: transform 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
 }
 .veyns-flipped .veyns-flip-inner { transform: rotateY(180deg); }
 .veyns-flip-face {
   position: absolute;
   inset: 0;
-  overflow: hidden;
   border-radius: 4.2cqw;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
   box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.85);
-  transition: visibility 0s linear 0.4s;
+  transition: visibility 0s linear 0.45s;
 }
+/* The rounded corners are on the pictures themselves (no clipping box on a turning layer: it makes the turn choppy). */
+.veyns-flip-face > img { border-radius: 4.2cqw; }
 .veyns-flip-back { transform: rotateY(180deg); visibility: hidden; }
 .veyns-flipped .veyns-flip-back { visibility: visible; }
 .veyns-flipped .veyns-flip-front { visibility: hidden; }
@@ -235,4 +238,38 @@ html.veyns-snap-page { scroll-snap-type: y mandatory; scroll-padding-top: 4rem; 
 
 @media (prefers-reduced-motion: reduce) {
   .veyns-flip-inner, .veyns-flip-face { transition: none; }
+}
+
+/* Step 12A: 'Tap to flip' under the card: silver text with a light that sweeps across it (same sweep as 'Scroll down', in silver). */
+.veyns-silver-shine {
+  border: 0;
+  background-image: linear-gradient(110deg, rgba(148, 163, 184, 0.55) 40%, rgba(255, 255, 255, 0.98) 50%, rgba(148, 163, 184, 0.55) 60%);
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: veyns-shine 3.2s linear infinite;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .veyns-silver-shine { animation: none; background-position: 50% 0; }
+}
+
+/* Step 12B: 'Tap to flip' on touch screens, 'Click to flip' where the main input is a mouse or trackpad.
+   Decided by what the device can do (not by phone or computer name), so an iPad with a keyboard, a touch laptop or a phone with a mouse all get the right word. */
+.veyns-label-mouse { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .veyns-label-touch { display: none; }
+  .veyns-label-mouse { display: inline; }
+}
+
+/* The card itself: a tap flips at once (no double-tap-zoom wait on iPhone and Android), no grey flash on tap,
+   and a double click on a computer no longer highlights the text on the card. */
+.veyns-lc-card {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
 }

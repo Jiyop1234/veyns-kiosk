@@ -5,8 +5,9 @@
 // the claim buttons call the same RPCs with the same messages. The full Loyalty Card dialog (loyalty-card.tsx) is reused
 // for "How this works" / "See all vouchers", so no loyalty logic is duplicated here. No database change.
 // Everything on the card is sized in cqw (1% of the card width) so the layout scales like a picture.
+// Step 12A: smoother flip (see home-page.css), a shining 'Tap to flip' text instead of the button box, and no stamp counter.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CreditCard, RotateCw, Star } from 'lucide-react';
+import { CreditCard, Star } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { LoyaltyCard } from '@/components/store/loyalty-card';
 import { SOCIAL_LINKS, isSafeExternalUrl } from '@/lib/social-links';
@@ -184,7 +185,6 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
   const block = Math.min(status?.block || 1, 4);
   const size = BLOCK_SIZES[block - 1] || 5;
   const pos = status?.position_in_block || 0;
-  const cum = status?.cumulative_stamps || 0;
   const weekly = status?.weekly;
   const ordersThisWeek = Math.min(weekly?.qualifying_orders || 0, 3);
   const fmState: string = weekly?.free_meal_state || 'locked';
@@ -369,7 +369,6 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
             <div className="mt-4 flex items-center justify-between gap-3 px-1">
               <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-200">
                 <CreditCard className="size-4 shrink-0 text-lime-400" /> {memberSince}
-                {!isPlatDia && status && <span className="font-extrabold text-lime-400">· {cum} / 35 stamps</span>}
               </span>
               <button type="button" onClick={() => setDialogOpen(true)} className="cursor-pointer font-display text-sm font-extrabold uppercase tracking-tight text-white hover:text-lime-300">How this works</button>
             </div>
@@ -383,9 +382,9 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
                 type="button"
                 onClick={() => setFlipped((f) => !f)}
                 aria-label={flipped ? 'Flip card to the front' : 'Flip card to the back'}
-                className="veyns-glass-btn inline-flex items-center gap-2 rounded-sm px-6 py-2.5 font-display text-xs font-semibold uppercase tracking-[0.25em] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white sm:px-8 sm:py-3 sm:text-sm"
+                className="veyns-silver-shine cursor-pointer select-none bg-transparent px-4 py-2 font-display text-xs font-semibold uppercase tracking-[0.3em] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white sm:text-sm"
               >
-                <RotateCw className="size-4" aria-hidden="true" /> Flip card
+                Tap to flip
               </button>
             </div>
           </>
