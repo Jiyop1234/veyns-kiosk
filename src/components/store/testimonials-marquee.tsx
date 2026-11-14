@@ -10,6 +10,9 @@
 //          and loops forever. Size, blur and brightness are calculated every frame from each card's distance to the
 //          center, so a card sharpens smoothly while it travels to the middle. Clicks, dots, arrows and swipes glide
 //          to the chosen card, then the drift carries on. Pause on hover / touch is kept (it eases to a stop and back).
+// Step 9G-3: the dots are removed; silver shining arrows on the left and right (plus swipe, keys and tapping a side card).
+//          Slower drift, and cards start clearing up as soon as they appear. Text in the carousel can no longer be
+//          highlighted by accident while swiping.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Stars } from '@/lib/feedback';
@@ -17,7 +20,7 @@ import { Stars } from '@/lib/feedback';
 const MAX_REVIEWS = 12;          // newest published 5-star reviews used by the carousel
 const MIN_CARDS = 5;             // fewer reviews than this are repeated so the left/center/right cards always exist
 const MAX_CHARS = 220;           // long comments are cut here (the full text stays on the Feedback page)
-const DRIFT_MS_PER_CARD = 4500;  // SPEED: time the row takes to move by one card. Bigger = slower, smaller = faster.
+const DRIFT_MS_PER_CARD = 6000;  // SPEED: time the row takes to move by one card. Bigger = slower, smaller = faster.
 const GLIDE_MS = 450;            // how quickly a click / dot / arrow / swipe glides to its card (smaller = snappier)
 const EASE_MS = 350;             // how quickly the drift eases to a stop when paused and back up when resumed
 
@@ -53,7 +56,7 @@ function useMedia(query: string): boolean {
 // Everything is blended with a smooth S-curve (smoothstep) so there is no sudden change anywhere, and there is a small
 // "dead zone" around the center where the card stays completely sharp.
 const SHARP_ZONE = 0.12;  // cards: how far from the center a card is still 100% sharp
-const MAX_BLUR = 8;       // px of blur on cards two positions away (about half of that at one position away)
+const MAX_BLUR = 7;       // px of blur on cards two positions away (only about 2 px one position away: a card starts clearing as soon as it appears)
 function smooth(t: number) {
   const x = Math.min(1, Math.max(0, t));
   return x * x * (3 - 2 * x);
@@ -83,7 +86,7 @@ function cardLook(d: number, w: number, gap: number) {
   const abs = Math.abs(d);
   const s = smooth((abs - SHARP_ZONE) / (2 - SHARP_ZONE));
   const scale = scaleAt(abs);
-  const blur = MAX_BLUR * s;
+  const blur = MAX_BLUR * Math.pow(s, 1.5); // the 1.5 power makes cards clear up sooner on the way in (and blur later on the way out)
   const opacity = abs <= 1 ? 1 - 0.4 * smooth((abs - SHARP_ZONE) / (1 - SHARP_ZONE)) : Math.max(0, 0.6 * (2 - abs));
   // Cards two or more away are invisible, so skip the position maths for them.
   const x = opacity <= 0.005 ? 0 : layoutX(d, w, gap);
@@ -146,12 +149,51 @@ function ReviewCard({ review, compact, setEl, onPick }: any) {
   );
 }
 
+// A thin silver chevron with a soft pulsing glow behind it (Tailwind animate-pulse, switched off for "Reduce motion").
+function SilverArrow({ dir, onClick }: any) {
+  const id = dir < 0 ? 'veyns-silver-left' : 'veyns-silver-right';
+  return (
+    <button
+      type="button"
+      aria-label={dir < 0 ? 'Previous review' : 'Next review'}
+      onClick={onClick}
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+      className={`group absolute top-1/2 z-40 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full outline-none transition-transform duration-300 hover:scale-110 focus-visible:ring-2 focus-visible:ring-lime-400/70 sm:h-14 sm:w-14 ${
+        dir < 0 ? 'left-0 sm:left-3' : 'right-0 sm:right-3'
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className="absolute inset-1 animate-pulse rounded-full bg-white/10 blur-md motion-reduce:animate-none"
+      />
+      <svg
+        viewBox="0 0 24 24"
+        className="relative h-7 w-7 sm:h-8 sm:w-8"
+        fill="none"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ filter: 'drop-shadow(0 0 5px rgba(226,232,240,0.85)) drop-shadow(0 0 12px rgba(203,213,225,0.45))' }}
+      >
+        <defs>
+          <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="45%" stopColor="#b8c0cc" />
+            <stop offset="100%" stopColor="#f1f5f9" />
+          </linearGradient>
+        </defs>
+        <path d={dir < 0 ? 'M15 4 L7 12 L15 20' : 'M9 4 L17 12 L9 20'} stroke={`url(#${id})`} />
+      </svg>
+    </button>
+  );
+}
+
 export function TestimonialsMarquee() {
   // null = still loading; [] = nothing to show (section stays hidden).
   const [reviews, setReviews] = useState<any[] | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
   const [seen, setSeen] = useState(false);
-  const [active, setActive] = useState(0); // index of the card nearest the center (only used for the dots)
   const compact = useMedia('(max-width: 639px)');
   const reduce = useMedia('(prefers-reduced-motion: reduce)');
 
@@ -161,7 +203,6 @@ export function TestimonialsMarquee() {
   const speedRef = useRef(1);          // 0 = stopped, 1 = full drift speed (eased)
   const pausedRef = useRef(false);     // hover / touch pause
   const onScreenRef = useRef(false);   // true while the section is on screen
-  const lastActiveRef = useRef(0);
   const cardEls = useRef<any[]>([]);
   const rafRef = useRef<number | null>(null);
 
@@ -255,12 +296,6 @@ export function TestimonialsMarquee() {
           else el.removeAttribute('aria-hidden');
         }
       }
-      // Tell the dots which card is nearest the center (only re-renders when it actually changes).
-      const nearest = ((Math.round(pos) % n) + n) % n;
-      if (nearest !== lastActiveRef.current) {
-        lastActiveRef.current = nearest;
-        setActive(nearest);
-      }
     };
 
     place();
@@ -318,19 +353,6 @@ export function TestimonialsMarquee() {
   const glideToCard = (i: number) => {
     targetRef.current = posRef.current + deltaTo(i);
   };
-  // For the dots: the nearest copy of review k (short lists are repeated, so there can be several).
-  const glideToReview = (k: number) => {
-    let best = k;
-    let bestAbs = Infinity;
-    for (let c = k; c < n; c += reviews.length) {
-      const a = Math.abs(deltaTo(c));
-      if (a < bestAbs) {
-        bestAbs = a;
-        best = c;
-      }
-    }
-    glideToCard(best);
-  };
   // One card left / right. Repeated presses stack up from where the last glide is heading.
   const go = (dir: number) => {
     const base = targetRef.current != null ? targetRef.current : Math.round(posRef.current);
@@ -362,8 +384,6 @@ export function TestimonialsMarquee() {
     }
   };
 
-  const dotsActive = active % reviews.length;
-
   return (
     <section
       id="home-reviews"
@@ -381,7 +401,7 @@ export function TestimonialsMarquee() {
         aria-roledescription="carousel"
         aria-label="5-star customer reviews"
         tabIndex={0}
-        className="relative mx-auto w-full max-w-6xl outline-none focus-visible:ring-2 focus-visible:ring-lime-400/60"
+        className="relative mx-auto w-full max-w-6xl select-none outline-none focus-visible:ring-2 focus-visible:ring-lime-400/60"
         style={{ height: compact ? 350 : 380, touchAction: 'pan-y' }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowRight') go(1);
@@ -397,6 +417,9 @@ export function TestimonialsMarquee() {
         onPointerUp={(e) => finishPointer(e, e.clientX)}
         onPointerCancel={(e) => finishPointer(e, null)}
       >
+        {/* Silver, softly shining arrows. Same job as swiping: one card back / forward. */}
+        <SilverArrow dir={-1} onClick={() => go(-1)} />
+        <SilverArrow dir={1} onClick={() => go(1)} />
         {cards.map((r, i) => (
           <ReviewCard
             key={`${r.id}-${i}`}
@@ -416,23 +439,6 @@ export function TestimonialsMarquee() {
           />
         ))}
       </div>
-
-      {reviews.length > 1 && (
-        <div className="mt-2 flex justify-center gap-2" role="group" aria-label="Choose a review">
-          {reviews.map((r, k) => (
-            <button
-              key={r.id}
-              type="button"
-              aria-label={`Show review ${k + 1} of ${reviews.length}`}
-              aria-current={k === dotsActive ? 'true' : undefined}
-              onClick={() => glideToReview(k)}
-              className={`h-2 rounded-full transition-all duration-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-lime-400 ${
-                k === dotsActive ? 'w-6 bg-[#d4af37]' : 'w-2 bg-emerald-700/50 hover:bg-emerald-500/60'
-              }`}
-            />
-          ))}
-        </div>
-      )}
     </section>
   );
 }
