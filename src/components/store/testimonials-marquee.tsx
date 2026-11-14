@@ -13,7 +13,7 @@
 // Step 9G-3: the dots are removed; silver arrows (a shine sweeps across them, no glow) on the left and right (plus swipe, keys and tapping a side card).
 //          Slower drift, and cards start clearing up as soon as they appear. Text in the carousel can no longer be
 //          highlighted by accident while swiping.
-// Step 9G-5: new card design (outlined card, stars in the top border, centered text, "- name", quote badge at the corner).
+// Step 9G-6: card is now an Instagram-style post (paper look, nickname, place, big centered review, likes, caption, time).
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
@@ -93,73 +93,140 @@ function cardLook(d: number, w: number, gap: number) {
   return { abs, scale, blur, opacity, x };
 }
 
-// Card design (Step 9G-5): an outlined card on the page background, five stars sitting in a gap of the top border,
-// the review centered, "- name" under it, and a rounded quote badge hanging off the bottom-right corner.
-const CARD_BG = '#03120d';       // same as the section background, so the stars "cut" the border cleanly
-const BORDER_COLOR = '#ffffff';  // card outline
-const STAR_COLOR = '#ffffff';    // the five stars (use '#d4af37' for the gold you used before)
-const BADGE_BG = '#6b6b6b';      // quote badge
-const STAR_PATH = '12 2 15.1 8.6 22 9.3 16.8 14 18.2 21 12 17.4 5.8 21 7.2 14 2 9.3 8.9 8.6';
+// Card design (Step 9G-6): an Instagram-style post on paper. Header (round initial, nickname, place, three dots),
+// the review in big centered text, then the heart / comment / send / bookmark row, likes, caption, comments and time.
+// Everything below the review text is the same for every customer except the nickname and the "posted" time.
+const CARD_W = 290;              // card width on desktop (px)
+const CARD_H = 420;              // card height on desktop (px)
+const CARD_W_COMPACT = 220;      // phones
+const CARD_H_COMPACT = 330;
+const PLACE = 'Mandaue City, Cebu';
+const CAPTION = 'Good Food, Good Mood';
+const LIKES = 922;
+const COMMENTS = 922;
+const INK = '#1d2723';           // main dark text
+const MUTED = '#7a766d';         // grey text
+const PAPER_TOP = '#eee4d9';     // header and footer
+const PAPER_MID = '#e8d9c8';     // area behind the review
+// Very faint paper grain (an inline SVG noise picture, so no image file is needed).
+const GRAIN =
+  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.36 0 0 0 0 0.26 0 0 0 0.16 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>\")";
 
-function StarRow({ size }: { size: number }) {
-  return (
-    <span className="flex items-center gap-0.5" aria-label="5 out of 5 stars" role="img">
-      {[0, 1, 2, 3, 4].map((k) => (
-        <svg key={k} viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
-          <polygon points={STAR_PATH} fill={STAR_COLOR} stroke={STAR_COLOR} strokeWidth="2" strokeLinejoin="round" />
-        </svg>
-      ))}
-    </span>
-  );
+// "5 hours ago", "2 days ago", ... from the time the review was posted.
+function timeAgo(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!t) return '';
+  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  const unit = (v: number, w: string) => `${v} ${w}${v === 1 ? '' : 's'} ago`;
+  if (sec < 60) return 'just now';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return unit(min, 'minute');
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return unit(hr, 'hour');
+  const day = Math.floor(hr / 24);
+  if (day < 7) return unit(day, 'day');
+  if (day < 30) return unit(Math.floor(day / 7), 'week');
+  if (day < 365) return unit(Math.floor(day / 30), 'month');
+  return unit(Math.floor(day / 365), 'year');
 }
+
+// Long reviews get a smaller size so they always fit the paper.
+function reviewFontSize(len: number, compact: boolean): number {
+  const sizes = compact ? [18, 15, 13, 12] : [22, 19, 16, 14];
+  if (len <= 70) return sizes[0];
+  if (len <= 130) return sizes[1];
+  if (len <= 180) return sizes[2];
+  return sizes[3];
+}
+
+const ICON = { fill: 'none', stroke: INK, strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' } as any;
 
 // Static look of a card. Position, scale, blur and opacity are written straight onto the element by the animation
 // loop below (so React does not re-render 60 times a second); that is why none of them appear in this style object.
 function ReviewCard({ review, compact, setEl, onPick }: any) {
   const name = review.is_guest ? 'Guest' : review.display_name || 'Customer';
-  const width = compact ? 250 : 340;
-  const height = compact ? 285 : 300;
+  const comment = shorten(review.comment);
+  const width = compact ? CARD_W_COMPACT : CARD_W;
+  const height = compact ? CARD_H_COMPACT : CARD_H;
+  const small = compact ? 10 : 11; // footer text size
 
   return (
     <article
       ref={setEl}
       onClick={onPick}
-      className="absolute left-1/2 top-1/2 flex flex-col items-center justify-center rounded-[28px] px-6 pb-8 pt-9 text-center text-white sm:px-8"
+      className="absolute left-1/2 top-1/2 flex flex-col overflow-hidden rounded-md shadow-[0_24px_60px_-20px_rgba(0,0,0,0.8)]"
       style={{
         width,
         height,
-        background: CARD_BG,
-        border: `2px solid ${BORDER_COLOR}`,
+        color: INK,
+        backgroundColor: PAPER_TOP,
+        backgroundImage: GRAIN,
         willChange: 'transform, filter, opacity',
         visibility: 'hidden', // shown by the animation loop as soon as it has placed the card
       }}
     >
-      {/* Stars sit in the top border. */}
-      <span
-        className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 px-3"
-        style={{ background: CARD_BG }}
-      >
-        <StarRow size={compact ? 18 : 20} />
-      </span>
+      {/* Header: initial, nickname, place, three dots. */}
+      <div className="flex shrink-0 items-center gap-2 px-3 py-2.5">
+        <span
+          aria-hidden="true"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-serif text-base"
+          style={{ background: '#cdb9a3', color: '#3a2f27' }}
+        >
+          {name[0].toUpperCase()}
+        </span>
+        <div className="min-w-0 leading-tight">
+          <p className="truncate font-bold" style={{ fontSize: small + 1 }}>{name}</p>
+          <p className="truncate" style={{ fontSize: small - 1, color: MUTED }}>{PLACE}</p>
+        </div>
+        <span aria-hidden="true" className="ml-auto flex shrink-0 gap-[3px] pr-1">
+          {[0, 1, 2].map((k) => (
+            <span key={k} className="h-[3px] w-[3px] rounded-full" style={{ background: INK }} />
+          ))}
+        </span>
+      </div>
 
-      <div className="flex min-h-0 flex-1 items-center overflow-hidden">
-        <p className="break-words text-[15px] leading-snug text-white sm:text-[17px] sm:leading-relaxed">
-          {shorten(review.comment)}
+      {/* The review. */}
+      <div
+        className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-5 text-center"
+        style={{ background: PAPER_MID }}
+      >
+        <p
+          className="break-words font-medium tracking-tight"
+          style={{ fontSize: reviewFontSize(comment.length, compact), lineHeight: 1.22 }}
+        >
+          {comment}
         </p>
       </div>
 
-      <p className="mt-3 max-w-full truncate text-[15px] text-white/90 sm:text-base">- {name}</p>
-
-      {/* Quote badge hanging off the bottom-right corner. */}
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute -bottom-5 -right-4 flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg sm:-right-5 sm:h-16 sm:w-16"
-        style={{ background: BADGE_BG }}
-      >
-        <span className="select-none font-serif text-5xl font-bold leading-none text-white" style={{ marginTop: '0.5rem' }}>
-          {'\u201D'}
-        </span>
-      </span>
+      {/* Footer: icons, likes, caption, comments, time. */}
+      <div className="shrink-0 px-3 pb-3 pt-2.5" style={{ fontSize: small }}>
+        <div aria-hidden="true" className="flex items-center gap-3">
+          <svg viewBox="0 0 24 24" width="22" height="22">
+            <path
+              d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 5 6.4 5c2 0 3.6 1.1 5.6 3.2C14 6.1 15.6 5 17.6 5c3.4 0 5.5 3.4 4 6.8C19.5 16.4 12 21 12 21z"
+              fill="#e0393e"
+              stroke="#e0393e"
+              strokeWidth="1.5"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <svg viewBox="0 0 24 24" width="21" height="21" {...ICON}>
+            <path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.5L3 20.5l1.6-5.3A8.5 8.5 0 1 1 21 11.5z" />
+          </svg>
+          <svg viewBox="0 0 24 24" width="21" height="21" {...ICON}>
+            <path d="M22 3 9.5 14.5M22 3l-7 18-5.5-6.5L3 9z" />
+          </svg>
+          <svg viewBox="0 0 24 24" width="21" height="21" className="ml-auto" {...ICON}>
+            <path d="M6 3h12v18l-6-4.5L6 21z" />
+          </svg>
+        </div>
+        <p className="mt-2 font-bold">{LIKES} likes</p>
+        <p className="mt-0.5 truncate">
+          <span className="font-bold">{name}</span> {CAPTION}
+        </p>
+        <p className="mt-0.5" style={{ color: MUTED }}>View all {COMMENTS} comments</p>
+        <p className="mt-0.5" style={{ color: MUTED, fontSize: small - 1 }}>{timeAgo(review.created_at)}</p>
+      </div>
     </article>
   );
 }
@@ -293,7 +360,7 @@ export function TestimonialsMarquee() {
   // The animation loop: places every card each frame and, unless paused, moves the row slowly and steadily.
   useEffect(() => {
     if (n === 0) return;
-    const cardW = compact ? 250 : 340; // must match the card width in ReviewCard
+    const cardW = compact ? CARD_W_COMPACT : CARD_W; // must match the card width in ReviewCard
     const gap = compact ? GAP_COMPACT : GAP;
 
     // Write the position, scale, blur and brightness of every card for the current center position.
@@ -430,7 +497,7 @@ export function TestimonialsMarquee() {
         aria-label="5-star customer reviews"
         tabIndex={0}
         className="relative mx-auto w-full max-w-6xl select-none outline-none focus-visible:ring-2 focus-visible:ring-lime-400/60"
-        style={{ height: compact ? 350 : 380, touchAction: 'pan-y' }}
+        style={{ height: compact ? 360 : 450, touchAction: 'pan-y' }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowRight') go(1);
           if (e.key === 'ArrowLeft') go(-1);
