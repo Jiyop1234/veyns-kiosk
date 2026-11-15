@@ -1,6 +1,7 @@
 // @ts-nocheck
 // Step A3: admin data loading and Supabase Realtime, moved unchanged from employee-dashboard.tsx.
 // Only the state declarations and the final return are new; the effect and fetchCloudData are the original code.
+// Step A5: the 1-second countdown clock (nowTimestamp) moved to admin-promos-tab.tsx, so this hook no longer ticks every second.
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { MENU_GRID, getActivePromoCodes } from '@/lib/menu-data';
@@ -9,7 +10,6 @@ import { requestStaffGeocode } from '@/lib/order-geocode';
 export function useAdminDashboardData() {
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [promos, setPromos] = useState<any[]>([]);
-  const [nowTimestamp, setNowTimestamp] = useState(Date.now());
   const [orders, setOrders] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
@@ -22,13 +22,11 @@ export function useAdminDashboardData() {
     const menuChannel = supabase.channel('public:menu_items').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, fetchCloudData).subscribe();
     const slotsChannel = supabase.channel('public:slot_capacities').on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, fetchCloudData).subscribe();
     const promosChannel = supabase.channel('public:promos_dashboard').on('postgres_changes', { event: '*', schema: 'public', table: 'promos' }, fetchCloudData).subscribe();
-    const timer = setInterval(() => setNowTimestamp(Date.now()), 1000);
     return () => {
       supabase.removeChannel(orderChannel);
       supabase.removeChannel(menuChannel);
       supabase.removeChannel(slotsChannel);
       supabase.removeChannel(promosChannel);
-      clearInterval(timer);
     };
   }, []);
 
@@ -177,5 +175,5 @@ export function useAdminDashboardData() {
     }
   };
 
-  return { menuItems, promos, nowTimestamp, orders, setOrders, customers, slotCapacities, fetchCloudData };
+  return { menuItems, promos, orders, setOrders, customers, slotCapacities, fetchCloudData };
 }
