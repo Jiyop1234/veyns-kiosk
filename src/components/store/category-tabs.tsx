@@ -8,7 +8,9 @@
 //      (clip-path) that is exactly the size of the chosen category.
 //   When another category is chosen, the window slides and resizes to it (styles in menu-page.css).
 //   Every letter changes color exactly as the neon edge passes over it, because it is the same text seen through the moving window.
-// 'Extras' is an action button (it opens the Extras page), so the window never lands on it.
+// Step 13A: the window stretches. The edge in FRONT (the side it is travelling toward) moves first and reaches the new category,
+//   then the edge BEHIND follows a moment later (two separate edge distances with their own timing, styles in menu-page.css).
+// 'action' tabs (kind: 'action') still work if a screen passes one, but the menu no longer uses any: Extras is a normal category now.
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export type CategoryTab = { key: string; label: string; kind?: 'filter' | 'action' };
@@ -24,6 +26,9 @@ export function CategoryTabs({ tabs, active, onSelect, onAction }: { tabs: Categ
   const [win, setWin] = useState<{ left: number; right: number } | null>(null);
   // false for the very first measurement, so the window does not slide in from nowhere on load.
   const [ready, setReady] = useState(false);
+  // Which way the highlight travels. The front edge leads, the back edge follows (see menu-page.css).
+  const [dir, setDir] = useState<'right' | 'left'>('right');
+  const lastIndexRef = useRef(-1);
 
   const measure = useCallback(() => {
     const row = rowRef.current;
@@ -34,6 +39,13 @@ export function CategoryTabs({ tabs, active, onSelect, onAction }: { tabs: Categ
     const left = br.left - rr.left;
     const right = rr.right - br.right;
     setWin((w) => (w && Math.abs(w.left - left) < 0.5 && Math.abs(w.right - right) < 0.5 ? w : { left, right }));
+  }, [active]);
+
+  // Work out the travel direction before the window is measured, so both changes are drawn together.
+  useLayoutEffect(() => {
+    const idx = tabs.findIndex((t) => t.key === active);
+    if (lastIndexRef.current >= 0 && idx >= 0 && idx !== lastIndexRef.current) setDir(idx > lastIndexRef.current ? 'right' : 'left');
+    if (idx >= 0) lastIndexRef.current = idx;
   }, [active]);
 
   useLayoutEffect(() => { measure(); }, [measure, tabs.length]);
@@ -70,8 +82,6 @@ export function CategoryTabs({ tabs, active, onSelect, onAction }: { tabs: Categ
     sc.scrollBy({ left: delta, behavior: reduce ? 'auto' : 'smooth' });
   }, [active, ready]);
 
-  const clip = win ? `inset(0px ${win.right}px 0px ${win.left}px round 9999px)` : undefined;
-
   return (
     <div ref={scrollRef} className="veyns-tabs-scroll w-fit max-w-full overflow-x-auto rounded-full border border-emerald-900/50 bg-[#071F19] p-1">
       <div ref={rowRef} className="relative inline-flex">
@@ -93,8 +103,9 @@ export function CategoryTabs({ tabs, active, onSelect, onAction }: { tabs: Categ
         {/* Top copy: neon with dark labels, seen only through the sliding window. It cannot be clicked or read out loud. */}
         <div
           aria-hidden="true"
+          data-dir={dir}
           className="veyns-tabs-lit pointer-events-none absolute inset-0 flex bg-lime-400 text-[#03120d]"
-          style={win ? { clipPath: clip, WebkitClipPath: clip, transition: ready ? undefined : 'none' } : { visibility: 'hidden' }}
+          style={win ? ({ '--win-l': `${win.left}px`, '--win-r': `${win.right}px`, transition: ready ? undefined : 'none' } as React.CSSProperties) : { visibility: 'hidden' }}
         >
           {tabs.map((t) => (
             <span key={t.key} className={LABEL}>{t.label}</span>

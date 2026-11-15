@@ -5,6 +5,8 @@
 // OrderingCounter only passes the account/loyalty/checkout hooks listed in the props below.
 // Step 13: new layout. Heading, a pill category bar with a sliding neon highlight (category-tabs.tsx) next to the search,
 // and a 4-column grid whose cards are revealed with a mask wipe (menu-page.css). Cart, customization and upsell logic are unchanged.
+// Step 13A: Accessories tab always shown; the highlight stretches (front edge first); Extras is a normal category (no separate page);
+// an empty category (Apparel, Accessories) shows a shining "Coming Soon" instead of a blank gap.
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRight, Check, Minus, Plus, Search, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -156,8 +158,10 @@ export function MenuPage({
   // SECTION 16: Filter visible menu items by availability, category, and search text.
   const filtered = currentMenuGrid.filter((item) => {
     if (item.isAvailable === false) return false;
-    if (item.isExtra) return false;
-    const matchCategory = category === 'All items' || item.category === category;
+    // Step 13A: 'Extras' is a normal category now and shows the extra items; every other view still hides them.
+    if (category === 'Extras') { if (!item.isExtra) return false; }
+    else if (item.isExtra) return false;
+    const matchCategory = category === 'All items' || category === 'Extras' || item.category === category;
     const matchSearch =
       !search ||
       item.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -170,17 +174,22 @@ export function MenuPage({
     .filter((i) => i.isAvailable !== false && (i.isExtra || i.offerInPopup))
     .sort((a, b) => (a.sortOrder || 100) - (b.sortOrder || 100));
 
-  // Step 13: the category bar. Same categories and order as before (labels follow the new design); 'Extras' still opens the Extras page.
-  // 'Accessories' only appears when the menu actually has available items in that category.
+  // Step 13: the category bar (labels follow the new design). Step 13A: 'Extras' is a normal category that shows the extra items
+  // (no separate page), and 'Accessories' is always in the bar, after Apparel. A category with no items shows "Coming Soon".
   const CATEGORY_LABELS: { [key: string]: string } = { 'All items': 'All Items', 'Rice Bowls': 'Rice Meals', 'Noodle Bowls': 'Noodles' };
   const tabs: any[] = [];
   CATEGORIES.forEach((cat: string) => {
-    if (cat === 'Apparel') tabs.push({ key: '__extras', label: 'Extras', kind: 'action' });
+    if (cat === 'Apparel') tabs.push({ key: 'Extras', label: 'Extras' });
     tabs.push({ key: cat, label: CATEGORY_LABELS[cat] || cat });
   });
-  if (!CATEGORIES.includes('Accessories') && currentMenuGrid.some((i) => i.category === 'Accessories' && i.isAvailable !== false && !i.isExtra)) {
-    tabs.push({ key: 'Accessories', label: 'Accessories' });
-  }
+  if (!CATEGORIES.includes('Accessories')) tabs.push({ key: 'Accessories', label: 'Accessories' });
+
+  // Step 13A: how many items the chosen category has at all (ignoring the search), to tell "Coming Soon" from "no search match".
+  const categoryItemCount = currentMenuGrid.filter(
+    (i) => i.isAvailable !== false && (category === 'Extras' ? !!i.isExtra : !i.isExtra && i.category === category)
+  ).length;
+  const comingSoon = currentMenuGrid.length > 0 && category !== 'All items' && categoryItemCount === 0;
+  const noMatches = !comingSoon && currentMenuGrid.length > 0 && filtered.length === 0;
 
   // SECTION 17: Menu customization logic, conditional option groups, pricing, and cart insertion.
   const handleOpenModal = (item) => {
@@ -323,7 +332,8 @@ export function MenuPage({
 
     setAddedItemName(`${qty} × ${selected.name}${summary ? ` (${summary})` : ''}`);
     setSelected(null);
-    setShowUpsell(popupItems.length > 0);
+    // Step 13A: no "A little something extra?" popup after adding an extra itself.
+    setShowUpsell(popupItems.length > 0 && !selected.isExtra);
   };
 
   // SECTION 18: Upsell quantity helpers and cart quantity updates.
@@ -370,7 +380,6 @@ export function MenuPage({
           tabs={tabs}
           active={category}
           onSelect={handleSelectCategory}
-          onAction={() => onOpenExtras && onOpenExtras()}
         />
 
         <div className="relative w-full lg:max-w-xs">
@@ -441,6 +450,20 @@ export function MenuPage({
           );
         })}
       </div>
+
+      {/* Step 13A: empty category (Apparel, Accessories): shining "Coming Soon", so the page never shows a blank gap. */}
+      {comingSoon && (
+        <div data-inview={seen ? 'true' : 'false'}>
+          <div
+            key={`soon-${revealTick}`}
+            onAnimationEnd={(e) => { if (e.target === e.currentTarget) e.currentTarget.dataset.done = '1'; }}
+            className="veyns-reveal flex min-h-[40vh] items-center justify-center px-4 text-center"
+          >
+            <p className="veyns-coming-soon font-display text-4xl font-bold uppercase tracking-tight sm:text-6xl">Coming Soon</p>
+          </div>
+        </div>
+      )}
+      {noMatches && <p className="py-16 text-center text-sm text-emerald-300/70">No items match your search.</p>}
 
       {/* SECTION 27: Dynamic menu customization modal with option validation and price preview. */}
       {/* DYNAMIC MENU ITEM CUSTOMIZATION MODAL */}
