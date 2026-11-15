@@ -1,0 +1,44 @@
+/* Menu page styles (Step 13): the sliding category window and the mask reveals. Colors and sizes come from Tailwind classes in the components. */
+
+/* The neon copy of the category bar is visible only through a rounded window (clip-path). Changing the window slides and resizes it. */
+.veyns-tabs-lit {
+  transition: clip-path 0.55s cubic-bezier(0.65, 0, 0.25, 1), -webkit-clip-path 0.55s cubic-bezier(0.65, 0, 0.25, 1);
+  will-change: clip-path;
+}
+/* Hide the scrollbar of the category bar on narrow screens (it still scrolls by finger or wheel). */
+.veyns-tabs-scroll { scrollbar-width: none; }
+.veyns-tabs-scroll::-webkit-scrollbar { display: none; }
+
+/* Mask reveals: a soft edge sweeps over the element (down for cards, to the right for the heading) and uncovers it.
+   --veyns-reveal is the position of the edge; it is a registered property so the browser can animate it smoothly. */
+@property --veyns-reveal {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 130%;
+}
+@keyframes veyns-reveal {
+  from { --veyns-reveal: 0%; }
+  to   { --veyns-reveal: 130%; }
+}
+.veyns-reveal {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(var(--veyns-reveal) - 30%), transparent var(--veyns-reveal));
+  mask-image: linear-gradient(to bottom, #000 calc(var(--veyns-reveal) - 30%), transparent var(--veyns-reveal));
+  animation: veyns-reveal 0.9s cubic-bezier(0.22, 0.7, 0.2, 1) both;
+}
+.veyns-reveal-x {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(var(--veyns-reveal) - 30%), transparent var(--veyns-reveal));
+  mask-image: linear-gradient(to right, #000 calc(var(--veyns-reveal) - 30%), transparent var(--veyns-reveal));
+  animation: veyns-reveal 1.1s cubic-bezier(0.22, 0.7, 0.2, 1) both;
+}
+/* Wait (hidden) until the menu has scrolled into view; the parent's data-inview turns to 'true' once. */
+[data-inview='false'] .veyns-reveal,
+[data-inview='false'] .veyns-reveal-x { animation-play-state: paused; }
+/* When the sweep has finished the mask is removed, so hover shadows and borders are never clipped (set by onAnimationEnd). */
+.veyns-reveal[data-done='1'],
+.veyns-reveal-x[data-done='1'] { animation: none; -webkit-mask-image: none; mask-image: none; }
+
+/* People who ask their device for less motion get no sweep and no sliding. */
+@media (prefers-reduced-motion: reduce) {
+  .veyns-reveal, .veyns-reveal-x { animation: none; -webkit-mask-image: none; mask-image: none; }
+  .veyns-tabs-lit { transition: none; }
+}

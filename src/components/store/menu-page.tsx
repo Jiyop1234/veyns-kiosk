@@ -3,14 +3,18 @@
 // Moved out of ordering-counter.tsx (Step 4). Look and behavior are unchanged.
 // It loads the menu itself (Supabase + bundled fallback, kept live by Realtime) and talks to the cart through useCart().
 // OrderingCounter only passes the account/loyalty/checkout hooks listed in the props below.
-import React, { useState, useEffect } from 'react';
-import { ArrowRight, Check, Minus, Plus, Search, Star, UserPlus, Award, PlusCircle } from 'lucide-react';
+// Step 13: new layout. Heading, a pill category bar with a sliding neon highlight (category-tabs.tsx) next to the search,
+// and a 4-column grid whose cards are revealed with a mask wipe (menu-page.css). Cart, customization and upsell logic are unchanged.
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowRight, Check, Minus, Plus, Search, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { MENU_GRID, CATEGORIES, formatPeso } from '@/lib/menu-data';
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
+import { CategoryTabs } from '@/components/store/category-tabs';
+import './menu-page.css';
 
 // SECTION 2: Shared menu-image component with a branded fallback when no image is available.
 function Photo({ id, dbImage, alt, className }: { id: string; dbImage?: string; alt: string; className: string }) {
@@ -55,6 +59,24 @@ export function MenuPage({
   const [validationError, setValidationError] = useState('');
   const [showUpsell, setShowUpsell] = useState(false);
   const [addedItemName, setAddedItemName] = useState('');
+
+  // Step 13: the card reveal replays whenever the category changes, and starts once the menu has scrolled into view.
+  const [revealTick, setRevealTick] = useState(0);
+  const [seen, setSeen] = useState(false);
+  const headRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = headRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') { setSeen(true); return; }
+    const io = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) { setSeen(true); io.disconnect(); } }, { threshold: 0.25 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  const handleSelectCategory = (key: string) => {
+    if (key === category) return;
+    setCategory(key);
+    setRevealTick((t) => t + 1);
+  };
 
 
   // Initial menu load, live updates from Supabase Realtime, and storage-triggered refresh.
@@ -147,6 +169,18 @@ export function MenuPage({
   const popupItems = currentMenuGrid
     .filter((i) => i.isAvailable !== false && (i.isExtra || i.offerInPopup))
     .sort((a, b) => (a.sortOrder || 100) - (b.sortOrder || 100));
+
+  // Step 13: the category bar. Same categories and order as before (labels follow the new design); 'Extras' still opens the Extras page.
+  // 'Accessories' only appears when the menu actually has available items in that category.
+  const CATEGORY_LABELS: { [key: string]: string } = { 'All items': 'All Items', 'Rice Bowls': 'Rice Meals', 'Noodle Bowls': 'Noodles' };
+  const tabs: any[] = [];
+  CATEGORIES.forEach((cat: string) => {
+    if (cat === 'Apparel') tabs.push({ key: '__extras', label: 'Extras', kind: 'action' });
+    tabs.push({ key: cat, label: CATEGORY_LABELS[cat] || cat });
+  });
+  if (!CATEGORIES.includes('Accessories') && currentMenuGrid.some((i) => i.category === 'Accessories' && i.isAvailable !== false && !i.isExtra)) {
+    tabs.push({ key: 'Accessories', label: 'Accessories' });
+  }
 
   // SECTION 17: Menu customization logic, conditional option groups, pricing, and cart insertion.
   const handleOpenModal = (item) => {
@@ -313,112 +347,92 @@ export function MenuPage({
 
   return (
     <>
-      {/* SECTION 23: Menu search, customer account actions, and category navigation. */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-300/70" />
+      {/* Step 13: heading, revealed with a mask wipe when the menu scrolls into view. */}
+      <div ref={headRef} data-inview={seen ? 'true' : 'false'} className="mb-8 text-center sm:mb-10">
+        <h2
+          className="veyns-reveal-x font-display text-3xl font-medium uppercase tracking-tight text-white sm:text-5xl"
+          onAnimationEnd={(e) => { if (e.target === e.currentTarget) e.currentTarget.dataset.done = '1'; }}
+        >
+          Exceptional flavors
+        </h2>
+        <p
+          className="veyns-reveal-x mt-3 text-sm text-emerald-100/70"
+          style={{ animationDelay: '150ms' }}
+          onAnimationEnd={(e) => { if (e.target === e.currentTarget) e.currentTarget.dataset.done = '1'; }}
+        >
+          Rice and noodle bowls made fresh for every order.
+        </p>
+      </div>
+
+      {/* SECTION 23: Menu search and category navigation (the account / loyalty buttons that used to sit here are now the Loyalty Card section on the landing page). */}
+      <div className="mb-8 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <CategoryTabs
+          tabs={tabs}
+          active={category}
+          onSelect={handleSelectCategory}
+          onAction={() => onOpenExtras && onOpenExtras()}
+        />
+
+        <div className="relative w-full lg:max-w-xs">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-300/70" />
           <input
             type="text"
             placeholder="Search menu items..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-full border border-emerald-800/60 bg-[#071F19] pl-10 pr-4 py-2 text-sm text-white placeholder:text-emerald-400/50 focus:outline-none focus:ring-2 focus:ring-lime-400"
+            className="w-full rounded-full border border-emerald-900/50 bg-[#071F19] py-2.5 pl-11 pr-4 text-sm text-white placeholder:text-emerald-400/50 focus:outline-none focus:ring-2 focus:ring-lime-400"
           />
-        </div>
-
-        <div className="flex items-center gap-3">
-          {isGuest ? (
-            <Button
-              onClick={() => {
-                if (onOpenRegister) onOpenRegister();
-              }}
-              className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold text-xs px-4 py-2.5 rounded-full transition-all shadow-lg flex items-center gap-2 cursor-pointer"
-            >
-              <UserPlus className="h-4 w-4" /> Create an Account
-            </Button>
-          ) : (
-            <Button
-              onClick={() => {
-                onOpenLoyalty();
-              }}
-              className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold text-xs px-4 py-2.5 rounded-full transition-all shadow-lg flex items-center gap-2 cursor-pointer"
-            >
-              <Award className="h-4 w-4" /> {loyaltyStatus ? (['PLATINUM', 'DIAMOND'].includes(loyaltyStatus.tier) ? `${loyaltyStatus.tier} Card` : `Loyalty • ${loyaltyStatus.cumulative_stamps} Stamps`) : 'Loyalty Card'}
-            </Button>
-          )}
-
-          <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
-            {CATEGORIES.map((cat) => (
-              <React.Fragment key={cat}>
-                {cat === 'Apparel' && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenExtras && onOpenExtras()}
-                    className="px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer bg-[#071F19] text-emerald-200 hover:bg-[#0a2c24] flex items-center gap-1.5"
-                  >
-                    <PlusCircle className="h-3.5 w-3.5 text-lime-400" /> Extras
-                  </button>
-                )}
-                <button
-                  onClick={() => setCategory(cat)}
-                  className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                    category === cat ? 'bg-lime-400 text-black' : 'bg-[#071F19] text-emerald-200 hover:bg-[#0a2c24]'
-                  }`}
-                >
-                  {cat}
-                </button>
-              </React.Fragment>
-            ))}
-          </div>
         </div>
       </div>
 
       {/* SECTION 24: Menu item cards and add-to-cart entry points. */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((item) => {
+      <div data-inview={seen ? 'true' : 'false'} className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+        {filtered.map((item, index) => {
           const effectivePrice = getEffectiveItemPrice(item);
           const hasDiscount = (item.discountPercent || 0) > 0;
 
           return (
             <div
-              key={item.id}
+              key={`${revealTick}-${item.id}`}
               onClick={() => handleOpenModal(item)}
-              className="group cursor-pointer rounded-2xl border border-emerald-800/40 bg-[#051813] p-4 transition-all duration-200 hover:border-lime-400/60 hover:shadow-xl flex flex-col justify-between"
+              style={{ animationDelay: `${Math.min(index, 11) * 55}ms` }}
+              onAnimationEnd={(e) => { if (e.target === e.currentTarget) e.currentTarget.dataset.done = '1'; }}
+              className="veyns-reveal group cursor-pointer rounded-2xl border border-emerald-800/40 bg-[#051813] p-3 transition-all duration-200 hover:border-lime-400/60 hover:shadow-xl flex flex-col justify-between sm:p-4"
             >
               <div>
-                <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-[#071F19] mb-4 flex items-center justify-center">
+                <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-[#071F19] mb-3 flex items-center justify-center sm:mb-4">
                   <Photo id={item.id} dbImage={item.image} alt={item.name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                   
                   {item.bestSeller && (
-                    <span className="absolute top-2.5 right-2.5 rounded-full bg-lime-400 text-black px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider shadow-md flex items-center gap-1">
+                    <span className="absolute top-2 right-2 rounded-full bg-lime-400 text-black px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider shadow-md flex items-center gap-1 sm:top-2.5 sm:right-2.5 sm:px-3 sm:py-1 sm:text-[10px]">
                       <Star className="h-3 w-3 fill-black" /> BEST SELLER
                     </span>
                   )}
 
                   {hasDiscount && (
-                    <span className="absolute top-2.5 left-2.5 rounded-full bg-amber-400 text-black px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider shadow-md">
+                    <span className="absolute top-2 left-2 rounded-full bg-amber-400 text-black px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider shadow-md sm:top-2.5 sm:left-2.5 sm:px-2.5 sm:py-1 sm:text-[10px]">
                       {item.discountPercent}% OFF
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-display font-bold text-white text-lg">{item.name}</h3>
-                  <div className="text-right whitespace-nowrap">
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+                  <h3 className="font-display font-bold leading-tight text-white text-sm sm:text-base">{item.name}</h3>
+                  <div className="whitespace-nowrap sm:text-right">
                     {hasDiscount ? (
-                      <div className="flex flex-col items-end">
-                        <span className="font-bold text-lime-400 text-base">{formatPeso(effectivePrice)}</span>
+                      <div className="flex flex-col sm:items-end">
+                        <span className="font-bold text-lime-400 text-sm sm:text-base">{formatPeso(effectivePrice)}</span>
                         <span className="text-xs text-emerald-400/60 line-through">{formatPeso(item.price)}</span>
                       </div>
                     ) : (
-                      <span className="font-bold text-lime-400 text-base">{formatPeso(item.price)}</span>
+                      <span className="font-bold text-lime-400 text-sm sm:text-base">{formatPeso(item.price)}</span>
                     )}
                   </div>
                 </div>
-                <p className="mt-2 text-xs text-emerald-300/80 line-clamp-2">{item.description}</p>
+                <p className="mt-2 text-[11px] text-emerald-300/80 line-clamp-2 sm:text-xs">{item.description}</p>
               </div>
 
-              <div className="mt-4 flex items-center justify-end border-t border-emerald-900/60 pt-3">
+              <div className="mt-3 flex items-center justify-end border-t border-emerald-900/60 pt-3 sm:mt-4">
                 <Button size="sm" className="rounded-full bg-lime-400 text-black font-bold hover:bg-lime-300 px-5">
                   Add
                 </Button>
