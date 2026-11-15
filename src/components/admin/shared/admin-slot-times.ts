@@ -1,10 +1,6 @@
 // @ts-nocheck
-// Step A2: order, slot, status and edit helpers moved unchanged from employee-dashboard.tsx (only "export" added).
-// ---- order display helpers (work for normalised items AND old raw items) ----
-export const itemQty = (it: any) => Number(it?.qty ?? it?.quantity ?? 1);
-export const lineItemName = (it: any) => it?.name || it?.item?.name || 'Item';
-export const itemUnit = (it: any) => Number(it?.unitPrice ?? it?.price ?? it?.item?.price ?? 0);
-
+// Admin time-slot helpers (Asia/Manila): today, when a slot ends, and 12-hour / 24-hour slot conversion.
+// Step A3: moved unchanged from employee-dashboard.tsx (via the A2 helpers file); only "export" was added.
 // ---- schedule-transfer helpers (Asia/Manila, real timestamps) ----
 export const todayManila = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 export const slotEndsAt = (dateKey: string, slot: string): number | null => {
@@ -20,26 +16,6 @@ export const slotEndsAt = (dateKey: string, slot: string): number | null => {
 export const slotHasEnded = (dateKey: string, slot: string) => {
   const end = slotEndsAt(dateKey, slot);
   return end === null ? true : end <= Date.now();
-};
-
-// ---- order status + PWD helpers ----
-export const ORDER_STATUSES = ['pending', 'completed', 'cancelled', 'rescheduled'] as const;
-export const STATUS_LABEL: Record<string, string> = { pending: 'Pending', completed: 'Completed', cancelled: 'Cancelled', rescheduled: 'Rescheduled' };
-export const STATUS_SKIN: Record<string, string> = {
-  pending: 'bg-amber-400/15 text-amber-300 border-amber-400/50',
-  completed: 'bg-lime-400/15 text-lime-300 border-lime-400/50',
-  cancelled: 'bg-red-950 text-red-400 border-red-800',
-  rescheduled: 'bg-sky-400/15 text-sky-300 border-sky-400/50'
-};
-// Amount actually payable/collected: PWD orders use the discounted final amount.
-export const payableAmount = (o: any) => (o?.pwdApplied ? Number(o.pwdFinal || 0) : Number(o?.total || 0));
-
-// ---- edit-order helpers ----
-// Our Delivery vs Maxim: use the saved delivery_option; older orders fall back to the schedule text.
-export const orderDeliveryOption = (o: any): 'our' | 'maxim' | null => {
-  if ((o?.fulfillment || '') !== 'delivery') return null;
-  if (o?.deliveryOption === 'our' || o?.deliveryOption === 'maxim') return o.deliveryOption;
-  return /maxim/i.test(o?.scheduleInfo || '') ? 'maxim' : 'our';
 };
 // "09:00" -> "9:00 AM" (format required by the database slot parser)
 export const to12h = (hhmm: string) => {

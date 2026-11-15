@@ -10,17 +10,21 @@ import { supabase } from '@/lib/supabase';
 import { requestStaffGeocode } from '@/lib/order-geocode';
 import { AdminOrderProcessing } from '@/components/admin/order-processing/admin-order-processing';
 import { AdminFeedbackManager } from '@/components/admin/feedback/admin-feedback-manager';
-import { DeliveryPinMap } from '@/components/admin/shared/delivery-pin-map';
+import { DeliveryPinMap } from '@/components/admin/shared/admin-delivery-pin-map';
 import { useTimeSlots } from '@/lib/time-slots';
 import { MessageSquare } from 'lucide-react';
-import { Photo } from '@/components/admin/shared/photo';
-import { itemQty, lineItemName, itemUnit, todayManila, slotEndsAt, slotHasEnded, ORDER_STATUSES, STATUS_LABEL, STATUS_SKIN, payableAmount, orderDeliveryOption, to12h, slotTo24 } from '@/components/admin/shared/order-helpers';
+import { AdminMenuImage } from '@/components/admin/shared/admin-menu-image';
+import { itemQty, lineItemName, itemUnit } from '@/components/admin/shared/admin-order-items';
+import { ORDER_STATUSES, STATUS_LABEL, STATUS_SKIN, payableAmount, orderDeliveryOption } from '@/components/admin/shared/admin-order-status';
+import { todayManila, slotEndsAt, slotHasEnded, to12h, slotTo24 } from '@/components/admin/shared/admin-slot-times';
+import { useAdminDashboardData } from '@/components/admin/admin-dashboard-data';
 
 // --- Main employee/admin dashboard component ---
 
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
   const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots' | 'process' | 'feedback'>('sales');
-  const [menuItems, setMenuItems] = useState<any[]>([]);
+  // Step A3: data loading and Realtime now live in admin/admin-dashboard-data.ts
+  const { menuItems, promos, nowTimestamp, orders, setOrders, customers, slotCapacities, fetchCloudData } = useAdminDashboardData();
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isAddingNewItem, setIsAddingNewItem] = useState(false);
   const [itemName, setItemName] = useState('');
@@ -39,8 +43,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [itemOptionGroups, setItemOptionGroups] = useState<any[]>([]);
   const [previewSelections, setPreviewSelections] = useState<{ [groupId: string]: string[] }>({});
 
-  const [promos, setPromos] = useState<any[]>([]);
-  const [nowTimestamp, setNowTimestamp] = useState(Date.now());
   const [newPromoCode, setNewPromoCode] = useState('');
   const [newPromoDiscount, setNewPromoDiscount] = useState('');
   const [newPromoType, setNewPromoType] = useState<'percentage' | 'peso'>('percentage');
@@ -62,7 +64,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [newCampaignEnd, setNewCampaignEnd] = useState('');
   const [editingPromoCode, setEditingPromoCode] = useState<string | null>(null);
 
-  const [orders, setOrders] = useState<any[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
 
   // --- Order status / PWD / reschedule state ---
@@ -87,7 +88,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [editPin, setEditPin] = useState<{ lat: number; lng: number } | null>(null);
   const [editPinFee, setEditPinFee] = useState<{ km: number; fee: number } | null>(null);
   const editAddrTouched = useRef(false);
-  const geoTriedRef = useRef<Set<string>>(new Set()); // orders whose map address was already requested this session
 
   // --- Time window manager (Slot Capacity tab) ---
   const [slotEdits, setSlotEdits] = useState<Record<string, { start: string; end: string }>>({});
@@ -127,7 +127,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [deleteReason, setDeleteReason] = useState('');
   const [statusMsg, setStatusMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
-  const [customers, setCustomers] = useState<any[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
   
   // Customer Edit State
@@ -137,7 +136,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [editCustValue, setEditCustValue] = useState('');
   const [custBusy, setCustBusy] = useState(false);
 
-  const [slotCapacities, setSlotCapacities] = useState<any[]>([]);
   const [selectedSlotDate, setSelectedSlotDate] = useState(new Date().toISOString().split('T')[0]);
   const timeSlotsList = useTimeSlots(); // editable in Slot Capacity; shared live with customer checkout
 
@@ -158,168 +156,6 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const [loyaltyTierReason, setLoyaltyTierReason] = useState('');
   const [loyaltyBusy, setLoyaltyBusy] = useState(false);
   const [pendingStamp, setPendingStamp] = useState<string>(''); // e.g. 'AD7' (add up to circle 7) or 'RM7' (remove circle 7) — applied only when Apply is pressed
-
-  // --- Initial cloud data load and Supabase Realtime subscriptions ---
-  useEffect(() => {
-    fetchCloudData();
-    const orderChannel = supabase.channel('public:orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCloudData).subscribe();
-    const menuChannel = supabase.channel('public:menu_items').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, fetchCloudData).subscribe();
-    const slotsChannel = supabase.channel('public:slot_capacities').on('postgres_changes', { event: '*', schema: 'public', table: 'slot_capacities' }, fetchCloudData).subscribe();
-    const promosChannel = supabase.channel('public:promos_dashboard').on('postgres_changes', { event: '*', schema: 'public', table: 'promos' }, fetchCloudData).subscribe();
-    const timer = setInterval(() => setNowTimestamp(Date.now()), 1000);
-    return () => {
-      supabase.removeChannel(orderChannel);
-      supabase.removeChannel(menuChannel);
-      supabase.removeChannel(slotsChannel);
-      supabase.removeChannel(promosChannel);
-      clearInterval(timer);
-    };
-  }, []);
-
-  // --- Load menu, orders, customer profiles, slot capacities, and promos from Supabase ---
-  const fetchCloudData = async () => {
-    try {
-      const { data: cloudMenu } = await supabase.from('menu_items').select('*');
-      if (cloudMenu) {
-        const formattedMenu = cloudMenu.map((m: any) => ({
-          id: m.id,
-          name: m.name,
-          category: m.category,
-          description: m.description,
-          price: Number(m.price),
-          discountPercent: Number(m.discount_percent || 0),
-          isAvailable: m.is_available,
-          bestSeller: m.best_seller,
-          isExtra: !!m.is_extra,
-          offerInPopup: !!m.offer_in_popup,
-          sortOrder: Number(m.sort_order || 100),
-          image: m.image_url,
-          optionGroups: m.option_groups || []
-        }));
-        setMenuItems(formattedMenu);
-        localStorage.setItem('veyns_manageable_menu', JSON.stringify(formattedMenu));
-      } else {
-        setMenuItems(MENU_GRID);
-      }
-
-      const { data: cloudOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-      // staff-only pin + generated map address (RLS returns rows to staff only)
-      const { data: geoRows } = await supabase.from('order_delivery_private').select('order_id,delivery_lat,delivery_lng,map_address,map_address_status');
-      const geoById: Record<string, any> = {};
-      (geoRows || []).forEach((g: any) => { geoById[g.order_id] = g; });
-      if (cloudOrders) {
-        setOrders(cloudOrders.map((o: any) => ({
-          id: o.id,
-          orderNumber: o.order_number,
-          accountNickname: o.account_nickname || 'Guest',
-          name: o.customer_name,
-          email: o.email || '',
-          phone: o.phone || '',
-          fulfillment: o.fulfillment || 'delivery',
-          location: o.location || o.address || '',
-          landmark: o.landmark || '',
-          items: Array.isArray(o.items) ? o.items : [],
-          subtotal: Number(o.subtotal ?? 0),
-          promoDiscount: Number(o.promo_discount || 0),
-          deliveryDiscount: Number(o.delivery_discount || 0),
-          deliveryFee: Number(o.delivery_fee || 0),
-          total: Number(o.total || 0),
-          date: new Date(o.created_at).toLocaleString(),
-          promoCode: o.promo_code || '',
-          orderType: o.order_type || 'today',
-          scheduleInfo: o.schedule_info || 'Immediate / Today',
-          status: (o.status || 'pending').toLowerCase(),
-          statusUpdatedAt: o.status_updated_at || null,
-          completedAt: o.completed_at || null,
-          slotDate: o.slot_date || '',
-          slotTime: o.slot_time || '',
-          rescheduledToDate: o.rescheduled_to_date || '',
-          rescheduledToTime: o.rescheduled_to_time || '',
-          deliveryOption: o.delivery_option || '',
-          lastEditedAt: o.last_edited_at || null,
-          editCount: Number(o.edit_count || 0),
-          pwdApplied: !!o.pwd_applied,
-          pwdOriginal: Number(o.pwd_original_amount || 0),
-          pwdPercent: Number(o.pwd_discount_percent || 0),
-          pwdDiscount: Number(o.pwd_discount_amount || 0),
-          pwdFinal: Number(o.pwd_final_amount || 0),
-          pwdAppliedByName: o.pwd_applied_by_name || '',
-          pwdAppliedAt: o.pwd_applied_at || null,
-          manualDiscountType: o.manual_discount_type || '',
-          manualDiscountValue: o.manual_discount_value === null || o.manual_discount_value === undefined ? null : Number(o.manual_discount_value),
-          manualDiscount: Number(o.manual_discount_amount || 0),
-          manualDiscountLabel: o.manual_discount_label || '',
-          pinLat: geoById[o.id] ? Number(geoById[o.id].delivery_lat) : null,
-          pinLng: geoById[o.id] ? Number(geoById[o.id].delivery_lng) : null,
-          mapAddress: geoById[o.id]?.map_address || '',
-          mapAddressStatus: geoById[o.id]?.map_address_status || ''
-        })));
-        // generate the map address of any pin that does not have one yet (3 at a time, once per page load)
-        const pendingGeo = (geoRows || []).filter((g: any) => g.map_address_status === 'pending' && !geoTriedRef.current.has(g.order_id)).slice(0, 3).map((g: any) => g.order_id);
-        if (pendingGeo.length > 0) {
-          pendingGeo.forEach((id: string) => geoTriedRef.current.add(id));
-          requestStaffGeocode(pendingGeo).then((ok) => { if (ok) fetchCloudData(); });
-        }
-      }
-
-      const { data: cloudProfiles } = await supabase.from('profiles').select('id,name,identifier,role,created_at,stamps_data,penalty_data,auth_user_id');
-      if (cloudProfiles && cloudProfiles.length > 0) {
-        const formattedProfiles = cloudProfiles.map((p: any) => {
-          const identifierKey = (p.identifier || '').toLowerCase().trim();
-          if (p.stamps_data) {
-            localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(p.stamps_data));
-            const validDates = p.stamps_data.filter((s: any) => s && s.status === 'valid').map((s: any) => s.date);
-            localStorage.setItem(`veyns_stamps_${identifierKey}`, JSON.stringify(validDates));
-          }
-          if (p.penalty_data) {
-            localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(p.penalty_data));
-          } else {
-            localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
-          }
-          return { id: p.id, name: p.name || 'Valued Regular', identifier: p.identifier, type: p.role || 'regular', auth_user_id: p.auth_user_id, created_at: p.created_at };
-        });
-        setCustomers(formattedProfiles);
-      } else {
-        setCustomers([]);
-      }
-
-      const { data: cloudSlots } = await supabase.from('slot_capacities').select('*');
-      if (cloudSlots) {
-        setSlotCapacities(cloudSlots);
-      }
-
-      const { data: cloudPromos } = await supabase.from('promos').select('*');
-      if (cloudPromos && cloudPromos.length > 0) {
-        const formattedPromos = cloudPromos.map((p: any) => ({
-          code: p.code,
-          type: p.type,
-          discountValue: Number(p.discount_value),
-          target_type: p.target_type || 'subtotal',
-          eligibility: p.eligibility || 'all',
-          visibility: p.visibility,
-          expiryDurationMs: Number(p.expiry_duration_ms),
-          usageLimit: p.usage_limit ? Number(p.usage_limit) : null,
-          usageCount: Number(p.usage_count || 0),
-          perPersonLimit: p.per_person_limit === null || p.per_person_limit === undefined ? null : Number(p.per_person_limit),
-          createdAt: Number(p.created_at || Date.now()),
-          name: p.name || '',
-          description: p.description || '',
-          startDate: p.start_date ? Date.parse(p.start_date) : null,
-          expiresAt: p.expires_at ? Date.parse(p.expires_at) : null,
-          minPurchase: Number(p.min_purchase || 0),
-          isEnabled: p.is_enabled !== false,
-          expiryUnitText: Number(p.expiry_duration_ms) > 0 ? `${Number(p.expiry_duration_ms) / (60 * 1000)} minutes` : 'Never expires'
-        }));
-        setPromos(formattedPromos);
-      } else {
-        setPromos(getActivePromoCodes());
-      }
-    } catch (e) {
-      console.error('Error fetching cloud data:', e);
-      setMenuItems(MENU_GRID);
-      setPromos(getActivePromoCodes());
-    }
-  };
 
   // --- Save configured capacity (max bowls & max slots) and booking status for a date/time slot ---
   const handleUpdateSlotCapacity = async (dateKey: string, slotTime: string, maxBowls: number, maxSlots: number, isFullyBooked: boolean) => {
@@ -1782,7 +1618,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-3">
                           <div className="h-14 w-14 rounded-xl bg-[#08291f] overflow-hidden shrink-0 border border-emerald-800/50 flex items-center justify-center">
-                            <Photo src={displayImage} alt={item.name} className="h-full w-full object-cover" />
+                            <AdminMenuImage src={displayImage} alt={item.name} className="h-full w-full object-cover" />
                           </div>
                           <div>
                             <div className="flex items-center gap-1.5">
@@ -2766,7 +2602,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
                 <label className="font-bold text-lime-400 uppercase tracking-wider block">Menu Item Photo Upload</label>
                 <div className="flex items-center gap-3 bg-[#041913] border border-emerald-800/80 rounded-xl p-3">
                   <div className="h-12 w-12 rounded-lg bg-[#08291f] overflow-hidden shrink-0 border border-emerald-800/50 flex items-center justify-center">
-                    <Photo src={imagePreviewUrl} alt="Preview" className="h-full w-full object-cover" />
+                    <AdminMenuImage src={imagePreviewUrl} alt="Preview" className="h-full w-full object-cover" />
                   </div>
                   <div className="flex-1 overflow-hidden">
                     <input type="file" accept="image/*" onChange={(e) => { if (e.target.files && e.target.files[0]) { setItemImageFile(e.target.files[0]); setImagePreviewUrl(URL.createObjectURL(e.target.files[0])); } }} className="text-[10px] text-emerald-300 w-full file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-extrabold file:bg-[#082d22] file:text-lime-400 hover:file:bg-lime-400 hover:file:text-black cursor-pointer" />
