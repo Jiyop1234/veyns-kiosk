@@ -3,6 +3,7 @@
 // Owns everything the store shows: header, menu (StoreData, formerly OrderingCounter),
 // feedback/extras overlays, account settings, order history and the recovery dialog.
 // App.tsx is only the auth gate and passes the auth-bridge props below.
+// Step 13B: the separate Extras page is gone. Extras is a category inside the menu now (menu-page.tsx).
 import React, { useState, useEffect } from 'react';
 import { SiteHeader } from '@/components/store/site-header';
 import { StoreData } from '@/components/store/store-data';
@@ -13,7 +14,6 @@ import { CartProvider } from '@/lib/cart';
 import { AccountSettingsDialog } from '@/components/store/account-settings-dialog';
 import { FeedbackPage } from '@/components/store/feedback-page';
 import { FloatingSupportButton } from '@/components/floating-support-button';
-import { ExtrasPage } from '@/components/extras-page';
 import { ProfilePage } from '@/components/store/profile-page';
 import { ResetPasswordDialog } from '@/components/login-page';
 
@@ -36,7 +36,6 @@ export function StorePage({
 }) {
   const [showMyOrders, setShowMyOrders] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
-  const [showExtras, setShowExtras] = useState(false);
   // The header's cart icon bumps this; StoreData opens checkout when it changes.
   const [openCheckoutTick, setOpenCheckoutTick] = useState(0);
 
@@ -98,10 +97,16 @@ export function StorePage({
     setResetTrigger((prev) => prev + 1);
   };
 
-  // Home and Menu in the header close the Feedback and Extras pages first.
+  // Home and Menu in the header close the Feedback page first.
   const closeOverlays = () => {
     setShowFeedback(false);
-    setShowExtras(false);
+  };
+
+  // Step 13B: if the header still offers an Extras link, it now just takes the customer to the menu (where Extras is a category).
+  const goToMenu = () => {
+    closeOverlays();
+    const el = document.getElementById('menu');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
 
   const recordOrderForLoyalty = async () => {
@@ -131,7 +136,7 @@ export function StorePage({
           onOpenSignUp={onOpenSignUp}
           onExitGuest={onLogout}
           onOpenFeedback={() => setShowFeedback(true)}
-          onOpenExtras={() => setShowExtras(true)}
+          onOpenExtras={goToMenu}
           onOpenCart={() => setOpenCheckoutTick((t) => t + 1)}
           onCloseOverlays={closeOverlays}
         />
@@ -142,7 +147,6 @@ export function StorePage({
           {/* Step 9C: the whole menu is one snap section (it is taller than a screen, so it scrolls freely inside). */}
           <div className="veyns-snap">
             <StoreData
-              onOpenExtras={() => setShowExtras(true)}
               orderHistory={orderHistory}
               setOrderHistory={updateOrderHistory}
               resetKey={resetTrigger}
@@ -160,7 +164,6 @@ export function StorePage({
           <SiteFooter />
         </div>
         {showFeedback && <FeedbackPage onBack={() => setShowFeedback(false)} currentUser={currentUser} />}
-        {showExtras && <ExtrasPage onBack={() => setShowExtras(false)} onReviewOrder={() => { setShowExtras(false); setShowMyOrders(true); }} />}
         <ProfilePage
           open={showMyOrders}
           onOpenChange={setShowMyOrders}
