@@ -8,79 +8,15 @@ import { getPromoStatus, getPromoEndMs, isCampaignPromo, formatCountdown, manila
 import { menuImages } from '@/lib/menu-images';
 import { supabase } from '@/lib/supabase';
 import { requestStaffGeocode } from '@/lib/order-geocode';
-import { AdminOrderProcessing } from '@/components/admin-order-processing';
-import { AdminFeedbackManager } from '@/components/admin-feedback-manager';
-import { DeliveryPinMap } from '@/components/delivery-pin-map';
+import { AdminOrderProcessing } from '@/components/admin/order-processing/admin-order-processing';
+import { AdminFeedbackManager } from '@/components/admin/feedback/admin-feedback-manager';
+import { DeliveryPinMap } from '@/components/admin/shared/delivery-pin-map';
 import { useTimeSlots } from '@/lib/time-slots';
 import { MessageSquare } from 'lucide-react';
-
-// --- Menu image display helper: renders an image or the VEYNS fallback ---
-function Photo({ src, alt, className }: { src?: string; alt: string; className: string }) {
-  if (!src) {
-    return (
-      <div className={`${className} flex items-center justify-center bg-[#0d2e26] font-display text-sm font-bold text-[#d4af37]`}>
-        VEYNS
-      </div>
-    );
-  }
-  return <img src={src} alt={alt} width={512} height={512} className={className} />;
-}
+import { Photo } from '@/components/admin/shared/photo';
+import { itemQty, lineItemName, itemUnit, todayManila, slotEndsAt, slotHasEnded, ORDER_STATUSES, STATUS_LABEL, STATUS_SKIN, payableAmount, orderDeliveryOption, to12h, slotTo24 } from '@/components/admin/shared/order-helpers';
 
 // --- Main employee/admin dashboard component ---
-// ---- order display helpers (work for normalised items AND old raw items) ----
-const itemQty = (it: any) => Number(it?.qty ?? it?.quantity ?? 1);
-const lineItemName = (it: any) => it?.name || it?.item?.name || 'Item';
-const itemUnit = (it: any) => Number(it?.unitPrice ?? it?.price ?? it?.item?.price ?? 0);
-
-// ---- schedule-transfer helpers (Asia/Manila, real timestamps) ----
-const todayManila = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-const slotEndsAt = (dateKey: string, slot: string): number | null => {
-  const m = (slot || '').match(/^\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])\s*-\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])\s*$/);
-  if (!m || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey || '')) return null;
-  const mins = (h: string, mi: string, ap: string) => ((parseInt(h, 10) % 12) + (ap.toUpperCase() === 'PM' ? 12 : 0)) * 60 + parseInt(mi, 10);
-  const s = mins(m[1], m[2], m[3]);
-  let e = mins(m[4], m[5], m[6]);
-  if (e <= s) e += 1440;
-  const [y, mo, d] = dateKey.split('-').map(Number);
-  return Date.UTC(y, mo - 1, d, 0, e, 0) - 8 * 3600 * 1000; // Manila = UTC+8
-};
-const slotHasEnded = (dateKey: string, slot: string) => {
-  const end = slotEndsAt(dateKey, slot);
-  return end === null ? true : end <= Date.now();
-};
-
-// ---- order status + PWD helpers ----
-const ORDER_STATUSES = ['pending', 'completed', 'cancelled', 'rescheduled'] as const;
-const STATUS_LABEL: Record<string, string> = { pending: 'Pending', completed: 'Completed', cancelled: 'Cancelled', rescheduled: 'Rescheduled' };
-const STATUS_SKIN: Record<string, string> = {
-  pending: 'bg-amber-400/15 text-amber-300 border-amber-400/50',
-  completed: 'bg-lime-400/15 text-lime-300 border-lime-400/50',
-  cancelled: 'bg-red-950 text-red-400 border-red-800',
-  rescheduled: 'bg-sky-400/15 text-sky-300 border-sky-400/50'
-};
-// Amount actually payable/collected: PWD orders use the discounted final amount.
-const payableAmount = (o: any) => (o?.pwdApplied ? Number(o.pwdFinal || 0) : Number(o?.total || 0));
-
-// ---- edit-order helpers ----
-// Our Delivery vs Maxim: use the saved delivery_option; older orders fall back to the schedule text.
-const orderDeliveryOption = (o: any): 'our' | 'maxim' | null => {
-  if ((o?.fulfillment || '') !== 'delivery') return null;
-  if (o?.deliveryOption === 'our' || o?.deliveryOption === 'maxim') return o.deliveryOption;
-  return /maxim/i.test(o?.scheduleInfo || '') ? 'maxim' : 'our';
-};
-// "09:00" -> "9:00 AM" (format required by the database slot parser)
-const to12h = (hhmm: string) => {
-  const [h, m] = (hhmm || '').split(':').map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) return '';
-  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
-};
-// "9:00 AM - 10:00 AM" -> { start: "09:00", end: "10:00" }
-const slotTo24 = (slot: string): { start: string; end: string } | null => {
-  const m = (slot || '').match(/^\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])\s*-\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])\s*$/);
-  if (!m) return null;
-  const conv = (h: string, mi: string, ap: string) => `${String((parseInt(h, 10) % 12) + (ap.toUpperCase() === 'PM' ? 12 : 0)).padStart(2, '0')}:${mi}`;
-  return { start: conv(m[1], m[2], m[3]), end: conv(m[4], m[5], m[6]) };
-};
 
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
   const [activeTab, setActiveTab] = useState<'sales' | 'menu' | 'promos' | 'customers' | 'slots' | 'process' | 'feedback'>('sales');
