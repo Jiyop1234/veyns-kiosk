@@ -3,7 +3,7 @@
 // It restores the session, shows the login screens or the staff dashboard,
 // and hands everything the customer store shows to <StorePage />.
 import React, { useState, useEffect } from 'react';
-import { EmployeeDashboard } from '@/components/employee-dashboard';
+import { EmployeeDashboard } from '@/components/admin/admin-dashboard';
 import { supabase } from '@/lib/supabase';
 import { LoginPage } from '@/components/login-page';
 import { StorePage } from '@/components/store/store-page';
