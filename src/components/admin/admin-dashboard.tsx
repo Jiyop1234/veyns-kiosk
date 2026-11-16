@@ -16,6 +16,7 @@ import { useAdminDashboardData } from '@/components/admin/admin-dashboard-data';
 import { AdminSidebar } from '@/components/admin/admin-sidebar';
 import { AdminComingSoon } from '@/components/admin/admin-coming-soon';
 import { AdminOverviewTab } from '@/components/admin/overview/admin-overview-tab';
+import { AdminLedgerTab } from '@/components/admin/ledger/admin-ledger-tab';
 import { ADMIN_NAV_ITEMS, type AdminTabId } from '@/components/admin/admin-nav-items';
 
 // --- Main employee/admin dashboard component ---
@@ -86,8 +87,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
             <AdminSalesSummaryCards orders={orders} />
           </AdminOrderLogTab>
 
-          {/* Ledger and Delivery Fees: in the navigation, not built yet (Part B) */}
-          {activeTab === 'ledger' && <AdminComingSoon title="Ledger is coming" text="Expenses, capital and cash flow will be recorded here." />}
+          {/* Ledger screen lives in admin/ledger/ (sample data until its database step) */}
+          <AdminLedgerTab active={activeTab === 'ledger'} />
+
+          {/* Delivery Fees: in the navigation, not built yet (Part B) */}
           {activeTab === 'fees' && <AdminComingSoon title="Delivery fees are coming" text="The delivery fee rules will be managed here." />}
 
           {/* Admin order processing: place an order on behalf of an existing or new customer */}
