@@ -8,8 +8,8 @@ import { Clock, Users, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/lib/supabase';
-import { itemQty, lineItemName } from '@/components/admin/shared/admin-order-items';
-import { todayManila, slotHasEnded, to12h, slotTo24 } from '@/components/admin/shared/admin-slot-times';
+import { itemQty, lineItemName } from '@/components/admin/admin-order-items';
+import { todayManila, slotHasEnded, to12h, slotTo24 } from '@/components/admin/admin-slot-times';
 import { AdminSlotCapacityCard } from '@/components/admin/slot-capacity/admin-slot-capacity-card';
 
 export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fetchCloudData }: { active: boolean; timeSlotsList: string[]; slotCapacities: any; fetchCloudData: () => void }) {
