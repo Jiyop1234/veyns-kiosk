@@ -7,7 +7,7 @@ import { MENU_GRID, formatPeso, getActivePromoCodes } from '@/lib/menu-data';
 import { menuImages } from '@/lib/menu-images';
 import { supabase } from '@/lib/supabase';
 import { requestStaffGeocode } from '@/lib/order-geocode';
-import { AdminOrderProcessing } from '@/components/admin/order-processing/admin-order-processing';
+import { AdminOrderProcessing } from '@/components/admin/orders-pos/admin-order-processing';
 import { AdminFeedbackManager } from '@/components/admin/feedback/admin-feedback-manager';
 import { DeliveryPinMap } from '@/components/admin/shared/admin-delivery-pin-map';
 import { useTimeSlots } from '@/lib/time-slots';
@@ -16,8 +16,8 @@ import { AdminMenuImage } from '@/components/admin/shared/admin-menu-image';
 import { itemQty, lineItemName, itemUnit } from '@/components/admin/shared/admin-order-items';
 import { ORDER_STATUSES, STATUS_LABEL, STATUS_SKIN, payableAmount, orderDeliveryOption } from '@/components/admin/shared/admin-order-status';
 import { todayManila, slotEndsAt, slotHasEnded } from '@/components/admin/shared/admin-slot-times';
-import { AdminSlotsTab } from '@/components/admin/slots/admin-slots-tab';
-import { AdminPromosTab } from '@/components/admin/promos/admin-promos-tab';
+import { AdminSlotCapacityTab } from '@/components/admin/slot-capacity/admin-slot-capacity-tab';
+import { AdminVouchersTab } from '@/components/admin/vouchers/admin-vouchers-tab';
 import { useAdminDashboardData } from '@/components/admin/admin-dashboard-data';
 
 // --- Main employee/admin dashboard component ---
@@ -1014,8 +1014,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         {/* Customer feedback management */}
         {activeTab === 'feedback' && <AdminFeedbackManager />}
 
-        {/* Slot Capacity tab, its two dialogs and the slot card live in admin/slots/ */}
-        <AdminSlotsTab active={activeTab === 'slots'} timeSlotsList={timeSlotsList} slotCapacities={slotCapacities} fetchCloudData={fetchCloudData} />
+        {/* Slot Capacity tab, its two dialogs and the slot card live in admin/slot-capacity/ */}
+        <AdminSlotCapacityTab active={activeTab === 'slots'} timeSlotsList={timeSlotsList} slotCapacities={slotCapacities} fetchCloudData={fetchCloudData} />
 
         {/* Customer account search and management */}
         {activeTab === 'customers' && (
@@ -1171,8 +1171,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </div>
         )}
 
-        {/* Vouchers & Promos tab (form, list, countdowns, redemptions) lives in admin/promos/ */}
-        <AdminPromosTab active={activeTab === 'promos'} promos={promos} customers={customers} fetchCloudData={fetchCloudData} />
+        {/* Vouchers & Promos tab (form, list, countdowns, redemptions) lives in admin/vouchers/ */}
+        <AdminVouchersTab active={activeTab === 'promos'} promos={promos} customers={customers} fetchCloudData={fetchCloudData} />
 
         {/* PWD confirmation */}
         <Dialog open={!!pwdConfirmOrder} onOpenChange={(open) => !open && setPwdConfirmOrder(null)}>

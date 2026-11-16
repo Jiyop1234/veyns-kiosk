@@ -1,6 +1,6 @@
 // @ts-nocheck
 // Admin Vouchers & Promos tab: create/edit vouchers and dated campaigns, list them with live countdowns, redemption history, enable/disable, delete.
-// Step A5: moved unchanged from employee-dashboard.tsx. New: this wrapper, its props, the `active` flag, and the 1-second clock (see below).
+// Step A5: moved unchanged from employee-dashboard.tsx (Step A5B: renamed from AdminPromosTab to match the VOUCHERS nav label). New: this wrapper, its props, the `active` flag, and the 1-second clock (see below).
 // The tab body shows only when `active` is true, but this component stays mounted, so the form and open redemption list are kept when you switch tabs.
 import React, { useState, useEffect } from 'react';
 import { Plus, Ticket, Trash2 } from 'lucide-react';
@@ -9,7 +9,7 @@ import { formatPeso } from '@/lib/menu-data';
 import { getPromoStatus, getPromoEndMs, isCampaignPromo, formatCountdown, manilaLocalToIso, toManilaLocalInput, formatManila, STATUS_STYLES } from '@/lib/promo-campaigns';
 import { supabase } from '@/lib/supabase';
 
-export function AdminPromosTab({ active, promos, customers, fetchCloudData }: { active: boolean; promos: any[]; customers: any[]; fetchCloudData: () => void }) {
+export function AdminVouchersTab({ active, promos, customers, fetchCloudData }: { active: boolean; promos: any[]; customers: any[]; fetchCloudData: () => void }) {
   // 1-second clock for the campaign countdowns. It used to live in the data hook and re-rendered the whole dashboard every second;
   // now it ticks only while this tab is open, and starts from the current time each time the tab is opened.
   const [nowTimestamp, setNowTimestamp] = useState(Date.now());

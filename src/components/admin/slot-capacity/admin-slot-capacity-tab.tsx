@@ -1,6 +1,6 @@
 // @ts-nocheck
 // Admin Slot Capacity tab: bowl capacity per time window, edit/add/remove time windows, slot owner inspector and transfer dialogs.
-// Step A4: moved unchanged from employee-dashboard.tsx. New: this wrapper, its props, and the `active` flag (see below).
+// Step A4: moved unchanged from employee-dashboard.tsx (Step A5B: renamed from AdminSlotsTab to match the SLOT CAPACITY nav label). New: this wrapper, its props, and the `active` flag (see below).
 // The tab body shows only when `active` is true, but this component stays mounted, so its state (selected date, messages,
 // open dialogs) is kept when you switch tabs, exactly like before.
 import { useState } from 'react';
@@ -10,9 +10,9 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { supabase } from '@/lib/supabase';
 import { itemQty, lineItemName } from '@/components/admin/shared/admin-order-items';
 import { todayManila, slotHasEnded, to12h, slotTo24 } from '@/components/admin/shared/admin-slot-times';
-import { AdminSlotCapacityCard } from '@/components/admin/slots/admin-slot-capacity-card';
+import { AdminSlotCapacityCard } from '@/components/admin/slot-capacity/admin-slot-capacity-card';
 
-export function AdminSlotsTab({ active, timeSlotsList, slotCapacities, fetchCloudData }: { active: boolean; timeSlotsList: string[]; slotCapacities: any; fetchCloudData: () => void }) {
+export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fetchCloudData }: { active: boolean; timeSlotsList: string[]; slotCapacities: any; fetchCloudData: () => void }) {
   // --- Time window manager (Slot Capacity tab) ---
   const [slotEdits, setSlotEdits] = useState<Record<string, { start: string; end: string }>>({});
   const [newSlotStart, setNewSlotStart] = useState('09:00');
