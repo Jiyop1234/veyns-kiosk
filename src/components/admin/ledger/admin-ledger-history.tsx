@@ -1,6 +1,6 @@
 // VEYNS Admin, Ledger: Transaction History table with search, filters, paging, edit and delete (Step B10a).
 
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, FileText, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { formatDateTime, formatPeso } from './admin-ledger-format';
 import {
@@ -18,23 +18,49 @@ type Props = {
   onNew: () => void;
   onEdit: (entry: LedgerEntry) => void;
   onDelete: (id: string) => void;
+  fill?: boolean; // true on a large screen: the panel fills its parent and shows as many rows as fit, without a page scroll
 };
 
 type KindFilter = 'all' | LedgerKind;
 
 const ALL_CATEGORIES = [...LEDGER_INCOME_CATEGORIES, ...LEDGER_EXPENSE_CATEGORIES];
 
+// Fill mode: every table row is 52 px high plus 6 px of spacing; the table head and the spacing around it take 36 px.
+const FILL_ROW_PX = 58;
+const FILL_HEAD_PX = 36;
+const FILL_MIN_ROWS = 3;
+const FILL_MAX_ROWS = 30;
+
 const field =
   'rounded-xl bg-black/30 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400';
 const iconButton =
   'flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12] focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400';
 
-export function AdminLedgerHistory({ entries, editingId, onNew, onEdit, onDelete }: Props) {
+export function AdminLedgerHistory({ entries, editingId, onNew, onEdit, onDelete, fill = false }: Props) {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<KindFilter>('all');
   const [category, setCategory] = useState('all');
   const [page, setPage] = useState(1);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [fillRows, setFillRows] = useState(LEDGER_PAGE_SIZE);
+
+  // Fill mode: count how many rows fit in the table area now, and again whenever that area changes size.
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!fill || !el) return undefined;
+    const measure = () => {
+      const rows = Math.floor((el.clientHeight - FILL_HEAD_PX) / FILL_ROW_PX);
+      setFillRows(Math.max(FILL_MIN_ROWS, Math.min(FILL_MAX_ROWS, rows)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [fill]);
+
+  const pageSize = fill ? fillRows : LEDGER_PAGE_SIZE;
+  const cellY = fill ? 'py-2' : 'py-3';
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -46,10 +72,10 @@ export function AdminLedgerHistory({ entries, editingId, onNew, onEdit, onDelete
     });
   }, [entries, search, kind, category]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / LEDGER_PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, pageCount);
-  const startIndex = (safePage - 1) * LEDGER_PAGE_SIZE;
-  const visible = filtered.slice(startIndex, startIndex + LEDGER_PAGE_SIZE);
+  const startIndex = (safePage - 1) * pageSize;
+  const visible = filtered.slice(startIndex, startIndex + pageSize);
 
   const firstPage = Math.max(1, Math.min(safePage - 2, pageCount - 4));
   const lastPage = Math.min(pageCount, firstPage + 4);
@@ -62,8 +88,8 @@ export function AdminLedgerHistory({ entries, editingId, onNew, onEdit, onDelete
     }`;
 
   return (
-    <section className="rounded-2xl bg-white/[0.04] p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <section className={`rounded-2xl bg-white/[0.04] ${fill ? 'flex h-full min-h-0 flex-col p-4' : 'p-4 sm:p-5'}`}>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-lime-400/15 text-lime-300">
             <FileText className="h-5 w-5" aria-hidden="true" />
@@ -99,7 +125,7 @@ export function AdminLedgerHistory({ entries, editingId, onNew, onEdit, onDelete
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className={`flex shrink-0 flex-wrap items-center gap-2 ${fill ? 'mt-3' : 'mt-4'}`}>
         {(['all', 'income', 'expense'] as KindFilter[]).map((k) => (
           <button
             key={k}
@@ -136,7 +162,7 @@ export function AdminLedgerHistory({ entries, editingId, onNew, onEdit, onDelete
         </label>
       </div>
 
-      <div className="mt-3 overflow-x-auto">
+      <div ref={bodyRef} className={fill ? 'mt-1 min-h-0 flex-1 overflow-x-auto overflow-y-hidden' : 'mt-3 overflow-x-auto'}>
         <table className="w-full min-w-[680px] border-separate border-spacing-y-1.5 text-sm">
           <thead>
             <tr className="text-left text-xs text-zinc-400">
@@ -153,9 +179,9 @@ export function AdminLedgerHistory({ entries, editingId, onNew, onEdit, onDelete
               const isIncome = e.kind === 'income';
               const rowTone = e.id === editingId ? 'bg-lime-400/10' : 'bg-white/[0.03]';
               return (
-                <tr key={e.id} className="text-zinc-100">
-                  <td className={`${rowTone} whitespace-nowrap rounded-l-xl px-3 py-3`}>{formatDateTime(e.occurredAt)}</td>
-                  <td className={`${rowTone} px-3 py-3`}>
+                <tr key={e.id} className={`text-zinc-100 ${fill ? 'h-[52px]' : ''}`}>
+                  <td className={`${rowTone} whitespace-nowrap rounded-l-xl px-3 ${cellY}`}>{formatDateTime(e.occurredAt)}</td>
+                  <td className={`${rowTone} px-3 ${cellY}`}>
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
                         isIncome ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'
@@ -165,20 +191,20 @@ export function AdminLedgerHistory({ entries, editingId, onNew, onEdit, onDelete
                       {isIncome ? 'Income' : 'Expense'}
                     </span>
                   </td>
-                  <td className={`${rowTone} px-3 py-3`}>
+                  <td className={`${rowTone} px-3 ${cellY}`}>
                     <p className="font-medium">{e.description}</p>
                     {e.notes ? <p className="max-w-[16rem] truncate text-xs text-zinc-400">{e.notes}</p> : null}
                   </td>
-                  <td className={`${rowTone} px-3 py-3`}>
+                  <td className={`${rowTone} px-3 ${cellY}`}>
                     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${LEDGER_CATEGORY_CLASS[e.category] ?? LEDGER_FALLBACK_CATEGORY_CLASS}`}>
                       {e.category}
                     </span>
                   </td>
-                  <td className={`${rowTone} whitespace-nowrap px-3 py-3 text-right font-bold ${isIncome ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <td className={`${rowTone} whitespace-nowrap px-3 ${cellY} text-right font-bold ${isIncome ? 'text-emerald-400' : 'text-red-400'}`}>
                     {isIncome ? '+' : '-'}
                     {formatPeso(e.amountCentavos)}
                   </td>
-                  <td className={`${rowTone} rounded-r-xl px-3 py-3`}>
+                  <td className={`${rowTone} rounded-r-xl px-3 ${cellY}`}>
                     {confirmId === e.id ? (
                       <div className="flex items-center justify-end gap-1.5 text-xs">
                         <span className="text-zinc-300">Delete?</span>
@@ -215,11 +241,11 @@ export function AdminLedgerHistory({ entries, editingId, onNew, onEdit, onDelete
         {visible.length === 0 ? <p className="py-8 text-center text-sm text-zinc-500">No transactions match.</p> : null}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-300">
+      <div className={`flex shrink-0 flex-wrap items-center justify-between gap-3 text-sm text-zinc-300 ${fill ? 'mt-2' : 'mt-3'}`}>
         <p>
           {filtered.length === 0
             ? 'Showing 0 transactions'
-            : `Showing ${startIndex + 1}-${Math.min(startIndex + LEDGER_PAGE_SIZE, filtered.length)} of ${filtered.length} transactions`}
+            : `Showing ${startIndex + 1}-${Math.min(startIndex + pageSize, filtered.length)} of ${filtered.length} transactions`}
         </p>
         <nav className="flex items-center gap-1.5" aria-label="Transaction pages">
           <button type="button" aria-label="Previous page" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)} className={`${iconButton} disabled:opacity-40`}>

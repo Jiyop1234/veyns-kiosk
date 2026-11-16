@@ -11,13 +11,15 @@ type Props = {
   editing: LedgerEntry | null;
   onSubmit: (input: LedgerEntryInput, editingId: string | null) => void;
   onCancelEdit: () => void;
+  fill?: boolean; // true on a large screen: the form fills its column; the fields scroll inside it if the window is short
 };
 
-const field =
-  'w-full rounded-xl bg-black/30 px-3 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400';
-const label = 'mb-1.5 block text-sm text-zinc-300';
+const fieldBase =
+  'w-full rounded-xl bg-black/30 px-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400';
 
-export function AdminLedgerForm({ editing, onSubmit, onCancelEdit }: Props) {
+export function AdminLedgerForm({ editing, onSubmit, onCancelEdit, fill = false }: Props) {
+  const field = `${fieldBase} ${fill ? 'py-2' : 'py-2.5'}`;
+  const label = `${fill ? 'mb-1' : 'mb-1.5'} block text-sm text-zinc-300`;
   const [kind, setKind] = useState<LedgerKind>('income');
   const [when, setWhen] = useState(() => toInputValue(Date.now()));
   const [description, setDescription] = useState('');
@@ -90,8 +92,8 @@ export function AdminLedgerForm({ editing, onSubmit, onCancelEdit }: Props) {
     }`;
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-2xl bg-white/[0.04] p-4 sm:p-5" noValidate>
-      <div className="mb-4 flex items-start justify-between gap-3">
+    <form onSubmit={handleSubmit} className={`rounded-2xl bg-white/[0.04] p-4 sm:p-5 ${fill ? 'flex h-full min-h-0 flex-col' : ''}`} noValidate>
+      <div className={`flex shrink-0 items-start justify-between gap-3 ${fill ? 'mb-3' : 'mb-4'}`}>
         <div>
           <h3 className="text-lg font-semibold text-white">{editing ? 'Edit Transaction' : 'Add Transaction'}</h3>
           <p className="text-xs text-zinc-400">{editing ? 'Change the details and save.' : 'Record a new income or expense.'}</p>
@@ -108,7 +110,7 @@ export function AdminLedgerForm({ editing, onSubmit, onCancelEdit }: Props) {
         ) : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-2" role="group" aria-label="Transaction type">
+      <div className="grid shrink-0 grid-cols-2 gap-2" role="group" aria-label="Transaction type">
         <button type="button" aria-pressed={kind === 'income'} onClick={() => handleKind('income')} className={kindButton('income', kind === 'income')}>
           <ArrowUp className="h-4 w-4" aria-hidden="true" />
           Income
@@ -119,7 +121,7 @@ export function AdminLedgerForm({ editing, onSubmit, onCancelEdit }: Props) {
         </button>
       </div>
 
-      <div className="mt-4 space-y-3.5">
+      <div className={fill ? '-mx-1 mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto px-1 pb-1' : 'mt-4 space-y-3.5'}>
         <div>
           <label htmlFor="ledger-when" className={label}>
             Date &amp; Time
@@ -166,13 +168,13 @@ export function AdminLedgerForm({ editing, onSubmit, onCancelEdit }: Props) {
         </div>
       </div>
 
-      <div aria-live="polite" className="mt-3 min-h-[1.25rem] text-sm">
+      <div aria-live="polite" className="mt-3 min-h-[1.25rem] shrink-0 text-sm">
         {error ? <p className="text-red-400">{error}</p> : notice ? <p className="text-emerald-400">{notice}</p> : null}
       </div>
 
       <button
         type="submit"
-        className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-lime-400 px-4 py-3 text-sm font-semibold text-black hover:bg-lime-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        className="mt-2 flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-lime-400 px-4 py-3 text-sm font-semibold text-black hover:bg-lime-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
       >
         <Save className="h-4 w-4" aria-hidden="true" />
         {editing ? 'Save Changes' : 'Save Transaction'}

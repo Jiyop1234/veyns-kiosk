@@ -14,6 +14,8 @@ import { AdminOrderLogTab } from '@/components/admin/orders-pos/admin-order-log-
 import { AdminSalesSummaryCards } from '@/components/admin/sales-analytics/admin-sales-summary-cards';
 import { useAdminDashboardData } from '@/components/admin/admin-dashboard-data';
 import { AdminSidebar } from '@/components/admin/admin-sidebar';
+import { AdminTopBar } from '@/components/admin/admin-top-bar';
+import { useAdminFitScreen } from '@/components/admin/admin-fit-screen';
 import { AdminComingSoon } from '@/components/admin/admin-coming-soon';
 import { AdminOverviewTab } from '@/components/admin/overview/admin-overview-tab';
 import { AdminLedgerTab } from '@/components/admin/ledger/admin-ledger-tab';
@@ -57,9 +59,14 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
   const activeTitle = ADMIN_NAV_ITEMS.find((item) => item.id === activeTab)?.label ?? '';
 
+  // Step B10b: on a large screen the Ledger fills the window and the page does not scroll.
+  const fitScreen = useAdminFitScreen(navExpanded);
+  const fitLedger = fitScreen && activeTab === 'ledger';
+
   // --- Dashboard page layout: sidebar, header and the sections ---
   return (
-    <div className="min-h-screen bg-[#020b08] text-white">
+    <div className={`bg-[#020b08] text-white ${fitLedger ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
+      <AdminTopBar />
       <AdminSidebar
         activeTab={activeTab}
         onSelect={handleSelectTab}
@@ -73,11 +80,14 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         onExit={handleExitStore}
       />
 
-      <div className={`pt-14 transition-[padding] duration-200 md:pl-24 md:pt-0 ${navExpanded ? 'lg:pl-72' : ''}`}>
-        <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
-          <div className="hidden items-center justify-between gap-4 md:flex">
-            <h1 className="font-display text-2xl font-extrabold text-white">{activeTitle}</h1>
-          </div>
+      <div className={`pt-14 transition-[padding] duration-200 md:pl-24 md:pt-0 ${navExpanded ? 'lg:pl-72' : ''} ${fitLedger ? 'h-[calc(100vh-4rem)]' : ''}`}>
+        <div className={fitLedger ? 'h-full px-8 pb-6' : 'mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8'}>
+          {/* The Ledger shows its own heading, so the shared title row is skipped for it */}
+          {activeTab !== 'ledger' && (
+            <div className="hidden items-center justify-between gap-4 md:flex">
+              <h1 className="font-display text-2xl font-extrabold text-white">{activeTitle}</h1>
+            </div>
+          )}
 
           {/* Overview page lives in admin/overview/ (placeholder until Step B1b) */}
           <AdminOverviewTab active={activeTab === 'overview'} orders={orders} menuItems={menuItems} />
@@ -88,7 +98,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           </AdminOrderLogTab>
 
           {/* Ledger screen lives in admin/ledger/ (sample data until its database step) */}
-          <AdminLedgerTab active={activeTab === 'ledger'} />
+          <AdminLedgerTab active={activeTab === 'ledger'} fit={fitLedger} />
 
           {/* Delivery Fees: in the navigation, not built yet (Part B) */}
           {activeTab === 'fees' && <AdminComingSoon title="Delivery fees are coming" text="The delivery fee rules will be managed here." />}

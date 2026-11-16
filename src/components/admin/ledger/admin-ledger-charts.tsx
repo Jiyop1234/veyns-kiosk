@@ -1,6 +1,8 @@
-// VEYNS Admin, Ledger: Cash Flow Overview and Top Categories charts, drawn with plain SVG (Step B10a).
+// VEYNS Admin, Ledger: Cash Flow Overview and Top Categories charts, drawn with plain SVG (Steps B10a and B10b).
 // No chart library is needed for these two.
+// Step B10b: on a large screen the cash flow chart takes the exact size of its panel (fill), and the donut has a compact form.
 
+import { useLayoutEffect, useRef, useState } from 'react';
 import { formatCompactPeso, formatPeso } from './admin-ledger-format';
 import type { LedgerCategoryShare } from './admin-ledger-calc';
 
@@ -20,17 +22,39 @@ function axisLabel(pesos: number): string {
   return pesos >= 1000 ? `₱${pesos / 1000}k` : `₱${pesos}`;
 }
 
-type CashFlowProps = { income: number[]; expense: number[] }; // 7 values each, Monday to Sunday, in centavos
+// Measures the box it is attached to, now and whenever it changes size. Only active when enabled.
+function useBoxSize(enabled: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
 
-export function AdminLedgerCashFlowChart({ income, expense }: CashFlowProps) {
-  const width = 640;
-  const height = 260;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!enabled || !el) return undefined;
+    const measure = () => setSize({ width: Math.round(el.clientWidth), height: Math.round(el.clientHeight) });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [enabled]);
+
+  return { ref, width: size.width, height: size.height };
+}
+
+type CashFlowProps = {
+  income: number[]; // 7 values, Monday to Sunday, in centavos
+  expense: number[];
+  fill?: boolean; // true: draw at the exact size of the parent, which must be `relative` and have a size of its own
+};
+
+type CashFlowSvgProps = { income: number[]; expense: number[]; width: number; height: number; fluid: boolean };
+
+function CashFlowSvg({ income, expense, width, height, fluid }: CashFlowSvgProps) {
   const left = 56;
   const right = 16;
   const top = 16;
   const bottom = 32;
-  const plotW = width - left - right;
-  const plotH = height - top - bottom;
+  const plotW = Math.max(40, width - left - right);
+  const plotH = Math.max(20, height - top - bottom);
 
   const maxPesos = Math.max(0, ...income, ...expense) / 100;
   const step = niceStep(maxPesos / 4);
@@ -45,7 +69,9 @@ export function AdminLedgerCashFlowChart({ income, expense }: CashFlowProps) {
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      className="h-auto w-full"
+      width={fluid ? width : undefined}
+      height={fluid ? height : undefined}
+      className={fluid ? 'block' : 'h-auto w-full'}
       role="img"
       aria-label={`Cash flow this week, Monday to Sunday. Income ${formatPeso(totalIncome)}, expenses ${formatPeso(totalExpense)}.`}
     >
@@ -77,11 +103,21 @@ export function AdminLedgerCashFlowChart({ income, expense }: CashFlowProps) {
   );
 }
 
-type DonutProps = { shares: LedgerCategoryShare[]; total: number };
+export function AdminLedgerCashFlowChart({ income, expense, fill = false }: CashFlowProps) {
+  const box = useBoxSize(fill);
+  if (!fill) return <CashFlowSvg income={income} expense={expense} width={640} height={260} fluid={false} />;
+  return (
+    <div ref={box.ref} className="absolute inset-0">
+      {box.width > 0 && box.height > 0 ? <CashFlowSvg income={income} expense={expense} width={box.width} height={box.height} fluid /> : null}
+    </div>
+  );
+}
 
-export function AdminLedgerCategoryDonut({ shares, total }: DonutProps) {
+type DonutProps = { shares: LedgerCategoryShare[]; total: number; compact?: boolean };
+
+export function AdminLedgerCategoryDonut({ shares, total, compact = false }: DonutProps) {
   if (total <= 0 || shares.length === 0) {
-    return <p className="py-10 text-center text-sm text-zinc-500">No income in this period.</p>;
+    return <p className={`${compact ? 'py-6' : 'py-10'} text-center text-sm text-zinc-500`}>No income in this period.</p>;
   }
 
   // Top 2 categories, everything else grouped as "Others".
@@ -95,8 +131,8 @@ export function AdminLedgerCategoryDonut({ shares, total }: DonutProps) {
   let offset = 0;
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-6">
-      <svg viewBox="0 0 160 160" className="h-40 w-40 shrink-0" role="img" aria-label={`Income by category, total ${formatPeso(total)}`}>
+    <div className={compact ? 'flex items-center justify-center gap-4' : 'flex flex-wrap items-center justify-center gap-6'}>
+      <svg viewBox="0 0 160 160" className={compact ? 'h-32 w-32 shrink-0' : 'h-40 w-40 shrink-0'} role="img" aria-label={`Income by category, total ${formatPeso(total)}`}>
         <g transform="rotate(-90 80 80)">
           {shown.map((s, i) => {
             const length = (s.centavos / total) * circumference;
@@ -124,7 +160,7 @@ export function AdminLedgerCategoryDonut({ shares, total }: DonutProps) {
           Total
         </text>
       </svg>
-      <ul className="min-w-[10rem] space-y-3 text-sm">
+      <ul className={compact ? 'min-w-0 flex-1 space-y-2.5 text-sm' : 'min-w-[10rem] space-y-3 text-sm'}>
         {shown.map((s, i) => (
           <li key={s.category} className="flex items-center justify-between gap-4 text-zinc-200">
             <span className="flex items-center gap-2">
