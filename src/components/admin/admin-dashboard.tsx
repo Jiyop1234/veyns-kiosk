@@ -62,18 +62,18 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       />
 
       <div className="pt-14 md:pl-16 md:pt-0 lg:pl-60">
-        <div className="hidden items-center justify-between gap-4 border-b border-emerald-900/65 px-6 py-4 md:flex lg:px-8">
-          <h1 className="font-display text-2xl font-extrabold text-white">{activeTitle}</h1>
-          <Button
-            type="button"
-            onClick={handleExitStore}
-            className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all shadow-lg flex items-center gap-2 cursor-pointer"
-          >
-            <ArrowLeft className="h-4 w-4" /> Exit to Store
-          </Button>
-        </div>
-
         <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
+          <div className="hidden items-center justify-between gap-4 md:flex">
+            <h1 className="font-display text-2xl font-extrabold text-white">{activeTitle}</h1>
+            <Button
+              type="button"
+              onClick={handleExitStore}
+              className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <ArrowLeft className="h-4 w-4" /> Exit to Store
+            </Button>
+          </div>
+
           {/* Overview page lives in admin/overview/ (placeholder until Step B1b) */}
           <AdminOverviewTab active={activeTab === 'overview'} orders={orders} menuItems={menuItems} />
 

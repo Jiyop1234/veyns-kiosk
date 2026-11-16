@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Admin navigation chrome (Part B, Step B1a):
+// Admin navigation chrome (Part B, Steps B1a and B1a2: no portal title, no divider lines):
 // - phones (under 768 px): a fixed top bar with a menu button, and a slide-in drawer
 // - tablets (768 to 1023 px): a narrow rail with icons only
 // - desktop (1024 px and up): a full sidebar with icons, labels and counts
@@ -51,12 +51,12 @@ export function AdminSidebar({ activeTab, onSelect, counts, title, mobileOpen, o
   return (
     <>
       {/* Phone top bar (fixed: the page itself must not scroll it away) */}
-      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center gap-3 border-b border-emerald-900/65 bg-[#020b08]/95 px-4 backdrop-blur md:hidden">
+      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center gap-3 bg-[#020b08]/95 px-4 backdrop-blur md:hidden">
         <button
           type="button"
           aria-label="Open menu"
           onClick={onOpenMobile}
-          className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-emerald-800/70 bg-[#061c16] text-lime-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400"
+          className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl bg-[#061c16] text-lime-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400"
         >
           <MenuIcon className="h-5 w-5" />
         </button>
@@ -64,12 +64,8 @@ export function AdminSidebar({ activeTab, onSelect, counts, title, mobileOpen, o
       </div>
 
       {/* Tablet rail and desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-16 flex-col border-r border-emerald-900/65 bg-[#04140f] md:flex lg:w-60">
-        <div className="flex h-16 items-center justify-center gap-2 border-b border-emerald-900/50 px-3 lg:justify-start lg:px-5">
-          <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-lime-400" />
-          <span className="hidden font-display text-sm font-extrabold text-lime-400 lg:inline">Employee & Admin Portal</span>
-        </div>
-        <div className="flex-1 overflow-y-auto p-2 lg:p-3">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-16 flex-col bg-[#04140f] md:flex lg:w-60">
+        <div className="flex-1 overflow-y-auto p-2 pt-6 lg:p-3 lg:pt-6">
           <NavButtons activeTab={activeTab} onSelect={onSelect} counts={counts} labelClass="hidden lg:inline" railCentered />
         </div>
       </aside>
@@ -78,11 +74,8 @@ export function AdminSidebar({ activeTab, onSelect, counts, title, mobileOpen, o
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Admin menu">
           <button type="button" aria-label="Close menu" onClick={onCloseMobile} className="absolute inset-0 h-full w-full cursor-default bg-black/70" />
-          <div className="absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col border-r border-emerald-900/65 bg-[#04140f]">
-            <div className="flex h-14 items-center justify-between border-b border-emerald-900/50 px-4">
-              <span className="flex items-center gap-2 font-display text-sm font-extrabold text-lime-400">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-lime-400" /> Employee & Admin Portal
-              </span>
+          <div className="absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col bg-[#04140f]">
+            <div className="flex h-14 items-center justify-end px-3">
               <button type="button" aria-label="Close menu" onClick={onCloseMobile} className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-emerald-200 hover:bg-emerald-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400">
                 <X className="h-5 w-5" />
               </button>
@@ -90,8 +83,8 @@ export function AdminSidebar({ activeTab, onSelect, counts, title, mobileOpen, o
             <div className="flex-1 overflow-y-auto p-3">
               <NavButtons activeTab={activeTab} onSelect={onSelect} counts={counts} labelClass="" railCentered={false} />
             </div>
-            <div className="border-t border-emerald-900/50 p-3">
-              <button type="button" onClick={onExit} className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-emerald-700/80 bg-[#082d22] px-4 py-2.5 text-sm font-extrabold text-lime-400 hover:bg-lime-400 hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400">
+            <div className="p-3">
+              <button type="button" onClick={onExit} className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#082d22] px-4 py-2.5 text-sm font-extrabold text-lime-400 hover:bg-lime-400 hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400">
                 <ArrowLeft className="h-4 w-4" /> Exit to Store
               </button>
             </div>
