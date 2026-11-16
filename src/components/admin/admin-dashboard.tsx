@@ -81,7 +81,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       />
 
       <div className={`pt-14 transition-[padding] duration-200 md:pl-24 md:pt-0 ${navExpanded ? 'lg:pl-72' : ''} ${fitLedger ? 'h-[calc(100vh-4rem)]' : ''}`}>
-        <div className={fitLedger ? 'h-full px-8 pb-6' : 'mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8'}>
+        <div className={fitLedger ? 'h-full px-8 pb-6' : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
           {/* The Ledger shows its own heading, so the shared title row is skipped for it */}
           {activeTab !== 'ledger' && (
             <div className="hidden items-center justify-between gap-4 md:flex">

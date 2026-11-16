@@ -35,11 +35,11 @@ const slotEnded = (dateKey: string, slot: string) => {
 const newKey = () => (typeof crypto !== 'undefined' && (crypto as any).randomUUID ? (crypto as any).randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2));
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-const card = 'bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-4 shadow-xl';
-const inputCls = 'w-full bg-[#04140f] border border-emerald-800/80 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-emerald-700 focus:outline-none focus:border-lime-400';
-const labelCls = 'text-[10px] font-extrabold text-emerald-400/80 uppercase tracking-widest block mb-1';
-const limeBtn = 'bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs px-4 py-2.5 rounded-xl cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed';
-const ghostBtn = 'bg-emerald-950 hover:bg-emerald-900 text-emerald-200 border border-emerald-800 font-bold text-xs px-4 py-2.5 rounded-xl cursor-pointer disabled:opacity-40';
+const card = 'bg-white/[0.04] rounded-2xl p-5 space-y-4';
+const inputCls = 'w-full bg-white/[0.06] rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400';
+const labelCls = 'text-[10px] font-semibold text-zinc-400 uppercase tracking-widest block mb-1';
+const limeBtn = 'bg-lime-400 hover:bg-lime-300 text-black font-extrabold text-xs px-4 py-2.5 rounded-xl cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed';
+const ghostBtn = 'bg-white/[0.06] hover:bg-white/[0.12] text-zinc-200 font-bold text-xs px-4 py-2.5 rounded-xl cursor-pointer disabled:opacity-40';
 
 const groupVisible = (group: any, selected: Record<string, string[]>) => {
   if (!group.parentOptionIds || group.parentOptionIds.length === 0) return true;
@@ -587,8 +587,9 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <div className="lg:col-span-2 space-y-6">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_380px]">
+      {/* Column 1: customer and items */}
+      <div className="space-y-4">
         {/* ---------------- 1. customer ---------------- */}
         <div className={card}>
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -598,9 +599,9 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
 
           {customer ? (
             <div className="space-y-3">
-              <div className="bg-[#04140f] border border-lime-400/40 rounded-xl p-3 flex items-center justify-between gap-3">
-                <div><p className="text-sm font-extrabold text-white">{customer.name}</p><p className="text-[11px] text-emerald-300">{customer.identifier}</p></div>
-                <span className="text-[9px] uppercase bg-emerald-900/60 text-lime-300 px-2 py-1 rounded font-extrabold">{customer.isWalkIn ? 'Walk-in' : 'Selected'}</span>
+              <div className="bg-lime-400/10 ring-1 ring-lime-400/50 rounded-xl p-3 flex items-center justify-between gap-3">
+                <div><p className="text-sm font-extrabold text-white">{customer.name}</p><p className="text-[11px] text-zinc-300">{customer.identifier}</p></div>
+                <span className="text-[9px] uppercase bg-lime-400/15 text-lime-300 px-2 py-1 rounded font-extrabold">{customer.isWalkIn ? 'Walk-in' : 'Selected'}</span>
               </div>
               {createNotice && (
                 <div className={`rounded-xl border p-3 text-xs space-y-2 ${createNotice.sent ? 'border-lime-400/40 bg-lime-400/5 text-lime-200' : 'border-amber-500/50 bg-amber-500/10 text-amber-200'}`}>
@@ -614,32 +615,32 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
           ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button type="button" onClick={() => setMode('existing')} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer ${mode === 'existing' ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}><Search className="h-4 w-4" /> Existing customer</button>
-                <button type="button" onClick={() => setMode('new')} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer ${mode === 'new' ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}><UserPlus className="h-4 w-4" /> Create new customer</button>
-                <button type="button" onClick={() => setMode('walkin')} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer ${mode === 'walkin' ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}><User className="h-4 w-4" /> Walk-in (no account)</button>
+                <button type="button" onClick={() => setMode('existing')} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer ${mode === 'existing' ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}><Search className="h-4 w-4" /> Existing customer</button>
+                <button type="button" onClick={() => setMode('new')} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer ${mode === 'new' ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}><UserPlus className="h-4 w-4" /> Create new customer</button>
+                <button type="button" onClick={() => setMode('walkin')} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer ${mode === 'walkin' ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}><User className="h-4 w-4" /> Walk-in (no account)</button>
               </div>
 
               {mode === 'walkin' ? (
                 <div className="space-y-3">
                   <div><label className={labelCls}>Customer name *</label><input value={walkInName} onChange={(e) => { setWalkInName(e.target.value); setWalkInError(''); }} onKeyDown={(e) => { if (e.key === 'Enter') handleWalkIn(); }} className={inputCls} placeholder="e.g. Juan" /></div>
                   {walkInError && <p className="text-[11px] text-red-400">{walkInError}</p>}
-                  <p className="text-[11px] text-emerald-400/80">No account is created and no email is sent. Public promos and vouchers can still be applied. Personal loyalty vouchers and stamps need a registered account.</p>
+                  <p className="text-[11px] text-zinc-400">No account is created and no email is sent. Public promos and vouchers can still be applied. Personal loyalty vouchers and stamps need a registered account.</p>
                   <Button type="button" onClick={handleWalkIn} className={limeBtn}>Continue as walk-in</Button>
                 </div>
               ) : mode === 'existing' ? (
                 <div className="space-y-2">
                   <input value={custQuery} onChange={(e) => setCustQuery(e.target.value)} placeholder="Search by name or email (min. 2 characters)" className={inputCls} />
-                  {custSearching && <p className="text-[11px] text-emerald-400">Searching…</p>}
+                  {custSearching && <p className="text-[11px] text-zinc-400">Searching…</p>}
                   {custError && <p className="text-[11px] text-red-400">{custError}</p>}
                   {!custSearching && !custError && custQuery.trim().length >= 2 && custResults.length === 0 && (
-                    <div className="text-center py-4 space-y-2"><p className="text-xs text-emerald-300/80">No registered customer matches “{custQuery.trim()}”.</p>
+                    <div className="text-center py-4 space-y-2"><p className="text-xs text-zinc-400">No registered customer matches “{custQuery.trim()}”.</p>
                       <Button type="button" onClick={() => { setMode('new'); if (EMAIL_RE.test(custQuery.trim())) setNewEmail(custQuery.trim()); else setNewName(custQuery.trim()); }} className={ghostBtn}>Create a new customer</Button></div>
                   )}
                   <div className="space-y-1.5">
                     {custResults.map((c) => (
-                      <button key={c.id} type="button" onClick={() => chooseCustomer(c)} className="w-full text-left bg-[#04140f] hover:border-lime-400/60 border border-emerald-800/60 rounded-xl p-3 cursor-pointer">
+                      <button key={c.id} type="button" onClick={() => chooseCustomer(c)} className="w-full text-left bg-white/[0.06] hover:bg-white/[0.12] rounded-xl p-3 cursor-pointer">
                         <span className="block text-xs font-extrabold text-white">{c.name || 'Valued Regular'}</span>
-                        <span className="block text-[11px] text-emerald-300">{c.identifier}</span>
+                        <span className="block text-[11px] text-zinc-300">{c.identifier}</span>
                       </button>
                     ))}
                   </div>
@@ -655,7 +656,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
                     <div className="rounded-xl border border-red-500/50 bg-red-500/10 p-3 text-xs text-red-200 space-y-2"><p className="flex items-start gap-2"><XCircle className="h-4 w-4 shrink-0" />{createError.message}</p>
                       {createError.duplicate && <Button type="button" onClick={() => { setMode('existing'); setCustQuery(newEmail.trim()); setCreateError(null); }} className={ghostBtn}>Search for this customer</Button>}</div>
                   )}
-                  <p className="text-[11px] text-emerald-400/80">An activation email lets the customer set their own password. No password is generated or shown.</p>
+                  <p className="text-[11px] text-zinc-400">An activation email lets the customer set their own password. No password is generated or shown.</p>
                   <Button type="button" disabled={creating} onClick={handleCreateCustomer} className={limeBtn}>{creating ? 'Creating account…' : 'Create account & select'}</Button>
                 </div>
               )}
@@ -666,52 +667,63 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
         {/* ---------------- 2. products ---------------- */}
         <div className={card}>
           <h2 className="font-display text-sm font-extrabold text-white uppercase tracking-wide flex items-center gap-2"><ShoppingBag className="h-4 w-4 text-lime-400" /> 2. Items</h2>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex flex-col gap-2">
             <input value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Search menu…" className={inputCls} />
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className="bg-[#04140f] border border-emerald-800 rounded-xl px-3 py-2 text-xs text-lime-300 font-bold focus:outline-none">
-              {categories.map((c: string) => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <div className="flex flex-wrap gap-2">
+              {categories.map((c: string) => (
+                <button key={c} type="button" onClick={() => setCategory(c)} className={`px-3 py-1.5 rounded-full text-[11px] font-bold cursor-pointer ${category === c ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>{c}</button>
+              ))}
+            </div>
           </div>
-          {menuLoading && <p className="text-xs text-emerald-400">Loading menu…</p>}
+          {menuLoading && <p className="text-xs text-zinc-400">Loading menu…</p>}
           {menuError && <p className="text-xs text-red-400">{menuError}</p>}
-          {!menuLoading && !menuError && visibleItems.length === 0 && <p className="text-center text-xs text-emerald-300/80 py-6">No available menu items match your search.</p>}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[420px] overflow-y-auto pr-1">
+          {!menuLoading && !menuError && visibleItems.length === 0 && <p className="text-center text-xs text-zinc-400 py-6">No available menu items match your search.</p>}
+          <div className="grid grid-cols-2 sm:grid-cols-3 2xl:grid-cols-4 gap-2 max-h-[34rem] overflow-y-auto pr-1">
             {visibleItems.map((m: any) => (
-              <button key={m.id} type="button" onClick={() => openItem(m)} className="text-left bg-[#04140f] hover:border-lime-400/60 border border-emerald-800/60 rounded-xl p-3 flex gap-3 cursor-pointer">
-                {m.image ? <img src={m.image} alt="" className="h-14 w-14 rounded-lg object-cover shrink-0" /> : null}
-                <span className="min-w-0 flex-1">
+              <button key={m.id} type="button" onClick={() => openItem(m)} className="group relative text-left bg-white/[0.06] hover:bg-white/[0.12] rounded-xl p-2 flex flex-col gap-2 cursor-pointer">
+                {m.image
+                  ? <img src={m.image} alt="" className="aspect-[4/3] w-full rounded-lg object-cover" />
+                  : <span className="aspect-[4/3] w-full rounded-lg bg-[#0d2e26] flex items-center justify-center font-display text-sm font-bold text-[#d4af37]">VEYNS</span>}
+                {m.optionGroups.length > 0 && <span className="absolute left-3 top-3 rounded-full bg-lime-400 px-2 py-0.5 text-[9px] font-extrabold text-black">Customizable</span>}
+                <span className="min-w-0 px-1">
                   <span className="block text-xs font-extrabold text-white truncate">{m.name}</span>
-                  <span className="block text-[10px] text-emerald-400">{m.category}{m.optionGroups.length > 0 ? ' • customizable' : ''}</span>
-                  <span className="block text-xs font-extrabold text-lime-400">
-                    {m.discountPercent > 0 && <span className="line-through text-emerald-600 mr-1.5">{money(m.price)}</span>}
+                  <span className="block text-[10px] text-zinc-400">{m.category}</span>
+                </span>
+                <span className="flex items-center justify-between px-1 pb-1">
+                  <span className="text-xs font-extrabold text-lime-400">
+                    {m.discountPercent > 0 && <span className="line-through text-zinc-500 mr-1.5">{money(m.price)}</span>}
                     {money(r2(m.price * (1 - m.discountPercent / 100)))}
                   </span>
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-lime-400 text-black"><Plus className="h-4 w-4" /></span>
                 </span>
-                <Plus className="h-4 w-4 text-lime-400 shrink-0 self-center" />
               </button>
             ))}
           </div>
         </div>
 
+      </div>
+
+      {/* Column 2: fulfillment and promotions */}
+      <div className="space-y-4">
         {/* ---------------- 3. details ---------------- */}
         <div className={card}>
           <h2 className="font-display text-sm font-extrabold text-white uppercase tracking-wide flex items-center gap-2"><MapPin className="h-4 w-4 text-lime-400" /> 3. Fulfillment & schedule</h2>
           <div className="grid grid-cols-3 gap-2">
             {(['delivery', 'pickup', 'on-site'] as const).map((f) => (
-              <button key={f} type="button" onClick={() => setFulfillment(f)} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold uppercase cursor-pointer ${fulfillment === f ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>{f === 'on-site' ? 'On-site / Counter' : f}</button>
+              <button key={f} type="button" onClick={() => setFulfillment(f)} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold uppercase cursor-pointer ${fulfillment === f ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>{f === 'on-site' ? 'On-site / Counter' : f}</button>
             ))}
           </div>
           {fulfillment === 'delivery' && (
             <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => setDeliveryOption('our')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${deliveryOption === 'our' ? 'bg-emerald-800 text-white border border-lime-400/60' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>Personal delivery</button>
-              <button type="button" onClick={() => setDeliveryOption('maxim')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${deliveryOption === 'maxim' ? 'bg-emerald-800 text-white border border-lime-400/60' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>Maxim delivery</button>
+              <button type="button" onClick={() => setDeliveryOption('our')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${deliveryOption === 'our' ? 'bg-lime-400/15 text-lime-300 ring-1 ring-lime-400/60' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>Personal delivery</button>
+              <button type="button" onClick={() => setDeliveryOption('maxim')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${deliveryOption === 'maxim' ? 'bg-lime-400/15 text-lime-300 ring-1 ring-lime-400/60' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>Maxim delivery</button>
             </div>
           )}
-          {isOnSite && <p className="text-[11px] text-emerald-300 bg-[#04140f] border border-emerald-800/60 rounded-xl p-3">On-site order: served at the counter right now. No schedule or time slot is needed, and it does not use up any slot bowls.</p>}
+          {isOnSite && <p className="text-[11px] text-zinc-300 bg-white/[0.06] rounded-xl p-3">On-site order: served at the counter right now. No schedule or time slot is needed, and it does not use up any slot bowls.</p>}
           {!isOnSite && (<>
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" disabled={!orderTodayOpen} onClick={() => setOrderType('today')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${orderType === 'today' ? 'bg-emerald-800 text-white border border-lime-400/60' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>{orderTodayOpen ? '⚡ Order today' : storeOpenNow ? '⚡ No slots left today' : <span>⚡ Order today · CLOSED<span className="block text-[9px] font-semibold">Be back at {STORE_OPEN_LABEL}</span></span>}</button>
-            <button type="button" onClick={() => setOrderType('reservation')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${orderType === 'reservation' ? 'bg-emerald-800 text-white border border-lime-400/60' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>📅 Reservation</button>
+            <button type="button" disabled={!orderTodayOpen} onClick={() => setOrderType('today')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${orderType === 'today' ? 'bg-lime-400/15 text-lime-300 ring-1 ring-lime-400/60' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>{orderTodayOpen ? '⚡ Order today' : storeOpenNow ? '⚡ No slots left today' : <span>⚡ Order today · CLOSED<span className="block text-[9px] font-semibold">Be back at {STORE_OPEN_LABEL}</span></span>}</button>
+            <button type="button" onClick={() => setOrderType('reservation')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${orderType === 'reservation' ? 'bg-lime-400/15 text-lime-300 ring-1 ring-lime-400/60' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>📅 Reservation</button>
           </div>
           {orderType === 'reservation' && (
             <div><label className={labelCls}>Reservation date</label><input type="date" min={todayManila()} value={dateKey} onChange={(e) => setDateKey(e.target.value)} className={inputCls} /></div>
@@ -722,7 +734,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
               {TIME_SLOTS.map((s) => {
                 const si = slotInfo(s); const block = slotOrderBlock(effectiveDate, s, nowTick); const ended = block !== null; const full = si.closed || si.remaining < 1; const disabled = ended || full;
                 return (
-                  <button key={s} type="button" disabled={disabled} onClick={() => setSlotTime(s)} className={`px-3 py-2 rounded-xl text-[11px] font-bold text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${slotTime === s ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>
+                  <button key={s} type="button" disabled={disabled} onClick={() => setSlotTime(s)} className={`px-3 py-2 rounded-xl text-[11px] font-bold text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${slotTime === s ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>
                     {s}<span className="block text-[10px] font-medium opacity-80">{block === 'ended' ? 'Slot ended' : block === 'cutoff' ? 'Orders closed (1 hr before)' : si.closed ? 'Closed' : full ? 'Fully booked' : `${si.remaining} bowls left`}</span>
                   </button>
                 );
@@ -732,7 +744,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
 
           </>)}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-emerald-900/60">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-white/[0.06]">
             <div><label className={labelCls}>Contact name *</label><input value={contactName} onChange={(e) => setContactName(e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Contact number {fulfillment === 'delivery' ? '*' : ''}</label><input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} className={inputCls} /></div>
             <div className="sm:col-span-2"><label className={labelCls}>Contact email</label><input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={inputCls} /></div>
@@ -740,8 +752,8 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
           {fulfillment === 'delivery' && (
             <div className="space-y-3">
               <div><label className={labelCls}>Delivery pin (optional for staff: click the map to calculate the fee and record the exact location)</label>
-                <div ref={mapRef} className="h-64 w-full rounded-xl overflow-hidden border border-emerald-800/60 bg-[#04140f] z-0" />
-                <p className="text-[11px] mt-1 text-emerald-400">{pin ? `Pinned: ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}${pv && pv.distanceKm != null ? ` • ${pv.distanceKm} km from store` : ''}` : 'No pin: type the address below. The delivery fee will be marked "to be confirmed".'}</p></div>
+                <div ref={mapRef} className="h-64 w-full rounded-xl overflow-hidden bg-white/[0.06] z-0" />
+                <p className="text-[11px] mt-1 text-zinc-400">{pin ? `Pinned: ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}${pv && pv.distanceKm != null ? ` • ${pv.distanceKm} km from store` : ''}` : 'No pin: type the address below. The delivery fee will be marked "to be confirmed".'}</p></div>
               <div><label className={labelCls}>Delivery address *</label><input value={location} onChange={(e) => { locationTouched.current = true; setLocation(e.target.value); }} className={inputCls} /></div>
               <div><label className={labelCls}>Nearest landmark *</label><input value={landmark} onChange={(e) => setLandmark(e.target.value)} className={inputCls} /></div>
             </div>
@@ -751,14 +763,14 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
         {/* ---------------- 4. promos ---------------- */}
         <div className={card}>
           <h2 className="font-display text-sm font-extrabold text-white uppercase tracking-wide flex items-center gap-2"><Ticket className="h-4 w-4 text-lime-400" /> 4. Promotions & vouchers</h2>
-          {!customer ? <p className="text-xs text-emerald-300/70">Select a customer to see their eligible promotions.</p> : (
+          {!customer ? <p className="text-xs text-zinc-400">Select a customer to see their eligible promotions.</p> : (
             <>
-              {eligiblePromos.length === 0 && <p className="text-xs text-emerald-300/70">No promotions are currently available for this customer.</p>}
+              {eligiblePromos.length === 0 && <p className="text-xs text-zinc-400">No promotions are currently available for this customer.</p>}
               <div className="flex flex-wrap gap-2">
                 {eligiblePromos.map((p: any) => {
                   const on = selectedCodes.includes(p.code);
                   return (
-                    <button key={p.code} type="button" onClick={() => toggleCode(p.code)} className={`px-3 py-2 rounded-xl text-[11px] font-extrabold text-left cursor-pointer border ${on ? 'bg-amber-400 text-black border-amber-300' : 'bg-[#061c16] text-amber-300 border-amber-700/50'}`}>
+                    <button key={p.code} type="button" onClick={() => toggleCode(p.code)} className={`px-3 py-2 rounded-xl text-[11px] font-extrabold text-left cursor-pointer border ${on ? 'bg-amber-400 text-black border-amber-300' : 'bg-white/[0.06] text-amber-300 border-amber-700/50'}`}>
                       {p.code}
                       <span className="block text-[10px] font-medium opacity-80">{p.type === 'percentage' ? `${p.value}%` : formatPeso(p.value)} off {p.target === 'delivery' ? 'delivery' : 'food'}{p.personal ? ' • personal' : ''}</span>
                     </button>
@@ -770,32 +782,32 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
                 <Button type="button" onClick={applyTypedCode} className={ghostBtn}>Apply</Button>
               </div>
               {codeError && <p className="text-[11px] text-red-400">{codeError}</p>}
-              <p className="text-[11px] text-emerald-400/70">Eligibility, expiry, usage limits and stacking are validated by the same server rules as customer checkout.{customer.isWalkIn ? ' Walk-in orders can use public promos only, and per-person limits cannot be enforced without an account.' : ''}</p>
+              <p className="text-[11px] text-zinc-400">Eligibility, expiry, usage limits and stacking are validated by the same server rules as customer checkout.{customer.isWalkIn ? ' Walk-in orders can use public promos only, and per-person limits cannot be enforced without an account.' : ''}</p>
             </>
           )}
         </div>
       </div>
 
       {/* ---------------- summary ---------------- */}
-      <div className="lg:col-span-1">
-        <div className={card + ' lg:sticky lg:top-4'}>
+      <div>
+        <div className={card + ' xl:sticky xl:top-4'}>
           <h2 className="font-display text-sm font-extrabold text-white uppercase tracking-wide">Order summary</h2>
-          {lines.length === 0 ? <p className="text-center text-xs text-emerald-300/70 py-6">No items added yet.</p> : (
+          {lines.length === 0 ? <p className="text-center text-xs text-zinc-400 py-6">No items added yet.</p> : (
             <div className="space-y-2">
               {lines.map((l, idx) => {
                 const unit = unitFor(idx, l);
                 return (
-                  <div key={l.key} className="bg-[#04140f] border border-emerald-800/60 rounded-xl p-3 space-y-2">
-                    <div className="flex justify-between gap-2"><span className="text-xs font-extrabold text-white">{l.item.name}</span>
+                  <div key={l.key} className="bg-white/[0.06] rounded-xl p-3 space-y-2">
+                    <div className="flex justify-between gap-2"><span className="flex items-center gap-2 text-xs font-extrabold text-white">{l.item.image ? <img src={l.item.image} alt="" className="h-9 w-9 rounded-lg object-cover shrink-0" /> : null}{l.item.name}</span>
                       <button type="button" onClick={() => removeLine(l.key)} className="text-red-400 hover:text-red-300 cursor-pointer" aria-label="Remove item"><Trash2 className="h-3.5 w-3.5" /></button></div>
                     {l.summary && <p className="text-[10px] text-lime-300 font-mono">↳ {l.summary}</p>}
                     <div className="flex items-center justify-between text-[11px]">
                       <div className="flex items-center gap-1.5">
-                        <button type="button" onClick={() => setLineQty(l.key, l.qty - 1)} disabled={l.qty <= 1} className="p-1 rounded bg-[#061d16] border border-emerald-800 text-emerald-300 disabled:opacity-30 cursor-pointer"><Minus className="h-3 w-3" /></button>
+                        <button type="button" onClick={() => setLineQty(l.key, l.qty - 1)} disabled={l.qty <= 1} className="p-1 rounded bg-white/[0.08] text-zinc-200 disabled:opacity-30 cursor-pointer"><Minus className="h-3 w-3" /></button>
                         <span className="w-6 text-center font-extrabold text-white">{l.qty}</span>
-                        <button type="button" onClick={() => setLineQty(l.key, l.qty + 1)} className="p-1 rounded bg-[#061d16] border border-emerald-800 text-emerald-300 cursor-pointer"><Plus className="h-3 w-3" /></button>
+                        <button type="button" onClick={() => setLineQty(l.key, l.qty + 1)} className="p-1 rounded bg-white/[0.08] text-zinc-200 cursor-pointer"><Plus className="h-3 w-3" /></button>
                       </div>
-                      <span className="text-emerald-300">{money(unit)} each</span>
+                      <span className="text-zinc-300">{money(unit)} each</span>
                       <span className="font-extrabold text-lime-400">{money(r2(unit * l.qty))}</span>
                     </div>
                   </div>
@@ -805,18 +817,18 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
           )}
 
           {lines.length > 0 && (
-            <div className="text-xs space-y-1.5 border-t border-emerald-900/60 pt-3">
-              <div className="flex justify-between"><span className="text-emerald-400">Food subtotal</span><span className="text-white">{pv ? money(pv.subtotal) : '…'}</span></div>
-              <div className="flex justify-between"><span className="text-emerald-400">Promo{pv && pv.appliedCodes ? ` (${pv.appliedCodes})` : ''}</span>
+            <div className="text-xs space-y-1.5 border-t border-white/[0.06] pt-3">
+              <div className="flex justify-between"><span className="text-zinc-400">Food subtotal</span><span className="text-white">{pv ? money(pv.subtotal) : '…'}</span></div>
+              <div className="flex justify-between"><span className="text-zinc-400">Promo{pv && pv.appliedCodes ? ` (${pv.appliedCodes})` : ''}</span>
                 <span className="text-amber-400 font-bold">{pv ? (pv.appliedCodes ? `−${money(Number(pv.foodDiscount) + Number(pv.deliveryDiscount))}` : 'NA') : '…'}</span></div>
-              {fulfillment === 'delivery' && <div className="flex justify-between"><span className="text-emerald-400">Delivery fee{deliveryOption === 'our' && pv && pv.distanceKm != null ? ` (${pv.distanceKm} km)` : ''}</span><span className="text-white">{deliveryOption === 'maxim' ? 'Paid to Maxim app' : pv ? (pv.deliveryPinSet ? money(pv.deliveryFee) : 'To be confirmed') : '…'}</span></div>}
-              <div className="flex justify-between border-t border-emerald-900/60 pt-2"><span className="font-extrabold text-white">Total</span><span className="font-extrabold text-lime-400 text-lg">{pv ? money(pv.total) : '…'}</span></div>
-              <p className="text-[10px] text-emerald-500">{preview.loading ? 'Recalculating on the server…' : 'Totals are calculated by the server, using the same rules as customer checkout.'}</p>
+              {fulfillment === 'delivery' && <div className="flex justify-between"><span className="text-zinc-400">Delivery fee{deliveryOption === 'our' && pv && pv.distanceKm != null ? ` (${pv.distanceKm} km)` : ''}</span><span className="text-white">{deliveryOption === 'maxim' ? 'Paid to Maxim app' : pv ? (pv.deliveryPinSet ? money(pv.deliveryFee) : 'To be confirmed') : '…'}</span></div>}
+              <div className="flex justify-between border-t border-white/[0.06] pt-2"><span className="font-extrabold text-white">Total</span><span className="font-extrabold text-lime-400 text-2xl">{pv ? money(pv.total) : '…'}</span></div>
+              <p className="text-[10px] text-zinc-500">{preview.loading ? 'Recalculating on the server…' : 'Totals are calculated by the server, using the same rules as customer checkout.'}</p>
             </div>
           )}
 
           {issues.length > 0 && lines.length + (customer ? 1 : 0) > 0 && (
-            <ul className="text-[11px] text-amber-300 space-y-1 border-t border-emerald-900/60 pt-3">
+            <ul className="text-[11px] text-amber-300 space-y-1 border-t border-white/[0.06] pt-3">
               {issues.slice(0, 4).map((m, i) => <li key={i} className="flex gap-1.5"><AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />{m}</li>)}
             </ul>
           )}
@@ -826,30 +838,30 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
 
       {/* ---------------- customization dialog ---------------- */}
       <Dialog open={!!customizing} onOpenChange={(open) => !open && setCustomizing(null)}>
-        <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-md w-full bg-[#141817] text-white shadow-2xl p-6 rounded-3xl max-h-[85vh] overflow-y-auto">
           {customizing && (
             <>
               <DialogTitle className="font-display text-lg font-extrabold text-white">{customizing.name}</DialogTitle>
-              <DialogDescription className="text-xs text-emerald-300">Choose the customer's options.</DialogDescription>
+              <DialogDescription className="text-xs text-zinc-300">Choose the customer's options.</DialogDescription>
               <div className="space-y-4 mt-3">
                 {customizing.optionGroups.filter((g: any) => groupVisible(g, selectedOptions)).map((g: any) => (
                   <div key={g.id} className="space-y-2">
-                    <p className="text-[11px] font-extrabold text-emerald-200 uppercase">{g.name} {g.required && <span className="text-lime-400">• required</span>}{g.maxSelections ? <span className="text-emerald-500"> • max {g.maxSelections}</span> : null}</p>
+                    <p className="text-[11px] font-extrabold text-zinc-200 uppercase">{g.name} {g.required && <span className="text-lime-400">• required</span>}{g.maxSelections ? <span className="text-zinc-500"> • max {g.maxSelections}</span> : null}</p>
                     <div className="flex flex-wrap gap-2">
                       {(g.options || []).map((o: any) => {
                         const on = (selectedOptions[g.id] || []).includes(o.id);
-                        return <button key={o.id} type="button" onClick={() => toggleOption(g, o.id)} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer border ${on ? 'bg-lime-400 text-black border-lime-300' : 'bg-[#061c16] text-emerald-200 border-emerald-800/60'}`}>{o.name}{Number(o.price) > 0 ? ` +₱${o.price}` : ''}</button>;
+                        return <button key={o.id} type="button" onClick={() => toggleOption(g, o.id)} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${on ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>{o.name}{Number(o.price) > 0 ? ` +₱${o.price}` : ''}</button>;
                       })}
                     </div>
                   </div>
                 ))}
               </div>
               {optError && <p className="text-xs text-red-400 mt-3">{optError}</p>}
-              <div className="flex items-center justify-between mt-5 pt-3 border-t border-emerald-900/60">
+              <div className="flex items-center justify-between mt-5 pt-3 border-t border-white/[0.06]">
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => setCustomQty((q) => Math.max(1, q - 1))} className="p-1.5 rounded bg-[#061d16] border border-emerald-800 text-emerald-300 cursor-pointer"><Minus className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => setCustomQty((q) => Math.max(1, q - 1))} className="p-1.5 rounded bg-white/[0.08] text-zinc-200 cursor-pointer"><Minus className="h-3.5 w-3.5" /></button>
                   <span className="w-6 text-center font-extrabold">{customQty}</span>
-                  <button type="button" onClick={() => setCustomQty((q) => Math.min(50, q + 1))} className="p-1.5 rounded bg-[#061d16] border border-emerald-800 text-emerald-300 cursor-pointer"><Plus className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => setCustomQty((q) => Math.min(50, q + 1))} className="p-1.5 rounded bg-white/[0.08] text-zinc-200 cursor-pointer"><Plus className="h-3.5 w-3.5" /></button>
                 </div>
                 <Button type="button" onClick={confirmCustomization} className={limeBtn}>Add to order</Button>
               </div>
@@ -860,29 +872,29 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
 
       {/* ---------------- confirmation dialog ---------------- */}
       <Dialog open={confirmOpen} onOpenChange={(open) => { if (!open && !submitting) setConfirmOpen(false); }}>
-        <DialogContent className="max-w-lg w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[88vh] overflow-y-auto">
+        <DialogContent className="max-w-lg w-full bg-[#141817] text-white shadow-2xl p-6 rounded-3xl max-h-[88vh] overflow-y-auto">
           <DialogTitle className="font-display text-lg font-extrabold text-white">Confirm order</DialogTitle>
-          <DialogDescription className="text-xs text-emerald-300">Review everything before it is saved. This creates a real order.</DialogDescription>
+          <DialogDescription className="text-xs text-zinc-300">Review everything before it is saved. This creates a real order.</DialogDescription>
           {customer && pv && (
             <div className="space-y-3 mt-3 text-xs">
-              <div className="bg-[#04140f] border border-emerald-800/60 rounded-xl p-3 space-y-1">
-                <p className="font-extrabold text-white">{customer.name} <span className="font-normal text-emerald-400">({customer.identifier})</span></p>
-                <p className="text-emerald-300">{contactName}{contactPhone ? ` • ${contactPhone}` : ''}{contactEmail ? ` • ${contactEmail}` : ''}</p>
-                <p className="text-emerald-300 uppercase font-bold">{isOnSite ? 'On-site (Counter)' : <>{fulfillment} • {scheduleText}</>}</p>
-                {fulfillment === 'delivery' && <p className="text-emerald-300">{location} <span className="text-emerald-500">(Landmark: {landmark})</span></p>}
+              <div className="bg-white/[0.06] rounded-xl p-3 space-y-1">
+                <p className="font-extrabold text-white">{customer.name} <span className="font-normal text-zinc-400">({customer.identifier})</span></p>
+                <p className="text-zinc-300">{contactName}{contactPhone ? ` • ${contactPhone}` : ''}{contactEmail ? ` • ${contactEmail}` : ''}</p>
+                <p className="text-zinc-300 uppercase font-bold">{isOnSite ? 'On-site (Counter)' : <>{fulfillment} • {scheduleText}</>}</p>
+                {fulfillment === 'delivery' && <p className="text-zinc-300">{location} <span className="text-zinc-500">(Landmark: {landmark})</span></p>}
               </div>
               <div className="space-y-1">
                 {lines.map((l, idx) => (
-                  <div key={l.key} className="flex justify-between gap-3"><span className="text-emerald-100">{l.qty}× {l.item.name}{l.summary ? <span className="block text-[10px] text-lime-300 font-mono">↳ {l.summary}</span> : null}</span><span className="font-bold text-white">{money(r2(unitFor(idx, l) * l.qty))}</span></div>
+                  <div key={l.key} className="flex justify-between gap-3"><span className="text-zinc-100">{l.qty}× {l.item.name}{l.summary ? <span className="block text-[10px] text-lime-300 font-mono">↳ {l.summary}</span> : null}</span><span className="font-bold text-white">{money(r2(unitFor(idx, l) * l.qty))}</span></div>
                 ))}
               </div>
-              <div className="border-t border-emerald-900/60 pt-2 space-y-1">
-                <div className="flex justify-between"><span className="text-emerald-400">Food subtotal</span><span>{money(pv.subtotal)}</span></div>
-                <div className="flex justify-between"><span className="text-emerald-400">Promo</span><span className="text-amber-400 font-bold">{pv.appliedCodes ? `${pv.appliedCodes} (−${money(Number(pv.foodDiscount) + Number(pv.deliveryDiscount))})` : 'NA'}</span></div>
-                {fulfillment === 'delivery' && <div className="flex justify-between"><span className="text-emerald-400">Delivery fee</span><span>{deliveryOption === 'maxim' ? 'Paid to Maxim app' : pv.deliveryPinSet ? money(pv.deliveryFee) : 'To be confirmed'}</span></div>}
+              <div className="border-t border-white/[0.06] pt-2 space-y-1">
+                <div className="flex justify-between"><span className="text-zinc-400">Food subtotal</span><span>{money(pv.subtotal)}</span></div>
+                <div className="flex justify-between"><span className="text-zinc-400">Promo</span><span className="text-amber-400 font-bold">{pv.appliedCodes ? `${pv.appliedCodes} (−${money(Number(pv.foodDiscount) + Number(pv.deliveryDiscount))})` : 'NA'}</span></div>
+                {fulfillment === 'delivery' && <div className="flex justify-between"><span className="text-zinc-400">Delivery fee</span><span>{deliveryOption === 'maxim' ? 'Paid to Maxim app' : pv.deliveryPinSet ? money(pv.deliveryFee) : 'To be confirmed'}</span></div>}
                 <div className="flex justify-between text-sm pt-1"><span className="font-extrabold">Total</span><span className="font-extrabold text-lime-400">{money(pv.total)}</span></div>
               </div>
-              <p className="text-[11px] text-emerald-400">Payment: Cash on pickup / delivery (existing workflow).</p>
+              <p className="text-[11px] text-zinc-400">Payment: Cash on pickup / delivery (existing workflow).</p>
             </div>
           )}
           {submitError && <div className="mt-3 rounded-xl border border-red-500/50 bg-red-500/10 p-3 text-xs text-red-200 flex gap-2"><XCircle className="h-4 w-4 shrink-0" /><span>{submitError} <span className="block opacity-80 mt-1">Nothing was saved. You can fix the problem and press Confirm again; repeated clicks cannot create duplicate orders.</span></span></div>}
