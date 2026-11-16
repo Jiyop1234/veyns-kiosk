@@ -1,18 +1,54 @@
 // @ts-nocheck
-// Admin navigation chrome (Part B, Step B1a3):
+// Admin navigation chrome (Part B, Steps B1a3 and B1a4):
 // - tablet and desktop (768 px and up): a floating rounded pill at the left, vertically centered.
 //   Collapsed (default): icons only. Expanded: icons, labels, counts and "Exit to Store".
 //   The white round button on its edge switches between the two.
 // - phones (under 768 px): a fixed top bar with a menu button, and a slide-in drawer.
-import React, { useEffect } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, Menu as MenuIcon, X } from 'lucide-react';
 import { ADMIN_NAV_ITEMS } from '@/components/admin/admin-nav-items';
 
 // The list of navigation buttons, shared by the pill and the drawer.
 // showLabels false = square icon buttons (collapsed pill); true = full-width rows with label and count.
+// Step B1a4: the neon highlight is one bar behind the buttons. When the active section changes it first
+// stretches from the old row to the new row, then its tail follows and it settles on the new row.
 function NavButtons({ activeTab, onSelect, counts, showLabels }) {
+  const btnRefs = useRef({});
+  const lastRect = useRef(null);
+  const lastTab = useRef(null);
+  const lastLabels = useRef(null);
+  const [bar, setBar] = useState({ top: 0, height: 0, ms: 0 });
+
+  useLayoutEffect(() => {
+    const el = btnRefs.current[activeTab];
+    if (!el) return undefined;
+    const next = { top: el.offsetTop, height: el.offsetHeight };
+    const prev = lastRect.current;
+    const tabChanged = lastTab.current !== activeTab;
+    const labelsChanged = lastLabels.current !== showLabels;
+    lastRect.current = next;
+    lastTab.current = activeTab;
+    lastLabels.current = showLabels;
+    // First paint, or the pill was expanded / collapsed: jump to the row without animation.
+    if (!prev || !tabChanged || labelsChanged) {
+      setBar({ top: next.top, height: next.height, ms: 0 });
+      return undefined;
+    }
+    // Phase 1: stretch over both rows. Phase 2: shrink to the new row.
+    const top = Math.min(prev.top, next.top);
+    const bottom = Math.max(prev.top + prev.height, next.top + next.height);
+    setBar({ top, height: bottom - top, ms: 140 });
+    const timer = setTimeout(() => setBar({ top: next.top, height: next.height, ms: 200 }), 140);
+    return () => clearTimeout(timer);
+  }, [activeTab, showLabels]);
+
   return (
-    <nav aria-label="Admin sections" className="flex flex-col gap-1">
+    <nav aria-label="Admin sections" className="relative flex flex-col gap-1">
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 z-0 rounded-xl bg-lime-400 shadow-lg"
+        style={{ top: bar.top, height: bar.height, opacity: bar.height ? 1 : 0, transition: bar.ms ? `top ${bar.ms}ms ease-out, height ${bar.ms}ms ease-out` : 'none' }}
+      />
       {ADMIN_NAV_ITEMS.map((item) => {
         const Icon = item.icon;
         const isActive = activeTab === item.id;
@@ -20,12 +56,13 @@ function NavButtons({ activeTab, onSelect, counts, showLabels }) {
         return (
           <button
             key={item.id}
+            ref={(el) => { btnRefs.current[item.id] = el; }}
             type="button"
             title={item.label}
             aria-label={item.label}
             aria-current={isActive ? 'page' : undefined}
             onClick={() => onSelect(item.id)}
-            className={`flex cursor-pointer items-center rounded-xl text-sm font-bold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 ${showLabels ? 'w-full gap-3 px-3 py-2.5' : 'mx-auto h-10 w-10 justify-center'} ${isActive ? 'bg-lime-400 text-black shadow-lg' : 'text-emerald-100/80 hover:bg-emerald-900/40 hover:text-white'}`}
+            className={`relative z-10 flex cursor-pointer items-center rounded-xl text-sm font-bold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 ${showLabels ? 'w-full gap-3 px-3 py-2.5' : 'mx-auto h-10 w-10 justify-center'} ${isActive ? 'text-black' : 'text-emerald-100/80 hover:bg-emerald-900/40 hover:text-white'}`}
           >
             <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
             {showLabels && <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>}
