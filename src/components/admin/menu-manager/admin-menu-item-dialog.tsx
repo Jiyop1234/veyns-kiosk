@@ -17,8 +17,8 @@ export function AdminMenuItemDialog({
   handleUpdateGroup, handleReorderGroup, handleDeleteGroup, handleAddOptionToGroup,
   handleUpdateOptionInGroup, handleReorderOptionInGroup, handleDeleteOptionFromGroup
 }: any) {
+  // ADD / EDIT MENU ITEM MODAL
   return (
-    {/* ADD / EDIT MENU ITEM MODAL */}
     <Dialog open={isAddingNewItem} onOpenChange={(open) => !open && setIsAddingNewItem(false)}>
       <DialogContent className="max-w-3xl w-full bg-[#03120d] text-white border border-emerald-900/85 shadow-2xl p-6 rounded-3xl max-h-[95vh] overflow-y-auto">
         <div className="space-y-1 border-b border-emerald-900/60 pb-3">
