@@ -1,7 +1,6 @@
 // @ts-nocheck
 import React, { useState, useCallback } from 'react';
-import { ArrowLeft, DollarSign, KeyRound, Eye, EyeOff, CheckCircle2, AlertTriangle, XCircle, Upload, Calendar, ArrowRightLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { DollarSign, KeyRound, Eye, EyeOff, CheckCircle2, AlertTriangle, XCircle, Upload, Calendar, ArrowRightLeft } from 'lucide-react';
 import { MENU_GRID, getActivePromoCodes } from '@/lib/menu-data';
 import { AdminOrderProcessing } from '@/components/admin/orders-pos/admin-order-processing';
 import { AdminFeedbackManager } from '@/components/admin/feedback/admin-feedback-manager';
@@ -24,6 +23,10 @@ import { ADMIN_NAV_ITEMS, type AdminTabId } from '@/components/admin/admin-nav-i
 export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => void }) {
   const [activeTab, setActiveTab] = useState<AdminTabId>('overview');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Step B1a3: the tablet/desktop pill is collapsed (icons only) by default; the choice is remembered in this browser.
+  const [navExpanded, setNavExpanded] = useState<boolean>(() => {
+    try { return localStorage.getItem('veyns_admin_nav_expanded') === '1'; } catch (e) { return false; }
+  });
   // Step A3: data loading and Realtime now live in admin/admin-dashboard-data.ts
   const { menuItems, promos, orders, setOrders, customers, slotCapacities, fetchCloudData } = useAdminDashboardData();
 
@@ -37,6 +40,12 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       try { localStorage.setItem('veyns_active_view', 'store'); } catch (e) {}
       window.location.reload();
     }
+  };
+
+  const handleToggleNav = () => {
+    const next = !navExpanded;
+    setNavExpanded(next);
+    try { localStorage.setItem('veyns_admin_nav_expanded', next ? '1' : '0'); } catch (e) {}
   };
 
   // Step B1a: choosing a label switches the tab and closes the phone drawer.
@@ -55,23 +64,18 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         onSelect={handleSelectTab}
         counts={{ sales: orders.length, customers: customers.length, promos: promos.length, menu: menuItems.length }}
         title={activeTitle}
+        expanded={navExpanded}
+        onToggleExpanded={handleToggleNav}
         mobileOpen={mobileNavOpen}
         onOpenMobile={() => setMobileNavOpen(true)}
         onCloseMobile={() => setMobileNavOpen(false)}
         onExit={handleExitStore}
       />
 
-      <div className="pt-14 md:pl-16 md:pt-0 lg:pl-60">
+      <div className={`pt-14 transition-[padding] duration-200 md:pl-24 md:pt-0 ${navExpanded ? 'lg:pl-72' : ''}`}>
         <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
           <div className="hidden items-center justify-between gap-4 md:flex">
             <h1 className="font-display text-2xl font-extrabold text-white">{activeTitle}</h1>
-            <Button
-              type="button"
-              onClick={handleExitStore}
-              className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
-            >
-              <ArrowLeft className="h-4 w-4" /> Exit to Store
-            </Button>
           </div>
 
           {/* Overview page lives in admin/overview/ (placeholder until Step B1b) */}
