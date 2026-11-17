@@ -2,6 +2,7 @@
 // Step A7: Users tab (Registered Customer Accounts list, search, Edit and Loyalty buttons) plus all customer-edit and Loyalty Manager state and handlers,
 // moved unchanged from employee-dashboard.tsx. Only the imports, the props, the 'active' guard and the two dialog calls are new.
 // The component stays mounted, so the search text and open dialogs behave exactly as before.
+// Step B3 follow-up: stat cards have 30-day charts, and admin accounts are not listed.
 // Step B3: new Users layout (search + filters, stat cards, table with Loyalty Status / Total Orders / Total Spent / Status, pages, no page scroll on a large screen). The handlers and the two dialog calls are unchanged.
 import React, { useState, useMemo } from 'react';
 import { Users, Search, Edit2, Award, Crown, Gem, Coins, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -28,16 +29,41 @@ function loyaltyOf(c: any) {
   return { key: 'B' + block, label: `Block ${block} • ${cum}/35 stamps`, pct: Math.min(100, (cum / 35) * 100), textCls: 'text-lime-300', barCls: 'bg-lime-400' };
 }
 
-const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const peso = (n: number) => { const v = Number(n || 0); return '₱' + v.toLocaleString('en-PH', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }); };
 
-function UsersStatCard({ icon, iconCls, label, value }: { icon: React.ReactNode; iconCls: string; label: string; value: string }) {
+// Change between the first and last value of a 30-day series.
+function trendLabel(values: number[]) {
+  const first = values[0], last = values[values.length - 1];
+  if (!(first > 0)) return { text: last > 0 ? 'New in the last 30 days' : 'No data yet', dir: 0 };
+  const pct = Math.round(((last - first) / first) * 100);
+  if (pct === 0) return { text: 'No change vs 30 days ago', dir: 0 };
+  return { text: `${pct > 0 ? '↑ +' : '↓ '}${pct}% vs 30 days ago`, dir: pct > 0 ? 1 : -1 };
+}
+
+function UsersSparkline({ values, stroke }: { values?: number[]; stroke?: string }) {
+  if (!values || values.length < 2) return null;
+  const w = 96, h = 36, max = Math.max(...values), min = Math.min(...values), span = max - min;
+  const pts = values.map((v, i) => [(i / (values.length - 1)) * w, span === 0 ? h / 2 : h - 3 - ((v - min) / span) * (h - 8)]);
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="h-9 w-24 shrink-0" aria-hidden="true">
+      <path d={`${line} L${w} ${h} L0 ${h} Z`} fill={stroke} fillOpacity="0.15" />
+      <path d={line} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function UsersStatCard({ icon, iconCls, label, value, values, stroke, trend, note }: { icon: React.ReactNode; iconCls: string; label: string; value: string; values?: number[]; stroke?: string; trend?: { text: string; dir: number }; note?: string }) {
+  const trendCls = !trend ? 'text-emerald-400/80' : trend.dir > 0 ? 'text-lime-400' : trend.dir < 0 ? 'text-red-400' : 'text-emerald-400/80';
   return (
     <div className="flex items-center gap-3 rounded-2xl bg-[#051813] p-3">
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconCls}`}>{icon}</span>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="truncate text-[11px] text-emerald-300">{label}</p>
         <p className="font-display text-xl font-extrabold leading-tight text-white">{value}</p>
+        <p className={`truncate text-[10px] font-bold ${trendCls}`}>{trend ? trend.text : note}</p>
       </div>
+      <UsersSparkline values={values} stroke={stroke} />
     </div>
   );
 }
@@ -179,19 +205,38 @@ export function AdminUsersTab({ active, customers, fetchCloudData, orders = [], 
     return m;
   }, [orders]);
 
+  // Admin accounts are never listed here: admins and employees both see the Regular and Employee accounts only.
+  const visibleCustomers = useMemo(() => customers.filter((c: any) => (c.type || 'regular') !== 'admin'), [customers]);
+  const loyaltyLoaded = visibleCustomers.length === 0 || visibleCustomers.some((c: any) => c.current_stamp_count !== undefined);
+
+  // Chart values: 10 points over the last 30 days. Accounts use profiles.created_at; spend uses the order's created time.
+  const trends = useMemo(() => {
+    const DAY = 86400000, POINTS = 10, SPAN = 30, now = Date.now();
+    const times = Array.from({ length: POINTS }, (_, i) => now - (POINTS - 1 - i) * (SPAN / (POINTS - 1)) * DAY);
+    const ts = (v: any) => { const t = v ? Date.parse(v) : NaN; return isNaN(t) ? 0 : t; };
+    const created = visibleCustomers.map((c: any) => ({ t: ts(c.created_at), regular: (c.type || 'regular') === 'regular' }));
+    const ids = new Set(visibleCustomers.map((c: any) => c.auth_user_id).filter(Boolean));
+    const paid = (orders || []).filter((o: any) => o.userId && ids.has(o.userId) && o.status === 'completed').map((o: any) => ({ t: ts(o.createdAt), amount: Number(o.total) || 0 }));
+    return {
+      total: times.map((x) => created.filter((c) => c.t <= x).length),
+      regular: times.map((x) => created.filter((c) => c.regular && c.t <= x).length),
+      spent: times.map((x) => paid.filter((p) => p.t <= x).reduce((sum, p) => sum + p.amount, 0)),
+    };
+  }, [visibleCustomers, orders]);
+
   const stats = useMemo(() => {
     let spent = 0;
-    customers.forEach((c: any) => { const s = orderStats.get(c.auth_user_id); if (s) spent += s.spent; });
+    visibleCustomers.forEach((c: any) => { const s = orderStats.get(c.auth_user_id); if (s) spent += s.spent; });
     return {
-      total: customers.length,
-      regular: customers.filter((c: any) => (c.type || 'regular') === 'regular').length,
-      vip: customers.filter((c: any) => c.tier === 'PLATINUM' || c.tier === 'DIAMOND').length,
+      total: visibleCustomers.length,
+      regular: visibleCustomers.filter((c: any) => (c.type || 'regular') === 'regular').length,
+      vip: visibleCustomers.filter((c: any) => c.tier === 'PLATINUM' || c.tier === 'DIAMOND').length,
       spent,
     };
-  }, [customers, orderStats]);
+  }, [visibleCustomers, orderStats]);
 
   const searchText = customerSearch.trim().toLowerCase();
-  const filteredCustomers = customers.filter((c: any) => {
+  const filteredCustomers = visibleCustomers.filter((c: any) => {
     if (searchText && !((c.name || '').toLowerCase().includes(searchText) || (c.identifier || '').toLowerCase().includes(searchText))) return false;
     if (typeFilter !== 'all' && (c.type || 'regular') !== typeFilter) return false;
     if (tierFilter !== 'all') { const l = loyaltyOf(c); if (!l || l.key !== tierFilter) return false; }
@@ -231,7 +276,6 @@ export function AdminUsersTab({ active, customers, fetchCloudData, orders = [], 
             <option value="all">All account types</option>
             <option value="regular">Regular</option>
             <option value="employee">Employee</option>
-            <option value="admin">Admin</option>
           </select>
           <select aria-label="Loyalty tier" value={tierFilter} onChange={(e) => { setTierFilter(e.target.value); setPage(1); }} className={selectCls}>
             <option value="all">All loyalty tiers</option>
@@ -245,10 +289,10 @@ export function AdminUsersTab({ active, customers, fetchCloudData, orders = [], 
         </div>
 
         <div className="grid shrink-0 grid-cols-2 gap-3 xl:grid-cols-4">
-          <UsersStatCard icon={<Users className="h-5 w-5" />} iconCls="bg-lime-400/15 text-lime-300" label="Total accounts" value={stats.total.toLocaleString('en-PH')} />
-          <UsersStatCard icon={<Award className="h-5 w-5" />} iconCls="bg-emerald-400/15 text-emerald-300" label="Regular members" value={stats.regular.toLocaleString('en-PH')} />
-          <UsersStatCard icon={<Crown className="h-5 w-5" />} iconCls="bg-amber-400/15 text-amber-300" label="VIP members (Platinum / Diamond)" value={stats.vip.toLocaleString('en-PH')} />
-          <UsersStatCard icon={<Coins className="h-5 w-5" />} iconCls="bg-sky-400/15 text-sky-300" label="Total lifetime spend (completed orders)" value={peso(stats.spent)} />
+          <UsersStatCard icon={<Users className="h-5 w-5" />} iconCls="bg-lime-400/15 text-lime-300" label="Total accounts" value={stats.total.toLocaleString('en-PH')} values={trends.total} stroke="#a3e635" trend={trendLabel(trends.total)} />
+          <UsersStatCard icon={<Award className="h-5 w-5" />} iconCls="bg-emerald-400/15 text-emerald-300" label="Regular members" value={stats.regular.toLocaleString('en-PH')} values={trends.regular} stroke="#34d399" trend={trendLabel(trends.regular)} />
+          <UsersStatCard icon={<Crown className="h-5 w-5" />} iconCls="bg-amber-400/15 text-amber-300" label="VIP members" value={stats.vip.toLocaleString('en-PH')} note="Platinum + Diamond (now)" />
+          <UsersStatCard icon={<Coins className="h-5 w-5" />} iconCls="bg-sky-400/15 text-sky-300" label="Total lifetime spend" value={peso(stats.spent)} values={trends.spent} stroke="#38bdf8" trend={trendLabel(trends.spent)} />
         </div>
 
         <div className={`rounded-2xl bg-[#051813] ${fit ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
@@ -270,7 +314,7 @@ export function AdminUsersTab({ active, customers, fetchCloudData, orders = [], 
                 {pageRows.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-8 text-center text-emerald-400/70">
-                      No customer accounts match your search.
+                      {tierFilter !== 'all' && !loyaltyLoaded ? 'Loyalty data could not be loaded, so tiers cannot be filtered.' : 'No customer accounts match your search.'}
                     </td>
                   </tr>
                 ) : (

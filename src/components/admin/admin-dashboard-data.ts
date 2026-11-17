@@ -1,7 +1,7 @@
 // @ts-nocheck
 // Step A3: admin data loading and Supabase Realtime, moved unchanged from employee-dashboard.tsx.
 // Only the state declarations and the final return are new; the effect and fetchCloudData are the original code.
-// Step B3b: customers also carry status, tier, current_stamp_count and block_start; orders carry userId (the customer's auth id) for the Users screen.
+// Step B3b: customers also carry status, tier, current_stamp_count and block_start; orders carry userId (the customer's auth id) and createdAt for the Users screen.
 // Step A5: the 1-second countdown clock (nowTimestamp) moved to admin-promos-tab.tsx, so this hook no longer ticks every second.
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -67,6 +67,7 @@ export function useAdminDashboardData() {
           id: o.id,
           orderNumber: o.order_number,
           userId: o.user_id || null,
+          createdAt: o.created_at || null,
           accountNickname: o.account_nickname || 'Guest',
           name: o.customer_name,
           email: o.email || '',
