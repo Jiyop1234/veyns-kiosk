@@ -72,7 +72,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const fitUsers = useAdminFitScreen(navExpanded, 'users') && activeTab === 'customers';
   // Step B4: the Slot Capacity screen also fills the window on a large screen (same widths as Orders & POS).
   const fitSlots = useAdminFitScreen(navExpanded, 'slots') && activeTab === 'slots';
-  const fitPage = fitLedger || fitOrdersTall || fitUsers || fitSlots;
+  // Step B5: the Feedback screen also fills the window on a large screen (same widths as Orders & POS).
+  const fitFeedback = useAdminFitScreen(navExpanded, 'feedback') && activeTab === 'feedback';
+  const fitPage = fitLedger || fitOrdersTall || fitUsers || fitSlots || fitFeedback;
 
   // --- Dashboard page layout: sidebar, header and the sections ---
   return (
@@ -92,9 +94,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       />
 
       <div className={`pt-14 transition-[padding] duration-200 md:pl-24 md:pt-0 ${navExpanded ? 'lg:pl-72' : ''} ${fitPage ? 'h-[calc(100vh-4rem)]' : ''}`}>
-        <div className={fitLedger ? 'h-full px-8 pb-6' : fitUsers || fitSlots ? 'flex h-full flex-col gap-3 px-8 pb-6' : fitOrders ? `flex flex-col gap-3 px-8 pb-6 ${fitOrdersTall ? 'h-full' : ''}` : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
+        <div className={fitLedger ? 'h-full px-8 pb-6' : fitUsers || fitSlots || fitFeedback ? 'flex h-full flex-col gap-3 px-8 pb-6' : fitOrders ? `flex flex-col gap-3 px-8 pb-6 ${fitOrdersTall ? 'h-full' : ''}` : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
           {/* The Ledger shows its own heading, so the shared title row is skipped for it */}
-          {activeTab !== 'ledger' && (
+          {activeTab !== 'ledger' && !fitFeedback && (
             <div className={`hidden items-center justify-between gap-4 md:flex ${fitOrders || fitUsers || fitSlots ? 'shrink-0' : ''}`}>
               <h1 className="font-display text-2xl font-extrabold text-white">{activeTitle}</h1>
             </div>
@@ -119,7 +121,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           {/* Orders & POS: the order form (AdminOrderProcessing, passed as children above) with the Order Transactions table under it */}
 
           {/* Customer feedback management */}
-          {activeTab === 'feedback' && <AdminFeedbackManager />}
+          {activeTab === 'feedback' && <AdminFeedbackManager fit={fitFeedback} />}
 
           {/* Slot Capacity tab, its slot row, owners panel, time windows panel and transfer dialog live in admin/slot-capacity/ */}
           <AdminSlotCapacityTab active={activeTab === 'slots'} timeSlotsList={timeSlotsList} slotCapacities={slotCapacities} fetchCloudData={fetchCloudData} fit={fitSlots} />
