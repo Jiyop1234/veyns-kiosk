@@ -68,7 +68,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   // Step B2b: with enough height the order form and the Order Transactions table share one no-scroll window;
   // with less height the form fills the window and the table is reached by scrolling.
   const fitOrdersTall = useAdminFitScreen(navExpanded, 'orders-table') && activeTab === 'process';
-  const fitPage = fitLedger || fitOrdersTall;
+  // Step B3a: the Users screen also fills the window on a large screen (same widths as Orders & POS).
+  const fitUsers = useAdminFitScreen(navExpanded, 'users') && activeTab === 'customers';
+  const fitPage = fitLedger || fitOrdersTall || fitUsers;
 
   // --- Dashboard page layout: sidebar, header and the sections ---
   return (
@@ -88,10 +90,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       />
 
       <div className={`pt-14 transition-[padding] duration-200 md:pl-24 md:pt-0 ${navExpanded ? 'lg:pl-72' : ''} ${fitPage ? 'h-[calc(100vh-4rem)]' : ''}`}>
-        <div className={fitLedger ? 'h-full px-8 pb-6' : fitOrders ? `flex flex-col gap-3 px-8 pb-6 ${fitOrdersTall ? 'h-full' : ''}` : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
+        <div className={fitLedger ? 'h-full px-8 pb-6' : fitUsers ? 'flex h-full flex-col gap-3 px-8 pb-6' : fitOrders ? `flex flex-col gap-3 px-8 pb-6 ${fitOrdersTall ? 'h-full' : ''}` : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
           {/* The Ledger shows its own heading, so the shared title row is skipped for it */}
           {activeTab !== 'ledger' && (
-            <div className={`hidden items-center justify-between gap-4 md:flex ${fitOrders ? 'shrink-0' : ''}`}>
+            <div className={`hidden items-center justify-between gap-4 md:flex ${fitOrders || fitUsers ? 'shrink-0' : ''}`}>
               <h1 className="font-display text-2xl font-extrabold text-white">{activeTitle}</h1>
             </div>
           )}
@@ -120,8 +122,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           {/* Slot Capacity tab, its two dialogs and the slot card live in admin/slot-capacity/ */}
           <AdminSlotCapacityTab active={activeTab === 'slots'} timeSlotsList={timeSlotsList} slotCapacities={slotCapacities} fetchCloudData={fetchCloudData} />
 
-          {/* Users tab (customer accounts, edit account dialog, Loyalty Manager) lives in admin/users/ */}
-          <AdminUsersTab active={activeTab === 'customers'} customers={customers} fetchCloudData={fetchCloudData} />
+          {/* Users tab (customer accounts, edit account dialog, Loyalty Manager) lives in admin/users/; it gets the orders for the Orders / Spent columns */}
+          <AdminUsersTab active={activeTab === 'customers'} customers={customers} orders={orders} fit={fitUsers} fetchCloudData={fetchCloudData} />
 
           {/* Menu Manager tab and the Add / Edit item dialog live in admin/menu-manager/ */}
           <AdminMenuManagerTab active={activeTab === 'menu'} menuItems={menuItems} fetchCloudData={fetchCloudData} />

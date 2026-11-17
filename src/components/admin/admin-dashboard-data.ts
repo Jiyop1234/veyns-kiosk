@@ -1,6 +1,7 @@
 // @ts-nocheck
 // Step A3: admin data loading and Supabase Realtime, moved unchanged from employee-dashboard.tsx.
 // Only the state declarations and the final return are new; the effect and fetchCloudData are the original code.
+// Step B3b: customers also carry status, tier, current_stamp_count and block_start; orders carry userId (the customer's auth id) for the Users screen.
 // Step A5: the 1-second countdown clock (nowTimestamp) moved to admin-promos-tab.tsx, so this hook no longer ticks every second.
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -65,6 +66,7 @@ export function useAdminDashboardData() {
         setOrders(cloudOrders.map((o: any) => ({
           id: o.id,
           orderNumber: o.order_number,
+          userId: o.user_id || null,
           accountNickname: o.account_nickname || 'Guest',
           name: o.customer_name,
           email: o.email || '',
@@ -116,7 +118,7 @@ export function useAdminDashboardData() {
         }
       }
 
-      const { data: cloudProfiles } = await supabase.from('profiles').select('id,name,identifier,role,created_at,stamps_data,penalty_data,auth_user_id');
+      const { data: cloudProfiles } = await supabase.from('profiles').select('id,name,identifier,role,created_at,stamps_data,penalty_data,auth_user_id,status,tier,current_stamp_count,block_start');
       if (cloudProfiles && cloudProfiles.length > 0) {
         const formattedProfiles = cloudProfiles.map((p: any) => {
           const identifierKey = (p.identifier || '').toLowerCase().trim();
@@ -130,7 +132,7 @@ export function useAdminDashboardData() {
           } else {
             localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
           }
-          return { id: p.id, name: p.name || 'Valued Regular', identifier: p.identifier, type: p.role || 'regular', auth_user_id: p.auth_user_id, created_at: p.created_at };
+          return { id: p.id, name: p.name || 'Valued Regular', identifier: p.identifier, type: p.role || 'regular', auth_user_id: p.auth_user_id, created_at: p.created_at, status: p.status || 'ACTIVE', tier: p.tier || null, current_stamp_count: Number(p.current_stamp_count ?? 0), block_start: !!p.block_start };
         });
         setCustomers(formattedProfiles);
       } else {
