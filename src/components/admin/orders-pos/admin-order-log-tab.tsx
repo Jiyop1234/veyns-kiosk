@@ -12,7 +12,7 @@ import { AdminOrderPwdDialog } from '@/components/admin/orders-pos/admin-order-p
 import { AdminOrderDeleteDialog } from '@/components/admin/orders-pos/admin-order-delete-dialog';
 import { AdminOrderInvoiceDialog } from '@/components/admin/orders-pos/admin-order-invoice-dialog';
 import { AdminOrderRescheduleDialog } from '@/components/admin/orders-pos/admin-order-reschedule-dialog';
-import { AdminOrderEditDialog } from '@/components/admin/orders-pos/admin-order-edit-dialog';
+import { AdminOrderEditPanel } from '@/components/admin/orders-pos/admin-order-edit-panel';
 
 // Step A8c: order log, all order state, handlers and helpers, and the five order dialogs moved unchanged from employee-dashboard.tsx.
 // The summary cards are passed in as children by the dashboard (they live in admin/sales-analytics/).
@@ -87,6 +87,16 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
   // Orders & POS table: status chip and search box (view only; nothing is saved)
   const [posFilter, setPosFilter] = useState('all');
   const [posSearch, setPosSearch] = useState('');
+
+  // Step B2c: when the Edit Order screen closes, the order form is shown again; ask the page to re-measure so its map redraws.
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    const was = wasEditing.current;
+    wasEditing.current = !!editOrder;
+    if (!was || editOrder) return undefined;
+    const t = setTimeout(() => window.dispatchEvent(new Event('resize')), 80);
+    return () => clearTimeout(t);
+  }, [editOrder]);
 
   // keep an open invoice in sync with refreshed order data (so PWD / status show immediately)
   useEffect(() => {
@@ -182,6 +192,7 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
     flash('ok', `${order.orderNumber} was deleted${data?.slots_released ? ' and its reserved slot was released' : ''}.`);
     setDeleteTarget(null);
     setSelectedInvoice((prev: any) => (prev && prev.id === order.id ? null : prev));
+    setEditOrder((prev: any) => (prev && prev.id === order.id ? null : prev));
     fetchCloudData();
   };
 
@@ -375,9 +386,66 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
       {/* Orders & POS: compact Order Transactions table under the order form (Step B2b) */}
       {active && view === 'pos' && (
         <div className={fitMode === 'all' ? 'flex min-h-0 flex-1 flex-col gap-3' : 'space-y-3'}>
-          <div className={fitMode === 'all' ? 'flex min-h-0 flex-1 flex-col' : fitMode === 'form' ? 'flex h-[calc(100vh-7rem)] flex-col' : ''}>
+          {/* While an order is being edited, the Edit Order screen takes the place of the order form (the form stays mounted but hidden, so nothing typed in it is lost) */}
+          <div className={editOrder ? 'hidden' : fitMode === 'all' ? 'flex min-h-0 flex-1 flex-col' : fitMode === 'form' ? 'flex h-[calc(100vh-7rem)] flex-col' : ''}>
             {children}
           </div>
+          {editOrder && (
+            <div className={fitMode === 'all' ? 'flex min-h-0 flex-1 flex-col' : fitMode === 'form' ? 'flex h-[calc(100vh-7rem)] flex-col' : ''}>
+          <AdminOrderEditPanel
+            editOrder={editOrder}
+            setEditOrder={setEditOrder}
+            editQty={editQty}
+            setEditQty={setEditQty}
+            editMethod={editMethod}
+            setEditMethod={setEditMethod}
+            editPhone={editPhone}
+            setEditPhone={setEditPhone}
+            editLocation={editLocation}
+            setEditLocation={setEditLocation}
+            editLandmark={editLandmark}
+            setEditLandmark={setEditLandmark}
+            editFee={editFee}
+            editDate={editDate}
+            setEditDate={setEditDate}
+            editSlot={editSlot}
+            setEditSlot={setEditSlot}
+            editName={editName}
+            setEditName={setEditName}
+            editPin={editPin}
+            setEditPin={setEditPin}
+            editPinFee={editPinFee}
+            editAddrTouched={editAddrTouched}
+            editNote={editNote}
+            setEditNote={setEditNote}
+            editDiscType={editDiscType}
+            setEditDiscType={setEditDiscType}
+            editDiscValue={editDiscValue}
+            setEditDiscValue={setEditDiscValue}
+            editDiscLabel={editDiscLabel}
+            setEditDiscLabel={setEditDiscLabel}
+            editAvailPromos={editAvailPromos}
+            editAvailLoading={editAvailLoading}
+            editAvailError={editAvailError}
+            editAddPromos={editAddPromos}
+            timeSlotsList={timeSlotsList}
+            busyOrderId={busyOrderId}
+            handleSaveEdit={handleSaveEdit}
+            toggleEditPromo={toggleEditPromo}
+            editEstSubtotal={editEstSubtotal}
+            editFeeNow={editFeeNow}
+            editOldPromoScaled={editOldPromoScaled}
+            editNewFoodPromo={editNewFoodPromo}
+            editNewDeliveryPromo={editNewDeliveryPromo}
+            editFoodPromoNow={editFoodPromoNow}
+            editDeliveryPromoNow={editDeliveryPromoNow}
+            editDiscountPreview={editDiscountPreview}
+            editBowlsNow={editBowlsNow}
+            editSlotInfo={editSlotInfo}
+            fit={fitMode !== 'none'}
+          />
+            </div>
+          )}
           <div className={`flex flex-col rounded-2xl bg-white/[0.04] p-3 ${fitMode === 'all' ? 'h-[clamp(11rem,22vh,17rem)] shrink-0' : 'max-h-[28rem]'}`}>
             <div className="flex flex-wrap items-center gap-2 pb-2">
               <h3 className="flex items-center gap-2 pr-2 font-display text-sm font-extrabold text-white"><ShoppingBag className="h-4 w-4 text-lime-400" /> Order Transactions</h3>
@@ -420,7 +488,7 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
                       const editable = order.status === 'pending' || order.status === 'rescheduled';
                       const itemsText = (order.items || []).map((it: any) => `${itemQty(it)}× ${lineItemName(it)}`).join(', ');
                       return (
-                        <tr key={order.id || idx} className="hover:bg-white/[0.04]">
+                        <tr key={order.id || idx} className={editOrder && editOrder.id === order.id ? 'bg-lime-400/10' : 'hover:bg-white/[0.04]'}>
                           <td className="px-2 py-2 font-extrabold text-lime-400">{order.orderNumber}</td>
                           <td className="px-2 py-2">
                             <p className="max-w-[150px] truncate font-bold text-white">{order.name || order.accountNickname}</p>
@@ -539,7 +607,6 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
                       <th className="p-3">Discount</th>
                       <th className="p-3">Total (₱)</th>
                       <th className="p-3">Order Status</th>
-                      <th className="p-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-emerald-950">
@@ -622,15 +689,6 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
                             <span className={`inline-block px-2.5 py-0.5 rounded-full border font-extrabold text-[10px] uppercase ${STATUS_SKIN[order.status] || STATUS_SKIN.pending}`}>
                               {STATUS_LABEL[order.status] || order.status}
                             </span>
-                            <select
-                              value={order.status}
-                              disabled={busyOrderId === order.id || order.status === 'cancelled'}
-                              onChange={(e) => handleStatusChange(order, e.target.value)}
-                              className="block w-full bg-[#04140f] border border-emerald-800 rounded-lg px-2 py-1 text-[11px] text-lime-300 font-bold focus:outline-none focus:border-lime-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              {ORDER_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-                            </select>
-                            {busyOrderId === order.id && <span className="block text-[10px] text-amber-300 animate-pulse">Saving…</span>}
                             {order.status === 'rescheduled' && order.rescheduledToDate && (
                               <span className="block text-[10px] text-sky-300">→ {order.rescheduledToDate} ({order.rescheduledToTime})</span>
                             )}
@@ -641,43 +699,6 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
                               <span className="block text-[10px] text-amber-300">✎ Edited {new Date(order.lastEditedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}</span>
                             )}
                           </div>
-                        </td>
-                        <td className="p-3 text-right space-y-1.5">
-                          <Button
-                            size="sm"
-                            onClick={() => setSelectedInvoice(order)}
-                            className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-extrabold text-[10px] px-3 py-1.5 rounded-xl transition-all cursor-pointer"
-                          >
-                            See Invoice
-                          </Button>
-                          {(order.status === 'pending' || order.status === 'rescheduled') && (
-                            <Button
-                              size="sm"
-                              disabled={busyOrderId === order.id}
-                              onClick={() => openEditOrder(order)}
-                              className="block ml-auto bg-amber-950 hover:bg-amber-400 hover:text-black text-amber-300 border border-amber-700 font-extrabold text-[10px] px-3 py-1.5 rounded-xl transition-all cursor-pointer disabled:opacity-40"
-                            >
-                              Edit Order
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            disabled={busyOrderId === order.id}
-                            onClick={() => openDeleteOrder(order)}
-                            className="block ml-auto bg-red-950 hover:bg-red-500 hover:text-black text-red-300 border border-red-800 font-extrabold text-[10px] px-3 py-1.5 rounded-xl transition-all cursor-pointer disabled:opacity-40"
-                          >
-                            Delete Order
-                          </Button>
-                          {!order.pwdApplied && (order.status === 'pending' || order.status === 'rescheduled') && (
-                            <Button
-                              size="sm"
-                              disabled={busyOrderId === order.id}
-                              onClick={() => openPwdConfirm(order)}
-                              className="block ml-auto bg-sky-950 hover:bg-sky-400 hover:text-black text-sky-300 border border-sky-700 font-extrabold text-[10px] px-3 py-1.5 rounded-xl transition-all cursor-pointer disabled:opacity-40"
-                            >
-                              Apply PWD (20%)
-                            </Button>
-                          )}
                         </td>
                       </tr>
                     ))}
@@ -711,59 +732,6 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
         slotAvailability={slotAvailability}
         busyOrderId={busyOrderId}
         handleConfirmReschedule={handleConfirmReschedule}
-      />
-
-      {/* Edit Order dialog */}
-      <AdminOrderEditDialog
-        editOrder={editOrder}
-        setEditOrder={setEditOrder}
-        editQty={editQty}
-        setEditQty={setEditQty}
-        editMethod={editMethod}
-        setEditMethod={setEditMethod}
-        editPhone={editPhone}
-        setEditPhone={setEditPhone}
-        editLocation={editLocation}
-        setEditLocation={setEditLocation}
-        editLandmark={editLandmark}
-        setEditLandmark={setEditLandmark}
-        editFee={editFee}
-        editDate={editDate}
-        setEditDate={setEditDate}
-        editSlot={editSlot}
-        setEditSlot={setEditSlot}
-        editName={editName}
-        setEditName={setEditName}
-        editPin={editPin}
-        setEditPin={setEditPin}
-        editPinFee={editPinFee}
-        editAddrTouched={editAddrTouched}
-        editNote={editNote}
-        setEditNote={setEditNote}
-        editDiscType={editDiscType}
-        setEditDiscType={setEditDiscType}
-        editDiscValue={editDiscValue}
-        setEditDiscValue={setEditDiscValue}
-        editDiscLabel={editDiscLabel}
-        setEditDiscLabel={setEditDiscLabel}
-        editAvailPromos={editAvailPromos}
-        editAvailLoading={editAvailLoading}
-        editAvailError={editAvailError}
-        editAddPromos={editAddPromos}
-        timeSlotsList={timeSlotsList}
-        busyOrderId={busyOrderId}
-        handleSaveEdit={handleSaveEdit}
-        toggleEditPromo={toggleEditPromo}
-        editEstSubtotal={editEstSubtotal}
-        editFeeNow={editFeeNow}
-        editOldPromoScaled={editOldPromoScaled}
-        editNewFoodPromo={editNewFoodPromo}
-        editNewDeliveryPromo={editNewDeliveryPromo}
-        editFoodPromoNow={editFoodPromoNow}
-        editDeliveryPromoNow={editDeliveryPromoNow}
-        editDiscountPreview={editDiscountPreview}
-        editBowlsNow={editBowlsNow}
-        editSlotInfo={editSlotInfo}
       />
 
       {/* Delete order confirmation dialog */}
