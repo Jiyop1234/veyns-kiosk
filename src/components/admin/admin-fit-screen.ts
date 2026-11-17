@@ -1,5 +1,5 @@
-// VEYNS Admin: tells the dashboard when a screen can use the whole window without a page scroll (Steps B10b, B2a2 and B3a).
-// True only on a large screen: wide and tall enough for the panels of that screen ('ledger', 'orders' or 'users').
+// VEYNS Admin: tells the dashboard when a screen can use the whole window without a page scroll (Steps B10b, B2a2, B3a and B4).
+// True only on a large screen: wide and tall enough for the panels of that screen ('ledger', 'orders', 'users' or 'slots').
 // The width needed depends on the navigation pill: the expanded pill takes 192 px more from the page.
 // On smaller screens it is false and the page scrolls as before.
 
@@ -19,7 +19,10 @@ export const ADMIN_FIT_ORDERS_TABLE_MIN_HEIGHT = 850;
 // Users (Step B3a): stat cards and a table that scrolls inside its card; same widths as Orders & POS.
 export const ADMIN_FIT_USERS_MIN_HEIGHT = 700;
 
-export type AdminFitKind = 'ledger' | 'orders' | 'orders-table' | 'users';
+// Slot Capacity (Step B4): stat cards and a list of slots that scrolls inside its card; same widths as Orders & POS.
+export const ADMIN_FIT_SLOTS_MIN_HEIGHT = 700;
+
+export type AdminFitKind = 'ledger' | 'orders' | 'orders-table' | 'users' | 'slots';
 
 export function useAdminFitScreen(navExpanded: boolean, kind: AdminFitKind = 'ledger'): boolean {
   const [size, setSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -34,6 +37,6 @@ export function useAdminFitScreen(navExpanded: boolean, kind: AdminFitKind = 'le
   const minWidth = orders
     ? (navExpanded ? ADMIN_FIT_ORDERS_MIN_WIDTH_EXPANDED : ADMIN_FIT_ORDERS_MIN_WIDTH_COLLAPSED)
     : (navExpanded ? ADMIN_FIT_MIN_WIDTH_EXPANDED : ADMIN_FIT_MIN_WIDTH_COLLAPSED);
-  const minHeight = kind === 'orders-table' ? ADMIN_FIT_ORDERS_TABLE_MIN_HEIGHT : kind === 'users' ? ADMIN_FIT_USERS_MIN_HEIGHT : orders ? ADMIN_FIT_ORDERS_MIN_HEIGHT : ADMIN_FIT_MIN_HEIGHT;
+  const minHeight = kind === 'orders-table' ? ADMIN_FIT_ORDERS_TABLE_MIN_HEIGHT : kind === 'users' ? ADMIN_FIT_USERS_MIN_HEIGHT : kind === 'slots' ? ADMIN_FIT_SLOTS_MIN_HEIGHT : orders ? ADMIN_FIT_ORDERS_MIN_HEIGHT : ADMIN_FIT_MIN_HEIGHT;
   return size.width >= minWidth && size.height >= minHeight;
 }

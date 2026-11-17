@@ -1,19 +1,39 @@
 // @ts-nocheck
-// Admin Slot Capacity tab: bowl capacity per time window, edit/add/remove time windows, slot owner inspector and transfer dialogs.
+// Admin Slot Capacity tab: bowl capacity per time window, edit/add/remove time windows, slot owner inspector and transfer dialog.
 // Step A4: moved unchanged from employee-dashboard.tsx (Step A5B: renamed from AdminSlotsTab to match the SLOT CAPACITY nav label). New: this wrapper, its props, and the `active` flag (see below).
+// Step B4: new look (stat cards, one table row per time window, slot owners panel beside it, time windows in their own tab, no page scroll on a large screen).
+// The state and every function from "Time window manager" to handleDeleteSlot are the A4 code, unchanged; only `view` (which tab is open) and `fit` are new.
 // The tab body shows only when `active` is true, but this component stays mounted, so its state (selected date, messages,
-// open dialogs) is kept when you switch tabs, exactly like before.
+// open panels and dialogs) is kept when you switch tabs, exactly like before.
 import { useState } from 'react';
-import { Clock, Users, ArrowRightLeft } from 'lucide-react';
+import { CalendarDays, Clock, Gauge, Plus, Utensils, PackageCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/lib/supabase';
-import { itemQty, lineItemName } from '@/components/admin/admin-order-items';
 import { todayManila, slotHasEnded, to12h, slotTo24 } from '@/components/admin/admin-slot-times';
-import { AdminSlotCapacityCard } from '@/components/admin/slot-capacity/admin-slot-capacity-card';
+import { AdminSlotCapacityRow, ADMIN_SLOT_ROW_GRID } from '@/components/admin/slot-capacity/admin-slot-capacity-row';
+import { AdminSlotCapacityOwnersPanel } from '@/components/admin/slot-capacity/admin-slot-capacity-owners-panel';
+import { AdminSlotCapacityWindowsPanel } from '@/components/admin/slot-capacity/admin-slot-capacity-windows-panel';
 
-export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fetchCloudData }: { active: boolean; timeSlotsList: string[]; slotCapacities: any; fetchCloudData: () => void }) {
+// --- Small summary card at the top of the page ---
+function SlotStatCard({ icon, label, value, unit, note, children }: any) {
+  return (
+    <div className="flex items-center gap-4 rounded-3xl bg-white/[0.04] px-5 py-4">
+      <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-lime-400/15 text-lime-400">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-white/60">{label}</p>
+        <p className="text-3xl font-extrabold leading-tight text-white">{value}{unit ? <span className="ml-1.5 text-sm font-semibold text-white/50">{unit}</span> : null}</p>
+        {children}
+        {note ? <p className="text-[11px] text-white/40">{note}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fetchCloudData, fit = false }: { active: boolean; timeSlotsList: string[]; slotCapacities: any; fetchCloudData: () => void; fit?: boolean }) {
   // --- Time window manager (Slot Capacity tab) ---
+  // Step B4: which part of the page is open (the table of slots, or the time windows editor).
+  const [view, setView] = useState<'daily' | 'windows'>('daily');
   const [slotEdits, setSlotEdits] = useState<Record<string, { start: string; end: string }>>({});
   const [newSlotStart, setNewSlotStart] = useState('09:00');
   const [newSlotEnd, setNewSlotEnd] = useState('10:00');
@@ -136,219 +156,206 @@ export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fe
     fetchCloudData();
   };
 
+  // Step B4: one entry per time window for the chosen date (the same lookup the old cards did inline), shared by the stat cards and the rows.
+  const slotRows = timeSlotsList.map((slotTime) => {
+    const existing = slotCapacities ? Object.values(slotCapacities).find((s: any) => s.date_key === selectedSlotDate && s.slot_time === slotTime) : null;
+    return {
+      slotTime,
+      maxBowls: existing ? existing.max_bowls : 10,
+      bookedBowls: existing ? existing.booked_bowls : 0,
+      maxSlots: existing ? existing.max_slots : 10,
+      isFullyBooked: existing ? !!existing.is_manually_fully_booked : false,
+    };
+  });
+  const totalCapacity = slotRows.reduce((s, r) => s + Number(r.maxBowls || 0), 0);
+  const totalReserved = slotRows.reduce((s, r) => s + Number(r.bookedBowls || 0), 0);
+  const totalLeft = slotRows.reduce((s, r) => s + Math.max(0, Number(r.maxBowls || 0) - Number(r.bookedBowls || 0)), 0);
+  const closedCount = slotRows.filter((r) => r.isFullyBooked).length;
+  const utilizationPct = totalCapacity > 0 ? Math.min(100, Math.round((totalReserved / totalCapacity) * 100)) : 0;
+  const inspectedCapacity = inspectingSlot && slotCapacities
+    ? (Object.values(slotCapacities).find((s: any) => s.date_key === inspectingSlot.dateKey && s.slot_time === inspectingSlot.slotTime)?.max_bowls ?? 10)
+    : 10;
+
   return (
     <>
-        {/* Scheduling slot capacity & bowl inventory controls */}
-        {active && (
-          <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-emerald-900/60 pb-3 gap-3">
-              <div className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-lime-400" />
-                <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Manage Bowl Capacity & Time Slot Bookings</h3>
+      {active && (
+        <div className={fit ? 'flex min-h-0 flex-1 flex-col gap-3' : 'space-y-4'}>
+          {/* Subtitle and the date picker */}
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-white/60">Manage bowl capacity and time slot bookings. Set the maximum bowls per window, inspect who reserved a slot, or transfer a reservation.</p>
+            <label className="flex items-center gap-2 rounded-2xl bg-white/[0.06] px-3.5 py-2 text-sm text-white focus-within:ring-1 focus-within:ring-lime-400/70">
+              <CalendarDays className="size-4 shrink-0 text-lime-400" />
+              <span className="font-semibold text-white/60">Date</span>
+              <input
+                type="date"
+                min={new Date().toISOString().split('T')[0]}
+                value={selectedSlotDate}
+                onChange={(e) => setSelectedSlotDate(e.target.value)}
+                className="bg-transparent text-sm font-semibold text-white focus:outline-none [color-scheme:dark]"
+              />
+            </label>
+          </div>
+
+          {/* Totals for the chosen date */}
+          <div className="grid shrink-0 grid-cols-2 gap-3 xl:grid-cols-4">
+            <SlotStatCard icon={<Utensils className="size-6" />} label="Total capacity" value={totalCapacity} unit="bowls" />
+            <SlotStatCard icon={<PackageCheck className="size-6" />} label="Reserved" value={totalReserved} unit="bowls" />
+            <SlotStatCard icon={<Clock className="size-6" />} label="Left to book" value={totalLeft} unit="bowls" note={closedCount > 0 ? `${closedCount} ${closedCount === 1 ? 'slot is' : 'slots are'} closed` : undefined} />
+            <SlotStatCard icon={<Gauge className="size-6" />} label="Utilization" value={`${utilizationPct}%`}>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-lime-400" style={{ width: `${utilizationPct}%` }} />
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-emerald-300">Select Date:</span>
+            </SlotStatCard>
+          </div>
+
+          {/* The slots (left) and, when Inspect is pressed, the slot owners (right) */}
+          <div className={`grid gap-3 ${fit ? 'min-h-0 flex-1 grid-rows-[minmax(0,1fr)]' : ''} ${inspectingSlot ? 'lg:grid-cols-[minmax(0,1fr)_340px]' : 'grid-cols-1'}`}>
+            <div className="flex min-h-0 flex-col rounded-3xl bg-white/[0.03] p-4">
+              <div className="mb-3 flex shrink-0 items-center gap-2">
+                {[['daily', 'Daily capacity', Gauge], ['windows', 'Time windows', Clock]].map(([id, label, Icon]: any) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setView(id)}
+                    className={`flex cursor-pointer items-center gap-2 rounded-2xl px-4 py-2 text-sm font-bold transition-colors ${view === id ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-white/70 hover:bg-white/10'}`}
+                  >
+                    <Icon className="size-4" /> {label}
+                  </button>
+                ))}
+              </div>
+
+              {view === 'daily' ? (
+                <div className="min-h-0 flex-1 overflow-auto">
+                  <div className="min-w-[860px]">
+                    <div className={`${ADMIN_SLOT_ROW_GRID} sticky top-0 z-10 bg-[#071610] px-4 pb-2 text-xs font-semibold text-white/40`}>
+                      <span>Time slot</span>
+                      <span>Reserved</span>
+                      <span>Max bowls</span>
+                      <span>Left</span>
+                      <span>Utilization</span>
+                      <span>Status</span>
+                      <span>Closed</span>
+                      <span className="text-right">Actions</span>
+                    </div>
+                    <div className="space-y-2">
+                      {slotRows.map((r) => (
+                        <AdminSlotCapacityRow
+                          key={r.slotTime}
+                          slotTime={r.slotTime}
+                          dateKey={selectedSlotDate}
+                          initialMaxBowls={r.maxBowls}
+                          bookedBowls={r.bookedBowls}
+                          initialMaxSlots={r.maxSlots}
+                          initialFullyBooked={r.isFullyBooked}
+                          selected={!!inspectingSlot && inspectingSlot.slotTime === r.slotTime && inspectingSlot.dateKey === selectedSlotDate}
+                          onSave={handleUpdateSlotCapacity}
+                          onInspect={() => handleInspectSlot(r.slotTime, selectedSlotDate)}
+                        />
+                      ))}
+                      {slotRows.length === 0 && <p className="py-6 text-center text-xs text-white/50">No time windows yet. Add one in the Time windows tab.</p>}
+                      <button
+                        type="button"
+                        onClick={() => setView('windows')}
+                        className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-lime-400/10 py-3 text-sm font-bold text-lime-300 hover:bg-lime-400/20"
+                      >
+                        <Plus className="size-4" /> Add new time slot
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <AdminSlotCapacityWindowsPanel
+                  timeSlotsList={timeSlotsList}
+                  slotMsg={slotMsg}
+                  slotMgmtBusy={slotMgmtBusy}
+                  slotEditValue={slotEditValue}
+                  setSlotEdits={setSlotEdits}
+                  newSlotStart={newSlotStart}
+                  setNewSlotStart={setNewSlotStart}
+                  newSlotEnd={newSlotEnd}
+                  setNewSlotEnd={setNewSlotEnd}
+                  onRename={handleRenameSlot}
+                  onDelete={handleDeleteSlot}
+                  onAdd={handleAddSlot}
+                />
+              )}
+            </div>
+
+            {inspectingSlot && (
+              <AdminSlotCapacityOwnersPanel
+                inspectingSlot={inspectingSlot}
+                reservations={slotReservationsList}
+                capacity={inspectedCapacity}
+                fit={fit}
+                onClose={() => setInspectingSlot(null)}
+                onTransfer={openTransfer}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Schedule Modal */}
+      <Dialog open={!!transferringReservation} onOpenChange={(open) => !open && setTransferringReservation(null)}>
+        {transferringReservation && (
+          <DialogContent className="w-full max-w-md rounded-3xl border-0 bg-[#07130f] p-6 text-white shadow-2xl">
+            <div className="space-y-1 pb-3">
+              <DialogTitle className="font-display text-lg font-extrabold text-white">
+                Transfer reservation for {transferringReservation.customer_name}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-white/60">
+                Move this customer's {transferringReservation.bowls_reserved} bowls to another date and time. Past time slots cannot be selected.
+              </DialogDescription>
+            </div>
+            <div className="my-4 space-y-3 text-xs">
+              <div>
+                <label className="mb-1 block font-bold text-lime-400">Target date</label>
                 <input
                   type="date"
-                  min={new Date().toISOString().split('T')[0]}
-                  value={selectedSlotDate}
-                  onChange={(e) => setSelectedSlotDate(e.target.value)}
-                  className="bg-[#041913] border border-emerald-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-lime-400"
+                  min={todayManila()}
+                  value={transferTargetDate}
+                  onChange={(e) => {
+                    const d = e.target.value;
+                    if (!d) return;
+                    setTransferTargetDate(d);
+                    if (slotHasEnded(d, transferTargetSlot)) {
+                      const next = timeSlotsList.find((s) => !slotHasEnded(d, s));
+                      if (next) setTransferTargetSlot(next);
+                    }
+                  }}
+                  className="w-full rounded-xl bg-white/[0.06] p-2.5 text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-lime-400/70 [color-scheme:dark]"
                 />
               </div>
-            </div>
-            <p className="text-xs text-emerald-300">
-              Configure maximum bowl limits per time window, inspect slot owners, or transfer reservations between time slots.
-            </p>
-            {/* Time windows: edits apply to today and all upcoming dates and show instantly for customers */}
-            <div className="rounded-2xl border border-emerald-800/80 bg-[#041913] p-4 space-y-3">
               <div>
-                <p className="text-xs font-extrabold text-lime-400 uppercase tracking-wider">Edit time windows</p>
-                <p className="text-[11px] text-emerald-300 mt-0.5">
-                  Change a window (for example 12:00 PM - 1:00 PM to 9:00 AM - 10:00 AM). Today's and upcoming bookings move with it and customers see the new time instantly. Past dates keep their original time.
-                </p>
-              </div>
-              {slotMsg && (
-                <div className={`rounded-xl border p-2.5 text-[11px] font-bold ${slotMsg.kind === 'ok' ? 'bg-lime-950/60 border-lime-500/40 text-lime-300' : 'bg-red-950/70 border-red-700 text-red-300'}`}>
-                  {slotMsg.text}
-                </div>
-              )}
-              <div className="space-y-2">
-                {timeSlotsList.map((label) => {
-                  const v = slotEditValue(label);
-                  return (
-                    <div key={label} className="flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] font-bold text-white w-40 shrink-0">{label}</span>
-                      <input type="time" value={v.start}
-                        onChange={(e) => setSlotEdits((p) => ({ ...p, [label]: { ...slotEditValue(label), start: e.target.value } }))}
-                        className="bg-[#03120d] border border-emerald-800 rounded-lg p-1.5 text-xs text-white focus:outline-none focus:border-lime-400" />
-                      <span className="text-emerald-400 text-xs">to</span>
-                      <input type="time" value={v.end}
-                        onChange={(e) => setSlotEdits((p) => ({ ...p, [label]: { ...slotEditValue(label), end: e.target.value } }))}
-                        className="bg-[#03120d] border border-emerald-800 rounded-lg p-1.5 text-xs text-white focus:outline-none focus:border-lime-400" />
-                      <Button disabled={slotMgmtBusy} onClick={() => handleRenameSlot(label)}
-                        className="bg-lime-400 text-black font-extrabold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer disabled:opacity-40">Save time</Button>
-                      <Button disabled={slotMgmtBusy} onClick={() => handleDeleteSlot(label)}
-                        className="bg-red-950 text-red-300 border border-red-800 font-bold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer disabled:opacity-40">Remove</Button>
-                    </div>
-                  );
-                })}
-                {timeSlotsList.length === 0 && <p className="text-[11px] text-emerald-400/80">No time windows yet. Add one below.</p>}
-              </div>
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-emerald-900/60">
-                <span className="text-[11px] font-bold text-lime-400 w-40 shrink-0">Add a new window</span>
-                <input type="time" value={newSlotStart} onChange={(e) => setNewSlotStart(e.target.value)}
-                  className="bg-[#03120d] border border-emerald-800 rounded-lg p-1.5 text-xs text-white focus:outline-none focus:border-lime-400" />
-                <span className="text-emerald-400 text-xs">to</span>
-                <input type="time" value={newSlotEnd} onChange={(e) => setNewSlotEnd(e.target.value)}
-                  className="bg-[#03120d] border border-emerald-800 rounded-lg p-1.5 text-xs text-white focus:outline-none focus:border-lime-400" />
-                <Button disabled={slotMgmtBusy} onClick={handleAddSlot}
-                  className="bg-emerald-300 text-black font-extrabold text-[11px] px-3 py-1.5 rounded-lg cursor-pointer disabled:opacity-40">Add window</Button>
+                <label className="mb-1 block font-bold text-lime-400">Target time slot</label>
+                <select
+                  value={transferTargetSlot}
+                  onChange={(e) => setTransferTargetSlot(e.target.value)}
+                  className="w-full rounded-xl bg-white/[0.06] p-2.5 text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-lime-400/70 [color-scheme:dark]"
+                >
+                  {timeSlotsList.map((slot) => {
+                    const ended = slotHasEnded(transferTargetDate, slot);
+                    const same = transferTargetDate === transferringReservation.date_key && slot === transferringReservation.slot_time;
+                    return (
+                      <option key={slot} value={slot} disabled={ended || same}>
+                        {slot}{ended ? ' (already passed)' : same ? ' (current slot)' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {timeSlotsList.map((slotTime) => {
-                const existing = slotCapacities ? Object.values(slotCapacities).find((s: any) => s.date_key === selectedSlotDate && s.slot_time === slotTime) : null;
-                const maxBowls = existing ? existing.max_bowls : 10;
-                const bookedBowls = existing ? existing.booked_bowls : 0;
-                const maxSlots = existing ? existing.max_slots : 10;
-                const isFullyBooked = existing ? !!existing.is_manually_fully_booked : false;
-                return (
-                  <AdminSlotCapacityCard
-                    key={slotTime}
-                    slotTime={slotTime}
-                    dateKey={selectedSlotDate}
-                    initialMaxBowls={maxBowls}
-                    bookedBowls={bookedBowls}
-                    initialMaxSlots={maxSlots}
-                    initialFullyBooked={isFullyBooked}
-                    onSave={handleUpdateSlotCapacity}
-                    onInspect={() => handleInspectSlot(slotTime, selectedSlotDate)}
-                  />
-                );
-              })}
+            <div className="flex gap-2 pt-2">
+              <Button onClick={() => setTransferringReservation(null)} className="flex-1 cursor-pointer rounded-xl bg-white/[0.06] py-2.5 text-xs font-bold text-white hover:bg-white/10">Cancel</Button>
+              <Button
+                disabled={slotHasEnded(transferTargetDate, transferTargetSlot)}
+                onClick={() => handleExecuteTransfer(transferringReservation.id, transferTargetDate, transferTargetSlot)}
+                className="flex-1 cursor-pointer rounded-xl bg-lime-400 py-2.5 text-xs font-extrabold text-black shadow-lg hover:bg-lime-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >Confirm transfer</Button>
             </div>
-          </div>
+          </DialogContent>
         )}
-
-        {/* Slot Owner Inspector Modal */}
-        <Dialog open={!!inspectingSlot} onOpenChange={(open) => !open && setInspectingSlot(null)}>
-          {inspectingSlot && (
-            <DialogContent className="max-w-2xl w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl max-h-[85vh] overflow-y-auto">
-              <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
-                <div className="space-y-0.5">
-                  <DialogTitle className="font-display text-lg font-extrabold text-white flex items-center gap-2">
-                    <Users className="h-5 w-5 text-lime-400" /> Slot Owners: {inspectingSlot.slotTime} ({inspectingSlot.dateKey})
-                  </DialogTitle>
-                  <DialogDescription className="text-xs text-emerald-300">
-                    Inspect who reserved this slot and view what exact items/bowls they ordered.
-                  </DialogDescription>
-                </div>
-              </div>
-              <div className="my-4 space-y-3">
-                {slotReservationsList.length === 0 ? (
-                  <p className="text-xs text-emerald-400/70 text-center py-6">No reservations found for this time slot.</p>
-                ) : (
-                  slotReservationsList.map((res) => (
-                    <div key={res.id} className="bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4 space-y-3 text-xs">
-                      <div className="flex items-center justify-between border-b border-emerald-900/60 pb-2">
-                        <div>
-                          <span className="font-extrabold text-white text-sm">{res.customer_name}</span>
-                          <span className="text-[10px] text-emerald-300 block">{res.customer_phone || 'No phone'}</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="bg-lime-400 text-black px-2.5 py-0.5 rounded-full font-extrabold text-[10px]">
-                            {res.bowls_reserved} Bowls Reserved
-                          </span>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-[10px] text-emerald-400 uppercase font-bold">Ordered Items & Customizations:</span>
-                        {res.orders?.items?.map((it: any, i: number) => (
-                          <div key={i} className="text-emerald-200 text-[11px] pl-2 border-l-2 border-lime-400/40">
-                            <span>{itemQty(it)}x {lineItemName(it)}</span>
-                            {it.customizationsSummary && <span className="block text-[10px] text-lime-300 font-mono">↳ {it.customizationsSummary}</span>}
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex justify-end pt-2 border-t border-emerald-900/40">
-                        <Button
-                          size="sm"
-                          onClick={() => openTransfer(res)}
-                          className="bg-[#082a20] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1.5"
-                        >
-                          <ArrowRightLeft className="size-3.5" /> Transfer Schedule
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </DialogContent>
-          )}
-        </Dialog>
-
-        {/* Transfer Schedule Modal */}
-        <Dialog open={!!transferringReservation} onOpenChange={(open) => !open && setTransferringReservation(null)}>
-          {transferringReservation && (
-            <DialogContent className="max-w-md w-full bg-[#03120d] text-white border border-emerald-900/80 shadow-2xl p-6 rounded-3xl">
-              <div className="space-y-1 border-b border-emerald-900/60 pb-3">
-                <DialogTitle className="font-display text-lg font-extrabold text-white">
-                  Transfer Reservation for {transferringReservation.customer_name}
-                </DialogTitle>
-                <DialogDescription className="text-xs text-emerald-300">
-                  Move this customer's {transferringReservation.bowls_reserved} bowls to another date and time. Past time slots cannot be selected.
-                </DialogDescription>
-              </div>
-              <div className="my-4 space-y-3 text-xs">
-                <div>
-                  <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Target Date</label>
-                  <input
-                    type="date"
-                    min={todayManila()}
-                    value={transferTargetDate}
-                    onChange={(e) => {
-                      const d = e.target.value;
-                      if (!d) return;
-                      setTransferTargetDate(d);
-                      if (slotHasEnded(d, transferTargetSlot)) {
-                        const next = timeSlotsList.find((s) => !slotHasEnded(d, s));
-                        if (next) setTransferTargetSlot(next);
-                      }
-                    }}
-                    className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-xs text-white font-bold focus:outline-none focus:border-lime-400"
-                  />
-                </div>
-                <div>
-                  <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Target Time Slot</label>
-                  <select
-                    value={transferTargetSlot}
-                    onChange={(e) => setTransferTargetSlot(e.target.value)}
-                    className="w-full bg-[#041913] border border-emerald-800 rounded-xl p-2.5 text-xs text-white font-bold focus:outline-none focus:border-lime-400"
-                  >
-                    {timeSlotsList.map((slot) => {
-                      const ended = slotHasEnded(transferTargetDate, slot);
-                      const same = transferTargetDate === transferringReservation.date_key && slot === transferringReservation.slot_time;
-                      return (
-                        <option key={slot} value={slot} disabled={ended || same}>
-                          {slot}{ended ? ' (already passed)' : same ? ' (current slot)' : ''}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-2 pt-2 border-t border-emerald-900/60">
-                <Button onClick={() => setTransferringReservation(null)} className="flex-1 bg-emerald-950 text-emerald-200 font-bold py-2.5 rounded-xl text-xs cursor-pointer">Cancel</Button>
-                <Button
-                  disabled={slotHasEnded(transferTargetDate, transferTargetSlot)}
-                  onClick={() => handleExecuteTransfer(transferringReservation.id, transferTargetDate, transferTargetSlot)}
-                  className="flex-1 bg-lime-400 text-black font-extrabold py-2.5 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
-                >Confirm Transfer</Button>
-              </div>
-            </DialogContent>
-          )}
-        </Dialog>
+      </Dialog>
     </>
   );
 }
