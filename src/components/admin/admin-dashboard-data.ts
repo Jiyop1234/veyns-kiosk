@@ -118,7 +118,12 @@ export function useAdminDashboardData() {
         }
       }
 
-      const { data: cloudProfiles } = await supabase.from('profiles').select('id,name,identifier,role,created_at,stamps_data,penalty_data,auth_user_id,status,tier,current_stamp_count,block_start');
+      // If a loyalty column is missing in the database, the query would fail and the whole customer list would be empty; retry with the original columns so the Users and Vouchers tabs keep working.
+      let { data: cloudProfiles, error: profilesErr } = await supabase.from('profiles').select('id,name,identifier,role,created_at,stamps_data,penalty_data,auth_user_id,status,tier,current_stamp_count,block_start');
+      if (profilesErr) {
+        console.error('profiles query with loyalty columns failed, retrying without them:', profilesErr.message);
+        ({ data: cloudProfiles } = await supabase.from('profiles').select('id,name,identifier,role,created_at,stamps_data,penalty_data,auth_user_id'));
+      }
       if (cloudProfiles && cloudProfiles.length > 0) {
         const formattedProfiles = cloudProfiles.map((p: any) => {
           const identifierKey = (p.identifier || '').toLowerCase().trim();
@@ -132,7 +137,7 @@ export function useAdminDashboardData() {
           } else {
             localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
           }
-          return { id: p.id, name: p.name || 'Valued Regular', identifier: p.identifier, type: p.role || 'regular', auth_user_id: p.auth_user_id, created_at: p.created_at, status: p.status || 'ACTIVE', tier: p.tier || null, current_stamp_count: Number(p.current_stamp_count ?? 0), block_start: !!p.block_start };
+          return { id: p.id, name: p.name || 'Valued Regular', identifier: p.identifier, type: p.role || 'regular', auth_user_id: p.auth_user_id, created_at: p.created_at, status: p.status === undefined ? undefined : (p.status || 'ACTIVE'), tier: p.tier || null, current_stamp_count: p.current_stamp_count === undefined ? undefined : Number(p.current_stamp_count ?? 0), block_start: !!p.block_start };
         });
         setCustomers(formattedProfiles);
       } else {
