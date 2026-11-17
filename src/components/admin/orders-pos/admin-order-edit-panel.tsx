@@ -2,10 +2,12 @@
 // VEYNS Admin: the Edit Order screen on Orders & POS (Step B2c).
 // It replaces the old Edit Order pop-up: the same fields, estimate, promo choices and Save button, shown in place of the order
 // form like "Edit Transaction" in the Ledger. State, handlers and edit helpers stay in admin-order-log-tab.tsx and are passed in.
-import React from 'react';
-import { X, Save } from 'lucide-react';
+// Step B2d: staff can also add menu items to the order (the customer forgot them); the database prices them when saving.
+import React, { useEffect, useMemo, useState } from 'react';
+import { X, Save, Plus, Trash2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatPeso } from '@/lib/menu-data';
+import { supabase } from '@/lib/supabase';
 import { DeliveryPinMap } from '@/components/admin/admin-delivery-pin-map';
 import { itemQty, lineItemName, itemUnit } from '@/components/admin/admin-order-items';
 import { orderDeliveryOption } from '@/components/admin/admin-order-status';
@@ -61,8 +63,48 @@ export function AdminOrderEditPanel({
   editDiscountPreview,
   editBowlsNow,
   editSlotInfo,
+  editNewLines,
+  setEditNewLines,
+  editNewUnit,
   fit
 }: any) {
+  // Step B2d: the menu the staff can add from (same table and fields as the order form)
+  const [menu, setMenu] = useState<any[]>([]);
+  const [menuError, setMenuError] = useState('');
+  const [addSearch, setAddSearch] = useState('');
+  const [addCategory, setAddCategory] = useState('All items');
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data, error } = await supabase.from('menu_items').select('*');
+      if (!alive) return;
+      if (error) { setMenuError('Could not load the menu: ' + error.message); return; }
+      const formatted = (data || []).map((m: any) => ({
+        id: m.id, name: m.name, category: m.category,
+        price: Number(m.price || 0), discountPercent: Number(m.discount_percent || 0),
+        isAvailable: m.is_available !== false, sortOrder: Number(m.sort_order || 100),
+        optionGroups: Array.isArray(m.option_groups) ? m.option_groups : [],
+      }));
+      formatted.sort((a: any, b: any) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+      setMenu(formatted);
+    })();
+    return () => { alive = false; };
+  }, []);
+  const addCategories = useMemo(() => ['All items', ...Array.from(new Set(menu.map((m: any) => m.category).filter(Boolean)))], [menu]);
+  const addVisible = menu.filter((m: any) => {
+    if (!m.isAvailable) return false;
+    if (addCategory !== 'All items' && m.category !== addCategory) return false;
+    const q = addSearch.trim().toLowerCase();
+    return !q || m.name.toLowerCase().includes(q);
+  });
+  const addMenuItem = (item: any) => setEditNewLines((prev: any[]) => {
+    const found = prev.find((l: any) => l.item.id === item.id);
+    if (found) return prev.map((l: any) => (l.item.id === item.id ? { ...l, qty: Math.min(50, l.qty + 1) } : l));
+    return [...prev, { item, qty: 1 }];
+  });
+  const setNewQty = (id: any, qty: number) => setEditNewLines((prev: any[]) =>
+    qty < 1 ? prev.filter((l: any) => l.item.id !== id) : prev.map((l: any) => (l.item.id === id ? { ...l, qty: Math.min(50, qty) } : l)));
+
   if (!editOrder) return null;
   // On a no-scroll screen the three columns scroll inside themselves; otherwise they stack and the page scrolls.
   const col = fit ? 'min-h-0 space-y-4 overflow-y-auto pr-1' : 'space-y-4';
@@ -107,7 +149,22 @@ export function AdminOrderEditPanel({
                 </div>
               );
             })}
-            <p className="text-[10px] text-zinc-500">Set a quantity to 0 to remove a line. Each line keeps its original price and add-ons.</p>
+            {editNewLines.map((l: any) => (
+          <div key={'new-' + l.item.id} className="flex items-center justify-between gap-2 rounded-xl bg-lime-400/10 p-2.5 ring-1 ring-lime-400/40">
+            <div className="min-w-0">
+              <p className="font-bold text-white truncate"><span className="mr-1.5 rounded-full bg-lime-400 px-1.5 py-0.5 text-[9px] font-extrabold text-black">NEW</span>{l.item.name}</p>
+              <p className="text-[10px] text-zinc-400">{formatPeso(editNewUnit(l.item))} each • will be added when you save</p>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button type="button" aria-label={`Less ${l.item.name}`} onClick={() => setNewQty(l.item.id, l.qty - 1)} className="h-7 w-7 rounded-lg bg-white/[0.08] hover:bg-white/[0.16] text-lime-400 font-extrabold cursor-pointer">−</button>
+              <input type="number" min={1} max={50} value={l.qty} onChange={(e) => setNewQty(l.item.id, Math.max(0, Math.min(50, Math.floor(Number(e.target.value) || 0))))}
+                className="w-12 bg-black/30 rounded-lg py-1 text-center text-xs font-bold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400" />
+              <button type="button" aria-label={`More ${l.item.name}`} onClick={() => setNewQty(l.item.id, l.qty + 1)} className="h-7 w-7 rounded-lg bg-white/[0.08] hover:bg-white/[0.16] text-lime-400 font-extrabold cursor-pointer">+</button>
+              <button type="button" aria-label={`Remove ${l.item.name}`} title="Remove" onClick={() => setNewQty(l.item.id, 0)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.08] text-red-300 hover:bg-red-500 hover:text-black cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>
+            </div>
+          </div>
+        ))}
+        <p className="text-[10px] text-zinc-500">Set a quantity to 0 to remove a line. Each line keeps its original price and add-ons.</p>
             {editMethod !== 'on-site' && editSlot && (() => {
               const si = editSlotInfo(editDate, editSlot);
               return si.over ? (
@@ -117,6 +174,41 @@ export function AdminOrderEditPanel({
                 </p>
               ) : null;
             })()}
+          </div>
+
+          {/* Add items (Step B2d): the customer forgot something */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest block">Add items</label>
+            <p className="text-[10px] text-zinc-500">Customer forgot something? Click an item to add it to this order. The database sets the price from the menu when you save.</p>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+              <input value={addSearch} onChange={(e) => setAddSearch(e.target.value)} placeholder="Search menu…"
+                className="w-full bg-black/30 rounded-lg py-2 pl-8 pr-2 text-xs text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400" />
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {addCategories.map((c: string) => (
+                <button key={c} type="button" onClick={() => setAddCategory(c)}
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold cursor-pointer ${addCategory === c ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>{c}</button>
+              ))}
+            </div>
+            {menuError && <p className="text-[10px] text-red-400">{menuError}</p>}
+            <div className="grid max-h-44 grid-cols-2 gap-1.5 overflow-y-auto pr-1">
+              {addVisible.map((m: any) => {
+                const custom = m.optionGroups.length > 0;
+                return (
+                  <button key={m.id} type="button" disabled={custom} onClick={() => addMenuItem(m)}
+                    title={custom ? 'Customizable items cannot be added here yet' : `Add ${m.name}`}
+                    className="flex items-center justify-between gap-1.5 rounded-lg bg-white/[0.06] px-2.5 py-1.5 text-left hover:bg-white/[0.12] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/[0.06]">
+                    <span className="min-w-0">
+                      <span className="block truncate text-[11px] font-bold text-white">{m.name}</span>
+                      <span className="block text-[10px] text-zinc-400">{custom ? 'Customizable' : formatPeso(editNewUnit(m))}</span>
+                    </span>
+                    {!custom && <Plus className="h-3.5 w-3.5 shrink-0 text-lime-400" />}
+                  </button>
+                );
+              })}
+              {addVisible.length === 0 && !menuError && <p className="col-span-2 py-2 text-center text-[10px] text-zinc-500">No items match.</p>}
+            </div>
           </div>
 
           {/* Fulfillment */}
@@ -246,7 +338,7 @@ export function AdminOrderEditPanel({
           <div className="rounded-xl bg-white/[0.06] p-3 space-y-1">
             <div className="flex justify-between text-zinc-300">
               <span>Estimated food subtotal ({editBowlsNow()} item{editBowlsNow() === 1 ? '' : 's'})</span>
-              <span className="font-bold text-white">{formatPeso((editOrder.items || []).reduce((s: number, it: any, i: number) => s + itemUnit(it) * (Number(editQty[i]) || 0), 0))}</span>
+              <span className="font-bold text-white">{formatPeso(editEstSubtotal())}</span>
             </div>
             <div className="flex justify-between text-zinc-300">
               <span>Estimated delivery fee</span>
