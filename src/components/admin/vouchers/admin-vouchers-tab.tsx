@@ -1,15 +1,21 @@
 // @ts-nocheck
 // Admin Vouchers & Promos tab: create/edit vouchers and dated campaigns, list them with live countdowns, redemption history, enable/disable, delete.
 // Step A5: moved unchanged from employee-dashboard.tsx (Step A5B: renamed from AdminPromosTab to match the VOUCHERS nav label). New: this wrapper, its props, the `active` flag, and the 1-second clock (see below).
+// Step B6: new screen in the style of your reference (stat cards, search and filters, ticket cards, 30-day chart, redemptions panel, form in a dialog).
+// The create / edit / enable / disable / delete / redemptions code below is the old code. Only these things changed: the form closes after a save, Edit opens the dialog instead of scrolling the page, and Duplicate and Copy code were added.
 // The tab body shows only when `active` is true, but this component stays mounted, so the form and open redemption list are kept when you switch tabs.
 import React, { useState, useEffect } from 'react';
-import { Plus, Ticket, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { formatPeso } from '@/lib/menu-data';
-import { getPromoStatus, getPromoEndMs, isCampaignPromo, formatCountdown, manilaLocalToIso, toManilaLocalInput, formatManila, STATUS_STYLES } from '@/lib/promo-campaigns';
+import { Plus, Search } from 'lucide-react';
+import { getPromoStatus, getPromoEndMs, isCampaignPromo, formatCountdown, manilaLocalToIso, toManilaLocalInput } from '@/lib/promo-campaigns';
 import { supabase } from '@/lib/supabase';
+import { AdminVoucherTicket } from '@/components/admin/vouchers/admin-voucher-ticket';
+import { AdminVoucherStatCards } from '@/components/admin/vouchers/admin-voucher-stat-cards';
+import { AdminVoucherPerformance } from '@/components/admin/vouchers/admin-voucher-performance';
+import { AdminVoucherRedemptionsPanel } from '@/components/admin/vouchers/admin-voucher-redemptions-panel';
+import { AdminVoucherFormDialog } from '@/components/admin/vouchers/admin-voucher-form-dialog';
+import { voucherStatusKey, discountTotals, totalRedemptions, topPromo, dailyDiscounts, type VoucherStatusKey } from '@/components/admin/vouchers/admin-voucher-math';
 
-export function AdminVouchersTab({ active, promos, customers, fetchCloudData }: { active: boolean; promos: any[]; customers: any[]; fetchCloudData: () => void }) {
+export function AdminVouchersTab({ active, promos, customers, orders, fit = false, fetchCloudData }: { active: boolean; promos: any[]; customers: any[]; orders: any[]; fit?: boolean; fetchCloudData: () => void }) {
   // 1-second clock for the campaign countdowns. It used to live in the data hook and re-rendered the whole dashboard every second;
   // now it ticks only while this tab is open, and starts from the current time each time the tab is opened.
   const [nowTimestamp, setNowTimestamp] = useState(Date.now());
@@ -40,6 +46,14 @@ export function AdminVouchersTab({ active, promos, customers, fetchCloudData }: 
   const [newCampaignStart, setNewCampaignStart] = useState('');
   const [newCampaignEnd, setNewCampaignEnd] = useState('');
   const [editingPromoCode, setEditingPromoCode] = useState<string | null>(null);
+
+  // Step B6: screen state (display only). The form is a dialog now; the list has a search, filters and a sort.
+  const [formOpen, setFormOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | VoucherStatusKey>('all');
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'food' | 'delivery'>('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'used' | 'ending'>('newest');
+  const [search, setSearch] = useState('');
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   // --- Create or edit a voucher / dated promotional campaign ---
   const resetPromoForm = () => {
@@ -136,6 +150,7 @@ export function AdminVouchersTab({ active, promos, customers, fetchCloudData }: 
         alert(`Voucher / Promo "${cleanCode}" successfully created and synced to cloud!`);
       }
       resetPromoForm();
+      setFormOpen(false);
       fetchCloudData();
     } catch (err) {
       alert('Database connection error while saving voucher.');
@@ -157,7 +172,44 @@ export function AdminVouchersTab({ active, promos, customers, fetchCloudData }: 
     setNewCampaignMinPurchase(p.minPurchase > 0 ? String(p.minPurchase) : '');
     setNewCampaignStart(toManilaLocalInput(p.startDate));
     setNewCampaignEnd(toManilaLocalInput(p.expiresAt));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setFormOpen(true);
+  };
+
+  // Step B6: "New voucher" opens an empty form.
+  const openNewVoucher = () => {
+    resetPromoForm();
+    setFormOpen(true);
+  };
+
+  // Step B6: "Duplicate" fills the form with this voucher's settings and an empty code. Nothing is saved until you press Create.
+  const handleDuplicatePromo = (p: any) => {
+    resetPromoForm();
+    setNewPromoType(p.type === 'peso' ? 'peso' : 'percentage');
+    setNewPromoDiscount(String(p.discountValue));
+    setNewPromoTargetType(p.target_type === 'delivery' ? 'delivery' : 'subtotal');
+    setNewVoucherVisibility(p.visibility === 'hidden' ? 'hidden' : 'public');
+    setNewVoucherUsageLimit(p.usageLimit ? String(p.usageLimit) : '');
+    setNewVoucherUsageMode(p.usageLimit ? 'limited' : 'unlimited');
+    setNewVoucherPerAccount(p.perPersonLimit === null || p.perPersonLimit === undefined ? 'multiple' : 'one_time');
+    setNewCampaignName(p.name || '');
+    setNewCampaignDesc(p.description || '');
+    setNewCampaignMinPurchase(p.minPurchase > 0 ? String(p.minPurchase) : '');
+    setNewCampaignStart(toManilaLocalInput(p.startDate));
+    setNewCampaignEnd(toManilaLocalInput(p.expiresAt));
+    const ms = Number(p.expiryDurationMs || 0);
+    if (ms > 0 && ms % 3600000 === 0) { setNewVoucherExpiryUnit('hours'); setNewVoucherExpiryVal(String(ms / 3600000)); }
+    else if (ms > 0) { setNewVoucherExpiryUnit('minutes'); setNewVoucherExpiryVal(String(Math.round(ms / 60000))); }
+    else { setNewVoucherExpiryUnit('never'); }
+    setFormOpen(true);
+  };
+
+  // Step B6: copy a voucher code to the clipboard (nothing is changed in the database).
+  const handleCopyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(code);
+      setTimeout(() => setCopiedCode((cur) => (cur === code ? null : cur)), 1500);
+    } catch (e) { /* clipboard blocked: nothing to do */ }
   };
 
   // Redemption history for one voucher (staff can read promo_redemptions through RLS)
@@ -192,230 +244,140 @@ export function AdminVouchersTab({ active, promos, customers, fetchCloudData }: 
     }
   };
 
+  // --- Step B6: what the screen shows (display values only) ---
+  // Plain expired vouchers are hidden as before; expired CAMPAIGNS stay visible for the record.
+  const rows = promos
+    .filter((p) => !(getPromoStatus(p, nowTimestamp) === 'expired' && !isCampaignPromo(p)))
+    .map((p) => {
+      const status = getPromoStatus(p, nowTimestamp);
+      const endMs = getPromoEndMs(p);
+      let countdownText = 'Never expires';
+      let isExpiringSoon = false;
+      if (status === 'scheduled') {
+        countdownText = `Starts in ${formatCountdown(Number(p.startDate) - nowTimestamp)}`;
+      } else if (status === 'expired') {
+        countdownText = 'EXPIRED';
+      } else if (status === 'disabled') {
+        countdownText = 'DISABLED';
+      } else if (endMs) {
+        const diff = endMs - nowTimestamp;
+        countdownText = `Ends in ${formatCountdown(diff)}`;
+        isExpiringSoon = diff < 5 * 60 * 1000; // Less than 5 minutes
+      }
+      return { p, status, key: voucherStatusKey(status), endMs, countdownText, isExpiringSoon };
+    });
+  const counts = { all: rows.length, active: 0, scheduled: 0, disabled: 0, expired: 0 };
+  rows.forEach((r) => { counts[r.key] += 1; });
+  const query = search.trim().toLowerCase();
+  const shown = rows
+    .filter((r) => statusFilter === 'all' || r.key === statusFilter)
+    .filter((r) => scopeFilter === 'all' || (r.p.target_type === 'delivery' ? 'delivery' : 'food') === scopeFilter)
+    .filter((r) => !query || String(r.p.code).toLowerCase().includes(query) || String(r.p.name || '').toLowerCase().includes(query))
+    .sort((a, b) => sortBy === 'used' ? Number(b.p.usageCount || 0) - Number(a.p.usageCount || 0)
+      : sortBy === 'ending' ? (a.endMs ?? Infinity) - (b.endMs ?? Infinity)
+      : Number(b.p.createdAt || 0) - Number(a.p.createdAt || 0));
+  const discounts = discountTotals(orders);
+  const series = dailyDiscounts(orders, 30, nowTimestamp);
+
+  const chip = (on: boolean) => `flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold cursor-pointer ${on ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`;
+  const STATUS_CHIPS: { id: 'all' | VoucherStatusKey; label: string }[] = [
+    { id: 'all', label: 'All' }, { id: 'active', label: 'Active' }, { id: 'scheduled', label: 'Scheduled' }, { id: 'disabled', label: 'Disabled' }, { id: 'expired', label: 'Expired' }
+  ];
+
   return (
     <>
-        {active && (
-          <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
-            <div className="flex items-center gap-2 border-b border-emerald-900/60 pb-3">
-              <Ticket className="h-5 w-5 text-lime-400" />
-              <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Create Vouchers & Promo Codes Manager</h3>
+      {active && (
+        <div className={fit ? 'flex min-h-0 flex-1 flex-col gap-3' : 'space-y-4'}>
+          <AdminVoucherStatCards activeCount={counts.active} redemptions={totalRedemptions(promos)} discounts={discounts} top={topPromo(promos)} />
+
+          {/* search, status chips, scope chips, sort, New voucher */}
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-64">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by code or campaign…" className="w-full rounded-xl bg-white/[0.06] py-2.5 pl-9 pr-3 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400" />
             </div>
-            <form onSubmit={handleAddPromo} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-[#061d16] border border-emerald-800/80 rounded-2xl p-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Voucher Code Name</label>
-                <input type="text" placeholder="e.g. GEOGWAPO" value={newPromoCode} onChange={(e) => setNewPromoCode(e.target.value)} required disabled={!!editingPromoCode} className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white uppercase placeholder:normal-case focus:outline-none focus:border-lime-400 font-bold" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Discount Type & Value</label>
-                <div className="flex gap-1.5">
-                  <select value={newPromoType} onChange={(e) => setNewPromoType(e.target.value as any)} className="bg-[#04140f] border border-emerald-800 rounded-xl px-2 py-2 text-xs text-lime-300 font-bold focus:outline-none">
-                    <option value="peso">₱ OFF</option>
-                    <option value="percentage">% OFF</option>
-                  </select>
-                  <input type="number" placeholder={newPromoType === 'peso' ? "e.g. 50" : "e.g. 10"} value={newPromoDiscount} onChange={(e) => setNewPromoDiscount(e.target.value)} required className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Discount Scope (Feature B)</label>
-                <select value={newPromoTargetType} onChange={(e) => setNewPromoTargetType(e.target.value as any)} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none">
-                  <option value="subtotal">Food Subtotal Only</option>
-                  <option value="delivery">Delivery Fee Only</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Customer Eligibility</label>
-                <select value="registered" disabled className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none opacity-80 cursor-not-allowed">
-                  <option value="registered">Registered Customers Only</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Visibility in Checkout</label>
-                <select value={newVoucherVisibility} onChange={(e) => setNewVoucherVisibility(e.target.value as any)} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none">
-                  <option value="public">Public (Visible in Vouchers List)</option>
-                  <option value="hidden">Hidden (Via Events/Posts Only)</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Expiry Time Type</label>
-                <div className="flex gap-1.5">
-                  {newVoucherExpiryUnit !== 'never' && (
-                    <input type="number" value={newVoucherExpiryVal} onChange={(e) => setNewVoucherExpiryVal(e.target.value)} required className="w-20 bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
-                  )}
-                  <select value={newVoucherExpiryUnit} onChange={(e) => setNewVoucherExpiryUnit(e.target.value as any)} className="flex-1 bg-[#04140f] border border-emerald-800 rounded-xl px-2 py-2 text-xs text-emerald-300 font-bold focus:outline-none">
-                    <option value="minutes">Minutes</option>
-                    <option value="hours">Hours</option>
-                    <option value="never">Never Expires</option>
-                  </select>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Usage Per Account</label>
-                <select value={newVoucherPerAccount} onChange={(e) => setNewVoucherPerAccount(e.target.value as any)} className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-2.5 text-xs text-lime-300 font-bold focus:outline-none">
-                  <option value="one_time">One-Time Use Per Account</option>
-                  <option value="multiple">Multiple Uses Per Account</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Total Usage Limit</label>
-                <div className="flex gap-1.5">
-                  <select value={newVoucherUsageMode} onChange={(e) => setNewVoucherUsageMode(e.target.value as any)} className="flex-1 bg-[#04140f] border border-emerald-800 rounded-xl px-2 py-2 text-xs text-lime-300 font-bold focus:outline-none">
-                    <option value="unlimited">Unlimited</option>
-                    <option value="limited">Limited</option>
-                  </select>
-                  {newVoucherUsageMode === 'limited' && (
-                    <input type="number" min="1" step="1" placeholder="Max redemptions" value={newVoucherUsageLimit} onChange={(e) => setNewVoucherUsageLimit(e.target.value)} required className="w-32 bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
-                  )}
-                </div>
-              </div>
-              <div className="sm:col-span-2 lg:col-span-3 border-t border-emerald-900/60 pt-3">
-                <span className="text-[10px] font-extrabold text-sky-300 uppercase tracking-wider">Promotional Campaign (optional) • all times are Asia/Manila</span>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Promotion Name</label>
-                <input type="text" placeholder="e.g. 11.11 Sale" value={newCampaignName} onChange={(e) => setNewCampaignName(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
-              </div>
-              <div className="space-y-1 sm:col-span-1 lg:col-span-2">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Description</label>
-                <input type="text" placeholder="Optional description" value={newCampaignDesc} onChange={(e) => setNewCampaignDesc(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-lime-400" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Start Date & Time</label>
-                <input type="datetime-local" value={newCampaignStart} onChange={(e) => setNewCampaignStart(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400 [color-scheme:dark]" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Expiration Date & Time</label>
-                <input type="datetime-local" value={newCampaignEnd} onChange={(e) => setNewCampaignEnd(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400 [color-scheme:dark]" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-lime-400 uppercase tracking-wider block">Minimum Purchase (₱, optional)</label>
-                <input type="number" min="0" placeholder="e.g. 300" value={newCampaignMinPurchase} onChange={(e) => setNewCampaignMinPurchase(e.target.value)} className="w-full bg-[#04140f] border border-emerald-800/80 rounded-xl p-2 text-xs text-white font-bold focus:outline-none focus:border-lime-400" />
-              </div>
-              <p className="sm:col-span-2 lg:col-span-3 text-[10px] text-emerald-400/70">
-                If a name, start or expiration is set, the "Expiry Time Type" above is ignored and the campaign runs on these dates. Leave the start empty to begin immediately; leave the expiration empty for no end date.
-              </p>
-              <div className="flex items-end gap-2">
-                <Button type="submit" className="w-full bg-lime-400 hover:bg-lime-500 text-black font-extrabold py-2.5 rounded-xl text-xs transition-all shadow-lg cursor-pointer">
-                  <Plus className="h-4 w-4 mr-1" /> {editingPromoCode ? 'Save Changes' : 'Create Voucher / Campaign'}
-                </Button>
-                {editingPromoCode && (
-                  <Button type="button" onClick={resetPromoForm} className="bg-[#082d22] hover:bg-[#0a3a2c] text-emerald-200 border border-emerald-700 font-bold py-2.5 rounded-xl text-xs cursor-pointer">
-                    Cancel
-                  </Button>
-                )}
-              </div>
-            </form>
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold text-emerald-300 uppercase tracking-wider">Active Vouchers & Promos ({promos.length})</h4>
-              {promos.length === 0 ? (
-                <p className="text-xs text-emerald-400/60 py-6 text-center">No active vouchers or promo codes available.</p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {promos
-                    // Plain expired vouchers are hidden as before; expired CAMPAIGNS stay visible for the record.
-                    .filter((p) => !(getPromoStatus(p, nowTimestamp) === 'expired' && !isCampaignPromo(p)))
-                    .map((p) => {
-                      const status = getPromoStatus(p, nowTimestamp);
-                      const endMs = getPromoEndMs(p);
-                      let countdownText = 'Never expires';
-                      let isExpiringSoon = false;
-                      if (status === 'scheduled') {
-                        countdownText = `Starts in ${formatCountdown(Number(p.startDate) - nowTimestamp)}`;
-                      } else if (status === 'expired') {
-                        countdownText = 'EXPIRED';
-                      } else if (status === 'disabled') {
-                        countdownText = 'DISABLED';
-                      } else if (endMs) {
-                        const diff = endMs - nowTimestamp;
-                        countdownText = `Ends in ${formatCountdown(diff)}`;
-                        isExpiringSoon = diff < 5 * 60 * 1000; // Less than 5 minutes
-                      }
-                      return (
-                        <div key={p.code} className={`bg-[#061d16] border rounded-xl p-4 flex items-start justify-between gap-2 text-xs shadow-md ${
-                          isExpiringSoon ? 'border-amber-500/60' : 'border-emerald-800/80'
-                        } ${status === 'expired' || status === 'disabled' ? 'opacity-75' : ''}`}>
-                          <div className="space-y-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-extrabold text-lime-400 text-sm tracking-wide break-all">{p.code}</span>
-                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase ${STATUS_STYLES[status]}`}>{status}</span>
-                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase ${
-                                p.visibility === 'hidden' ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-lime-400/20 text-lime-400 border border-lime-400/40'
-                              }`}>
-                                {p.visibility || 'public'}
-                              </span>
-                            </div>
-                            {p.name && <p className="text-white font-extrabold text-[11px]">{p.name}</p>}
-                            {p.description && <p className="text-[10px] text-emerald-300/80">{p.description}</p>}
-                            <p className="text-emerald-200 font-bold">
-                              {p.type === 'peso' ? formatPeso(p.discountValue) + ' OFF' : `${p.discountValue}% OFF`}
-                              {' '}{p.target_type === 'delivery' ? 'DELIVERY' : 'FOOD'}
-                            </p>
-                            <p className={`text-[10px] font-mono ${isExpiringSoon ? 'text-amber-400 font-bold' : 'text-amber-300'}`}>
-                              {countdownText}
-                            </p>
-                            {isCampaignPromo(p) && (
-                              <p className="text-[10px] text-sky-300">🗓 {formatManila(p.startDate)} → {endMs ? formatManila(endMs) : 'no end date'}</p>
-                            )}
-                            {p.minPurchase > 0 && <p className="text-[10px] text-emerald-300">Min. purchase: {formatPeso(p.minPurchase)}</p>}
-                            <div className="text-[10px] text-emerald-300 space-y-0.5 pt-0.5">
-                              <p>Usage Per Account: <strong className="text-white">{p.perPersonLimit === null || p.perPersonLimit === undefined ? 'Multiple Uses' : p.perPersonLimit === 1 ? 'One-Time' : `${p.perPersonLimit} per account`}</strong></p>
-                              <p>Total Usage: <strong className="text-white">{p.usageLimit ? 'Limited' : 'UNLIMITED'}</strong></p>
-                              {p.usageLimit ? <p>Maximum Redemptions: <strong className="text-white">{p.usageLimit}</strong></p> : null}
-                              <p>Successful Redemptions: <strong className="text-white">{p.usageCount || 0}</strong></p>
-                              {p.usageLimit ? <p>Remaining Redemptions: <strong className="text-white">{Math.max(0, p.usageLimit - (p.usageCount || 0))}</strong></p> : null}
-                              <p>Expiration: <strong className="text-white">{getPromoEndMs(p) ? formatManila(getPromoEndMs(p)) : 'Never expires'}</strong></p>
-                              <p>Status: <strong className={p.usageLimit && (p.usageCount || 0) >= p.usageLimit ? 'text-red-400' : 'text-lime-300'}>{p.usageLimit && (p.usageCount || 0) >= p.usageLimit ? 'USAGE LIMIT REACHED / UNAVAILABLE' : status.toUpperCase()}</strong></p>
-                            </div>
-                            <p className="text-[10px] text-blue-300">Eligibility: {p.eligibility === 'registered' ? 'Registered Only' : 'All Customers'}</p>
-                          </div>
-                          <div className="flex flex-col gap-1.5 shrink-0">
-                            <button onClick={() => handleEditPromo(p)} className="text-lime-300 hover:text-lime-200 px-2 py-1 rounded-lg bg-[#082d22] border border-emerald-700 cursor-pointer text-[10px] font-bold">
-                              Edit
-                            </button>
-                            <button onClick={() => handleViewRedemptions(p.code)} className="text-sky-300 hover:text-sky-200 px-2 py-1 rounded-lg bg-sky-950/30 border border-sky-800/60 cursor-pointer text-[10px] font-bold">
-                              {redemptionView?.code === p.code ? 'Hide Redemptions' : 'Redemptions'}
-                            </button>
-                            <button onClick={() => handleTogglePromoEnabled(p)} className="text-amber-300 hover:text-amber-200 px-2 py-1 rounded-lg bg-amber-950/30 border border-amber-800/60 cursor-pointer text-[10px] font-bold">
-                              {p.isEnabled === false ? 'Enable' : 'Disable'}
-                            </button>
-                            <button onClick={() => handleDeletePromo(p.code)} className="text-red-400 hover:text-red-300 p-2 rounded-lg bg-red-950/40 border border-red-900/60 cursor-pointer self-center">
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-              {redemptionView && (
-                <div className="bg-[#061d16] border border-sky-800/60 rounded-xl p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h5 className="text-[11px] font-extrabold text-sky-300 uppercase tracking-wider">Redemption history: {redemptionView.code}</h5>
-                    <button onClick={() => setRedemptionView(null)} className="text-[10px] font-bold text-emerald-300 hover:text-white cursor-pointer">Close</button>
-                  </div>
-                  {redemptionView.loading ? (
-                    <p className="text-[11px] text-emerald-300/70">Loading…</p>
-                  ) : redemptionView.rows.length === 0 ? (
-                    <p className="text-[11px] text-emerald-300/70">No redemptions recorded for this voucher yet.</p>
-                  ) : (
-                    <div className="max-h-56 overflow-y-auto space-y-1">
-                      {redemptionView.rows.map((r: any) => {
-                        const cust = customers.find((c: any) => c.auth_user_id && c.auth_user_id === r.user_id);
-                        return (
-                          <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 text-[11px] bg-[#04140f] border border-emerald-900/60 rounded-lg px-3 py-1.5">
-                            <span className="font-bold text-white">{r.order_number || 'Order'}</span>
-                            <span className="text-emerald-200">{cust ? cust.name : r.user_id ? 'Registered customer' : 'Walk-in'}</span>
-                            <span className="text-amber-300">{formatManila(Date.parse(r.redeemed_at))}</span>
-                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase ${r.status === 'redeemed' ? 'bg-lime-400/20 text-lime-400 border border-lime-400/40' : 'bg-slate-700/40 text-slate-300 border border-slate-500/50'}`}>{r.status === 'redeemed' ? 'redeemed' : 'voided (order cancelled)'}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+            <div className="flex flex-wrap gap-1.5">
+              {STATUS_CHIPS.map((c) => (
+                <button key={c.id} type="button" onClick={() => setStatusFilter(c.id)} className={chip(statusFilter === c.id)}>
+                  {c.label}<span className={`rounded-full px-1.5 text-[10px] ${statusFilter === c.id ? 'bg-black/15' : 'bg-white/10 text-zinc-300'}`}>{counts[c.id]}</span>
+                </button>
+              ))}
             </div>
+            <div className="flex flex-wrap gap-1.5">
+              {(['all', 'food', 'delivery'] as const).map((s) => (
+                <button key={s} type="button" onClick={() => setScopeFilter(s)} className={chip(scopeFilter === s)}>{s === 'all' ? 'All types' : s === 'food' ? 'Food' : 'Delivery'}</button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-[11px] font-bold text-zinc-400">
+              Sort
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="rounded-xl bg-white/[0.06] px-3 py-2 text-xs font-bold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 [color-scheme:dark]">
+                <option value="newest">Newest</option>
+                <option value="used">Most used</option>
+                <option value="ending">Ending soon</option>
+              </select>
+            </label>
+            <button type="button" onClick={openNewVoucher} className="ml-auto flex items-center gap-1.5 rounded-xl bg-lime-400 px-4 py-2.5 text-xs font-extrabold text-black hover:bg-lime-300 cursor-pointer"><Plus className="h-4 w-4" /> New voucher</button>
           </div>
-        )}
+
+          {/* tickets (scroll inside on a large screen) */}
+          <div className={fit ? 'min-h-0 flex-1 overflow-y-auto pr-1' : ''}>
+            {promos.length === 0 ? (
+              <p className="py-10 text-center text-xs text-zinc-400">No active vouchers or promo codes available.</p>
+            ) : shown.length === 0 ? (
+              <p className="py-10 text-center text-xs text-zinc-400">No vouchers match your search and filters.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                {shown.map(({ p, status, countdownText, isExpiringSoon }) => (
+                  <AdminVoucherTicket
+                    key={p.code}
+                    p={p}
+                    status={status}
+                    countdownText={countdownText}
+                    isExpiringSoon={isExpiringSoon}
+                    redemptionOpen={redemptionView?.code === p.code}
+                    copied={copiedCode === p.code}
+                    onEdit={handleEditPromo}
+                    onDuplicate={handleDuplicatePromo}
+                    onRedemptions={handleViewRedemptions}
+                    onToggle={handleTogglePromoEnabled}
+                    onDelete={handleDeletePromo}
+                    onCopy={handleCopyCode}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 30-day chart and the redemption history of the voucher you picked */}
+          <div className={`grid shrink-0 grid-cols-1 gap-3 lg:grid-cols-2 ${fit ? 'h-[200px]' : ''}`}>
+            <AdminVoucherPerformance series={series} className={fit ? 'h-full' : 'h-52'} />
+            <AdminVoucherRedemptionsPanel redemptionView={redemptionView} customers={customers} onClose={() => setRedemptionView(null)} className={fit ? 'h-full' : 'max-h-64'} />
+          </div>
+        </div>
+      )}
+
+      <AdminVoucherFormDialog
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        handleAddPromo={handleAddPromo}
+        editingPromoCode={editingPromoCode}
+        resetPromoForm={resetPromoForm}
+        newPromoCode={newPromoCode} setNewPromoCode={setNewPromoCode}
+        newPromoDiscount={newPromoDiscount} setNewPromoDiscount={setNewPromoDiscount}
+        newPromoType={newPromoType} setNewPromoType={setNewPromoType}
+        newPromoTargetType={newPromoTargetType} setNewPromoTargetType={setNewPromoTargetType}
+        newVoucherVisibility={newVoucherVisibility} setNewVoucherVisibility={setNewVoucherVisibility}
+        newVoucherExpiryVal={newVoucherExpiryVal} setNewVoucherExpiryVal={setNewVoucherExpiryVal}
+        newVoucherExpiryUnit={newVoucherExpiryUnit} setNewVoucherExpiryUnit={setNewVoucherExpiryUnit}
+        newVoucherUsageMode={newVoucherUsageMode} setNewVoucherUsageMode={setNewVoucherUsageMode}
+        newVoucherUsageLimit={newVoucherUsageLimit} setNewVoucherUsageLimit={setNewVoucherUsageLimit}
+        newVoucherPerAccount={newVoucherPerAccount} setNewVoucherPerAccount={setNewVoucherPerAccount}
+        newCampaignName={newCampaignName} setNewCampaignName={setNewCampaignName}
+        newCampaignDesc={newCampaignDesc} setNewCampaignDesc={setNewCampaignDesc}
+        newCampaignStart={newCampaignStart} setNewCampaignStart={setNewCampaignStart}
+        newCampaignEnd={newCampaignEnd} setNewCampaignEnd={setNewCampaignEnd}
+        newCampaignMinPurchase={newCampaignMinPurchase} setNewCampaignMinPurchase={setNewCampaignMinPurchase}
+      />
     </>
   );
 }

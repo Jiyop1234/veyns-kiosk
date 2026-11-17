@@ -74,7 +74,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const fitSlots = useAdminFitScreen(navExpanded, 'slots') && activeTab === 'slots';
   // Step B5: the Feedback screen also fills the window on a large screen (same widths as Orders & POS).
   const fitFeedback = useAdminFitScreen(navExpanded, 'feedback') && activeTab === 'feedback';
-  const fitPage = fitLedger || fitOrdersTall || fitUsers || fitSlots || fitFeedback;
+  // Step B6: the Vouchers screen also fills the window on a large screen (same widths as Orders & POS).
+  const fitVouchers = useAdminFitScreen(navExpanded, 'vouchers') && activeTab === 'promos';
+  const fitPage = fitLedger || fitOrdersTall || fitUsers || fitSlots || fitFeedback || fitVouchers;
 
   // --- Dashboard page layout: sidebar, header and the sections ---
   return (
@@ -94,10 +96,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       />
 
       <div className={`pt-14 transition-[padding] duration-200 md:pl-24 md:pt-0 ${navExpanded ? 'lg:pl-72' : ''} ${fitPage ? 'h-[calc(100vh-4rem)]' : ''}`}>
-        <div className={fitLedger ? 'h-full px-8 pb-6' : fitUsers || fitSlots || fitFeedback ? 'flex h-full flex-col gap-3 px-8 pb-6' : fitOrders ? `flex flex-col gap-3 px-8 pb-6 ${fitOrdersTall ? 'h-full' : ''}` : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
+        <div className={fitLedger ? 'h-full px-8 pb-6' : fitUsers || fitSlots || fitFeedback || fitVouchers ? 'flex h-full flex-col gap-3 px-8 pb-6' : fitOrders ? `flex flex-col gap-3 px-8 pb-6 ${fitOrdersTall ? 'h-full' : ''}` : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
           {/* The Ledger shows its own heading, so the shared title row is skipped for it */}
           {activeTab !== 'ledger' && !fitFeedback && (
-            <div className={`hidden items-center justify-between gap-4 md:flex ${fitOrders || fitUsers || fitSlots ? 'shrink-0' : ''}`}>
+            <div className={`hidden items-center justify-between gap-4 md:flex ${fitOrders || fitUsers || fitSlots || fitVouchers ? 'shrink-0' : ''}`}>
               <h1 className="font-display text-2xl font-extrabold text-white">{activeTitle}</h1>
             </div>
           )}
@@ -133,7 +135,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           <AdminMenuManagerTab active={activeTab === 'menu'} menuItems={menuItems} fetchCloudData={fetchCloudData} />
 
           {/* Vouchers & Promos tab (form, list, countdowns, redemptions) lives in admin/vouchers/ */}
-          <AdminVouchersTab active={activeTab === 'promos'} promos={promos} customers={customers} fetchCloudData={fetchCloudData} />
+          <AdminVouchersTab active={activeTab === 'promos'} promos={promos} customers={customers} orders={orders} fit={fitVouchers} fetchCloudData={fetchCloudData} />
         </div>
       </div>
     </div>
