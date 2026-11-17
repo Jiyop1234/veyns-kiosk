@@ -13,8 +13,10 @@ export const ADMIN_FIT_MIN_HEIGHT = 840;
 export const ADMIN_FIT_ORDERS_MIN_WIDTH_COLLAPSED = 1440;
 export const ADMIN_FIT_ORDERS_MIN_WIDTH_EXPANDED = 1632;
 export const ADMIN_FIT_ORDERS_MIN_HEIGHT = 680;
+// Orders & POS with its Order Transactions table in the same no-scroll window (Step B2b): needs more height.
+export const ADMIN_FIT_ORDERS_TABLE_MIN_HEIGHT = 850;
 
-export type AdminFitKind = 'ledger' | 'orders';
+export type AdminFitKind = 'ledger' | 'orders' | 'orders-table';
 
 export function useAdminFitScreen(navExpanded: boolean, kind: AdminFitKind = 'ledger'): boolean {
   const [size, setSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -25,10 +27,10 @@ export function useAdminFitScreen(navExpanded: boolean, kind: AdminFitKind = 'le
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const orders = kind === 'orders';
+  const orders = kind !== 'ledger';
   const minWidth = orders
     ? (navExpanded ? ADMIN_FIT_ORDERS_MIN_WIDTH_EXPANDED : ADMIN_FIT_ORDERS_MIN_WIDTH_COLLAPSED)
     : (navExpanded ? ADMIN_FIT_MIN_WIDTH_EXPANDED : ADMIN_FIT_MIN_WIDTH_COLLAPSED);
-  const minHeight = orders ? ADMIN_FIT_ORDERS_MIN_HEIGHT : ADMIN_FIT_MIN_HEIGHT;
+  const minHeight = kind === 'orders-table' ? ADMIN_FIT_ORDERS_TABLE_MIN_HEIGHT : orders ? ADMIN_FIT_ORDERS_MIN_HEIGHT : ADMIN_FIT_MIN_HEIGHT;
   return size.width >= minWidth && size.height >= minHeight;
 }

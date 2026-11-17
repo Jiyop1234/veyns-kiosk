@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingBag } from 'lucide-react';
+import { ShoppingBag, Eye, Pencil, Trash2, Percent, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatPeso } from '@/lib/menu-data';
 import { supabase } from '@/lib/supabase';
@@ -16,7 +16,19 @@ import { AdminOrderEditDialog } from '@/components/admin/orders-pos/admin-order-
 
 // Step A8c: order log, all order state, handlers and helpers, and the five order dialogs moved unchanged from employee-dashboard.tsx.
 // The summary cards are passed in as children by the dashboard (they live in admin/sales-analytics/).
-export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, timeSlotsList, fetchCloudData, children }: any) {
+// Step B2b: the same component also serves Orders & POS (view 'pos'): the order form is passed in as children and a compact
+// Order Transactions table is shown under it. Both views share the state, handlers and dialogs below.
+// fitMode (pos view only): 'all' = form and table share one no-scroll window; 'form' = the form fills the window and the table is below it; 'none' = stacked.
+const POS_FILTERS: [string, string][] = [['all', 'All orders'], ['pending', 'Pending'], ['rescheduled', 'Rescheduled'], ['completed', 'Completed'], ['cancelled', 'Cancelled']];
+const POS_STATUS_TONE: Record<string, string> = {
+  pending: 'bg-amber-400/15 text-amber-300',
+  completed: 'bg-lime-400/15 text-lime-300',
+  cancelled: 'bg-red-500/15 text-red-300',
+  rescheduled: 'bg-sky-400/15 text-sky-300'
+};
+const posIconBtn = 'flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.06] text-zinc-200 hover:bg-lime-400 hover:text-black cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400';
+
+export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, timeSlotsList, fetchCloudData, children, view = 'sales', fitMode = 'none' }: any) {
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
 
   // --- Order status / PWD / reschedule state ---
@@ -72,6 +84,9 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
   const [deleteAck, setDeleteAck] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [statusMsg, setStatusMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  // Orders & POS table: status chip and search box (view only; nothing is saved)
+  const [posFilter, setPosFilter] = useState('all');
+  const [posSearch, setPosSearch] = useState('');
 
   // keep an open invoice in sync with refreshed order data (so PWD / status show immediately)
   useEffect(() => {
@@ -345,10 +360,133 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
     fetchCloudData();
   };
 
+  // Orders & POS table: the rows after the status chip and the search box
+  const posQuery = posSearch.trim().toLowerCase();
+  const posCount = (st: string) => (st === 'all' ? orders.length : orders.filter((o: any) => o.status === st).length);
+  const posVisible = orders.filter((o: any) => {
+    if (posFilter !== 'all' && o.status !== posFilter) return false;
+    if (!posQuery) return true;
+    const hay = [o.orderNumber, o.name, o.phone, o.email, o.accountNickname, o.location, o.landmark, o.promoCode, ...(o.items || []).map((it: any) => lineItemName(it))].join(' ').toLowerCase();
+    return hay.includes(posQuery);
+  });
+
   return (
     <>
+      {/* Orders & POS: compact Order Transactions table under the order form (Step B2b) */}
+      {active && view === 'pos' && (
+        <div className={fitMode === 'all' ? 'flex min-h-0 flex-1 flex-col gap-3' : 'space-y-3'}>
+          <div className={fitMode === 'all' ? 'flex min-h-0 flex-1 flex-col' : fitMode === 'form' ? 'flex h-[calc(100vh-7rem)] flex-col' : ''}>
+            {children}
+          </div>
+          <div className={`flex flex-col rounded-2xl bg-white/[0.04] p-3 ${fitMode === 'all' ? 'h-[clamp(11rem,22vh,17rem)] shrink-0' : 'max-h-[28rem]'}`}>
+            <div className="flex flex-wrap items-center gap-2 pb-2">
+              <h3 className="flex items-center gap-2 pr-2 font-display text-sm font-extrabold text-white"><ShoppingBag className="h-4 w-4 text-lime-400" /> Order Transactions</h3>
+              {POS_FILTERS.map(([key, label]) => (
+                <button key={key} type="button" onClick={() => setPosFilter(key)} className={`rounded-full px-2.5 py-1 text-[11px] font-bold cursor-pointer ${posFilter === key ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>{label} ({posCount(key)})</button>
+              ))}
+              <div className="relative ml-auto w-56">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+                <input value={posSearch} onChange={(e) => setPosSearch(e.target.value)} placeholder="Search orders…" className="w-full rounded-xl bg-white/[0.06] py-1.5 pl-8 pr-3 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400" />
+              </div>
+            </div>
+            {statusMsg && (
+              <div className={`mb-2 rounded-xl border p-2 text-xs font-bold ${statusMsg.kind === 'ok' ? 'bg-lime-950/60 border-lime-500/40 text-lime-300' : 'bg-red-950/70 border-red-700 text-red-300'}`}>
+                {statusMsg.text}
+              </div>
+            )}
+            <div className="min-h-0 flex-1 overflow-auto">
+              {orders.length === 0 ? (
+                <p className="py-8 text-center text-xs font-semibold text-zinc-400">No sales transactions recorded yet.</p>
+              ) : posVisible.length === 0 ? (
+                <p className="py-8 text-center text-xs font-semibold text-zinc-400">No orders match this filter or search.</p>
+              ) : (
+                <table className="w-full min-w-[1000px] text-left text-[11px] text-zinc-200">
+                  <thead className="sticky top-0 z-10 bg-[#0d1210] text-[10px] uppercase tracking-wider text-zinc-400">
+                    <tr>
+                      <th className="px-2 py-1.5">#</th>
+                      <th className="px-2 py-1.5">Customer</th>
+                      <th className="px-2 py-1.5">Fulfillment & schedule</th>
+                      <th className="px-2 py-1.5">Address / landmark</th>
+                      <th className="px-2 py-1.5">Items</th>
+                      <th className="px-2 py-1.5">Promo</th>
+                      <th className="px-2 py-1.5">Discount</th>
+                      <th className="px-2 py-1.5">Total</th>
+                      <th className="px-2 py-1.5">Status</th>
+                      <th className="px-2 py-1.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.05]">
+                    {posVisible.map((order: any, idx: number) => {
+                      const editable = order.status === 'pending' || order.status === 'rescheduled';
+                      const itemsText = (order.items || []).map((it: any) => `${itemQty(it)}× ${lineItemName(it)}`).join(', ');
+                      return (
+                        <tr key={order.id || idx} className="hover:bg-white/[0.04]">
+                          <td className="px-2 py-2 font-extrabold text-lime-400">{order.orderNumber}</td>
+                          <td className="px-2 py-2">
+                            <p className="max-w-[150px] truncate font-bold text-white">{order.name || order.accountNickname}</p>
+                            <p className="max-w-[150px] truncate text-[10px] text-zinc-400">{order.phone || 'No phone'}</p>
+                          </td>
+                          <td className="px-2 py-2">
+                            <p className="font-semibold capitalize text-white">{order.fulfillment} • {order.orderType === 'reservation' ? 'Reservation' : 'Order today'}</p>
+                            <p className="max-w-[200px] truncate text-[10px] text-zinc-400" title={order.scheduleInfo}>{order.scheduleInfo}</p>
+                          </td>
+                          <td className="px-2 py-2">
+                            <p className="max-w-[170px] truncate text-white" title={order.location || ''}>{order.location || '–'}</p>
+                            {order.landmark && order.landmark !== 'N/A' && <p className="max-w-[170px] truncate text-[10px] text-zinc-400">{order.landmark}</p>}
+                          </td>
+                          <td className="px-2 py-2"><p className="max-w-[220px] truncate" title={itemsText}>{itemsText || '–'}</p></td>
+                          <td className="px-2 py-2 font-semibold text-amber-300">
+                            {order.promoCode || (order.manualDiscount > 0 ? null : '–')}
+                            {order.manualDiscount > 0 && <span className="block text-[10px] font-medium text-lime-300">Customer −{formatPeso(order.manualDiscount)}</span>}
+                          </td>
+                          <td className="px-2 py-2">
+                            {order.pwdApplied
+                              ? <span className="inline-block rounded-full bg-sky-400/15 px-2 py-0.5 text-[10px] font-extrabold uppercase text-sky-300">PWD 20%</span>
+                              : <span className="text-zinc-500">–</span>}
+                          </td>
+                          <td className="px-2 py-2">
+                            {order.pwdApplied ? (
+                              <>
+                                <span className="block text-[10px] text-zinc-500 line-through">{formatPeso(order.pwdOriginal)}</span>
+                                <span className="block font-extrabold text-lime-400">{formatPeso(order.pwdFinal)}</span>
+                              </>
+                            ) : <span className="font-extrabold text-lime-400">{formatPeso(order.total)}</span>}
+                          </td>
+                          <td className="px-2 py-2">
+                            <select
+                              value={order.status}
+                              disabled={busyOrderId === order.id || order.status === 'cancelled'}
+                              onChange={(e) => handleStatusChange(order, e.target.value)}
+                              aria-label={`Status of ${order.orderNumber}`}
+                              className={`block w-28 rounded-full px-2.5 py-1 text-[11px] font-extrabold focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 [&>option]:bg-[#141817] [&>option]:text-white ${POS_STATUS_TONE[order.status] || POS_STATUS_TONE.pending}`}
+                            >
+                              {ORDER_STATUSES.map((st) => <option key={st} value={st}>{STATUS_LABEL[st]}</option>)}
+                            </select>
+                            {busyOrderId === order.id && <span className="block animate-pulse text-[10px] text-amber-300">Saving…</span>}
+                            {order.status === 'rescheduled' && order.rescheduledToDate && <span className="block text-[10px] text-sky-300">→ {order.rescheduledToDate} ({order.rescheduledToTime})</span>}
+                            {order.lastEditedAt && <span className="block text-[10px] text-amber-300">✎ Edited</span>}
+                          </td>
+                          <td className="px-2 py-2">
+                            <div className="flex items-center justify-end gap-1">
+                              <button type="button" title="See invoice" aria-label={`See invoice ${order.orderNumber}`} onClick={() => setSelectedInvoice(order)} className={posIconBtn}><Eye className="h-3.5 w-3.5" /></button>
+                              {editable && <button type="button" title="Edit order" aria-label={`Edit order ${order.orderNumber}`} disabled={busyOrderId === order.id} onClick={() => openEditOrder(order)} className={posIconBtn}><Pencil className="h-3.5 w-3.5" /></button>}
+                              {!order.pwdApplied && editable && <button type="button" title="Apply PWD (20%)" aria-label={`Apply PWD discount to ${order.orderNumber}`} disabled={busyOrderId === order.id} onClick={() => openPwdConfirm(order)} className={posIconBtn}><Percent className="h-3.5 w-3.5" /></button>}
+                              <button type="button" title="Delete order" aria-label={`Delete order ${order.orderNumber}`} disabled={busyOrderId === order.id} onClick={() => openDeleteOrder(order)} className={posIconBtn + ' text-red-300 hover:!bg-red-500 hover:!text-black'}><Trash2 className="h-3.5 w-3.5" /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sales analytics and order transaction log */}
-      {active && (
+      {active && view !== 'pos' && (
         <div className="space-y-6">
           {children}
           <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-4 shadow-xl">

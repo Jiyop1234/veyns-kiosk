@@ -65,7 +65,10 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   // Step B2a2: Orders & POS also fills the window on a large screen (lower height needed than the Ledger).
   const fitOrdersScreen = useAdminFitScreen(navExpanded, 'orders');
   const fitOrders = fitOrdersScreen && activeTab === 'process';
-  const fitPage = fitLedger || fitOrders;
+  // Step B2b: with enough height the order form and the Order Transactions table share one no-scroll window;
+  // with less height the form fills the window and the table is reached by scrolling.
+  const fitOrdersTall = useAdminFitScreen(navExpanded, 'orders-table') && activeTab === 'process';
+  const fitPage = fitLedger || fitOrdersTall;
 
   // --- Dashboard page layout: sidebar, header and the sections ---
   return (
@@ -85,7 +88,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       />
 
       <div className={`pt-14 transition-[padding] duration-200 md:pl-24 md:pt-0 ${navExpanded ? 'lg:pl-72' : ''} ${fitPage ? 'h-[calc(100vh-4rem)]' : ''}`}>
-        <div className={fitLedger ? 'h-full px-8 pb-6' : fitOrders ? 'flex h-full flex-col gap-3 px-8 pb-6' : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
+        <div className={fitLedger ? 'h-full px-8 pb-6' : fitOrders ? `flex flex-col gap-3 px-8 pb-6 ${fitOrdersTall ? 'h-full' : ''}` : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
           {/* The Ledger shows its own heading, so the shared title row is skipped for it */}
           {activeTab !== 'ledger' && (
             <div className={`hidden items-center justify-between gap-4 md:flex ${fitOrders ? 'shrink-0' : ''}`}>
@@ -96,9 +99,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           {/* Overview page lives in admin/overview/ (placeholder until Step B1b) */}
           <AdminOverviewTab active={activeTab === 'overview'} orders={orders} menuItems={menuItems} />
 
-          {/* Sales analytics: summary cards live in admin/sales-analytics/; the order log, its state and all order dialogs live in admin/orders-pos/ */}
-          <AdminOrderLogTab active={activeTab === 'sales'} orders={orders} setOrders={setOrders} slotCapacities={slotCapacities} timeSlotsList={timeSlotsList} fetchCloudData={fetchCloudData}>
-            <AdminSalesSummaryCards orders={orders} />
+          {/* Sales analytics and Orders & POS: summary cards live in admin/sales-analytics/; the order log, its state and all order dialogs live in admin/orders-pos/ and serve both screens */}
+          <AdminOrderLogTab active={activeTab === 'sales' || activeTab === 'process'} view={activeTab === 'process' ? 'pos' : 'sales'} fitMode={fitOrdersTall ? 'all' : fitOrders ? 'form' : 'none'} orders={orders} setOrders={setOrders} slotCapacities={slotCapacities} timeSlotsList={timeSlotsList} fetchCloudData={fetchCloudData}>
+            {activeTab === 'process'
+              ? <AdminOrderProcessing onOrdersChanged={fetchCloudData} onViewSales={() => setActiveTab('sales')} fit={fitOrders} />
+              : <AdminSalesSummaryCards orders={orders} />}
           </AdminOrderLogTab>
 
           {/* Ledger screen lives in admin/ledger/ (sample data until its database step) */}
@@ -107,10 +112,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           {/* Delivery Fees: in the navigation, not built yet (Part B) */}
           {activeTab === 'fees' && <AdminComingSoon title="Delivery fees are coming" text="The delivery fee rules will be managed here." />}
 
-          {/* Admin order processing: place an order on behalf of an existing or new customer */}
-          {activeTab === 'process' && (
-            <AdminOrderProcessing onOrdersChanged={fetchCloudData} onViewSales={() => setActiveTab('sales')} fit={fitOrders} />
-          )}
+          {/* Orders & POS: the order form (AdminOrderProcessing, passed as children above) with the Order Transactions table under it */}
 
           {/* Customer feedback management */}
           {activeTab === 'feedback' && <AdminFeedbackManager />}

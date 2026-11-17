@@ -787,7 +787,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales, fit = false
         </div>
 
         {/* ---------------- 4. promos ---------------- */}
-        <div className={cardCls + (fit ? ' min-h-[7.5rem] flex-1 overflow-y-auto' : '')}>
+        <div className={cardCls + (fit ? ' min-h-[5rem] flex-1 overflow-y-auto' : '')}>
           <h2 className="font-display text-sm font-extrabold text-white uppercase tracking-wide flex items-center gap-2"><Ticket className="h-4 w-4 text-lime-400" /> 4. Promotions & vouchers</h2>
           {!customer ? <p className="text-xs text-zinc-400">Select a customer to see their eligible promotions.</p> : (
             <>
