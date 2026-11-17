@@ -3,6 +3,7 @@
 // Step A4: moved unchanged from employee-dashboard.tsx (Step A5B: renamed from AdminSlotsTab to match the SLOT CAPACITY nav label). New: this wrapper, its props, and the `active` flag (see below).
 // Step B4: new look (stat cards, one table row per time window, slot owners panel beside it, time windows in their own tab, no page scroll on a large screen).
 // The state and every function from "Time window manager" to handleDeleteSlot are the A4 code, unchanged; only `view` (which tab is open) and `fit` are new.
+// Step B4b: 7-day charts on the stat cards and the Global Actions (Copy previous day, Holiday mode, Reset to default). They save through the same admin_set_slot_capacity function the Save button uses, one call per window.
 // The tab body shows only when `active` is true, but this component stays mounted, so its state (selected date, messages,
 // open panels and dialogs) is kept when you switch tabs, exactly like before.
 import { useState } from 'react';
@@ -14,9 +15,13 @@ import { todayManila, slotHasEnded, to12h, slotTo24 } from '@/components/admin/a
 import { AdminSlotCapacityRow, ADMIN_SLOT_ROW_GRID } from '@/components/admin/slot-capacity/admin-slot-capacity-row';
 import { AdminSlotCapacityOwnersPanel } from '@/components/admin/slot-capacity/admin-slot-capacity-owners-panel';
 import { AdminSlotCapacityWindowsPanel } from '@/components/admin/slot-capacity/admin-slot-capacity-windows-panel';
+import { AdminSlotCapacitySparkline } from '@/components/admin/slot-capacity/admin-slot-capacity-sparkline';
+import { AdminSlotCapacityActions } from '@/components/admin/slot-capacity/admin-slot-capacity-actions';
+import { AdminSlotCapacityBulkDialog } from '@/components/admin/slot-capacity/admin-slot-capacity-bulk-dialog';
+import { slotRowFor, buildWeekSeries, planBulkAction } from '@/components/admin/slot-capacity/admin-slot-capacity-math';
 
 // --- Small summary card at the top of the page ---
-function SlotStatCard({ icon, label, value, unit, note, children }: any) {
+function SlotStatCard({ icon, label, value, unit, note, children, spark }: any) {
   return (
     <div className="flex items-center gap-4 rounded-3xl bg-white/[0.04] px-5 py-4">
       <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-lime-400/15 text-lime-400">{icon}</div>
@@ -26,6 +31,7 @@ function SlotStatCard({ icon, label, value, unit, note, children }: any) {
         {children}
         {note ? <p className="text-[11px] text-white/40">{note}</p> : null}
       </div>
+      {spark ? <div className="hidden w-24 shrink-0 self-end sm:block">{spark}</div> : null}
     </div>
   );
 }
@@ -156,17 +162,41 @@ export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fe
     fetchCloudData();
   };
 
+  // --- Step B4b: Global Actions (Copy previous day, Holiday mode, Reset to default) ---
+  // The plan shows what would change; Apply then saves each window with the same function as the Save button (admin_set_slot_capacity).
+  const [bulkPlan, setBulkPlan] = useState<any>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ done: { slotTime: string }[]; failed: { slotTime: string; message: string }[] } | null>(null);
+  const openBulk = (kind: 'holiday' | 'copy' | 'reset') => {
+    setBulkResult(null);
+    setBulkPlan(planBulkAction(kind, slotCapacities, timeSlotsList, selectedSlotDate));
+  };
+  const closeBulk = () => {
+    if (bulkBusy) return;
+    setBulkPlan(null);
+    setBulkResult(null);
+  };
+  const runBulk = async () => {
+    if (!bulkPlan) return;
+    const todo = bulkPlan.items.filter((i: any) => i.to);
+    const done: { slotTime: string }[] = [];
+    const failed: { slotTime: string; message: string }[] = [];
+    setBulkBusy(true);
+    for (const item of todo) {
+      const { data, error } = await supabase.rpc('admin_set_slot_capacity', {
+        p_date_key: bulkPlan.dateKey, p_slot_time: item.slotTime, p_max_bowls: item.to.maxBowls, p_max_slots: item.to.maxSlots, p_closed: item.to.isFullyBooked
+      });
+      if (error || data?.success === false) failed.push({ slotTime: item.slotTime, message: error?.message || data?.message || 'Could not update this slot.' });
+      else done.push({ slotTime: item.slotTime });
+    }
+    setBulkBusy(false);
+    setBulkResult({ done, failed });
+    fetchCloudData();
+  };
+
   // Step B4: one entry per time window for the chosen date (the same lookup the old cards did inline), shared by the stat cards and the rows.
-  const slotRows = timeSlotsList.map((slotTime) => {
-    const existing = slotCapacities ? Object.values(slotCapacities).find((s: any) => s.date_key === selectedSlotDate && s.slot_time === slotTime) : null;
-    return {
-      slotTime,
-      maxBowls: existing ? existing.max_bowls : 10,
-      bookedBowls: existing ? existing.booked_bowls : 0,
-      maxSlots: existing ? existing.max_slots : 10,
-      isFullyBooked: existing ? !!existing.is_manually_fully_booked : false,
-    };
-  });
+  const slotRows = timeSlotsList.map((slotTime) => slotRowFor(slotCapacities, selectedSlotDate, slotTime));
+  const week = buildWeekSeries(slotCapacities, timeSlotsList, selectedSlotDate);
   const totalCapacity = slotRows.reduce((s, r) => s + Number(r.maxBowls || 0), 0);
   const totalReserved = slotRows.reduce((s, r) => s + Number(r.bookedBowls || 0), 0);
   const totalLeft = slotRows.reduce((s, r) => s + Math.max(0, Number(r.maxBowls || 0) - Number(r.bookedBowls || 0)), 0);
@@ -198,9 +228,9 @@ export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fe
 
           {/* Totals for the chosen date */}
           <div className="grid shrink-0 grid-cols-2 gap-3 xl:grid-cols-4">
-            <SlotStatCard icon={<Utensils className="size-6" />} label="Total capacity" value={totalCapacity} unit="bowls" />
-            <SlotStatCard icon={<PackageCheck className="size-6" />} label="Reserved" value={totalReserved} unit="bowls" />
-            <SlotStatCard icon={<Clock className="size-6" />} label="Left to book" value={totalLeft} unit="bowls" note={closedCount > 0 ? `${closedCount} ${closedCount === 1 ? 'slot is' : 'slots are'} closed` : undefined} />
+            <SlotStatCard icon={<Utensils className="size-6" />} label="Total capacity" value={totalCapacity} unit="bowls" spark={<AdminSlotCapacitySparkline values={week.capacity} label="Total capacity, last 7 days" />} />
+            <SlotStatCard icon={<PackageCheck className="size-6" />} label="Reserved" value={totalReserved} unit="bowls" spark={<AdminSlotCapacitySparkline values={week.reserved} label="Reserved bowls, last 7 days" />} />
+            <SlotStatCard icon={<Clock className="size-6" />} label="Left to book" value={totalLeft} unit="bowls" note={closedCount > 0 ? `${closedCount} ${closedCount === 1 ? 'slot is' : 'slots are'} closed` : undefined} spark={<AdminSlotCapacitySparkline values={week.left} label="Bowls left to book, last 7 days" />} />
             <SlotStatCard icon={<Gauge className="size-6" />} label="Utilization" value={`${utilizationPct}%`}>
               <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
                 <div className="h-full rounded-full bg-lime-400" style={{ width: `${utilizationPct}%` }} />
@@ -210,7 +240,8 @@ export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fe
 
           {/* The slots (left) and, when Inspect is pressed, the slot owners (right) */}
           <div className={`grid gap-3 ${fit ? 'min-h-0 flex-1 grid-rows-[minmax(0,1fr)]' : ''} ${inspectingSlot ? 'lg:grid-cols-[minmax(0,1fr)_340px]' : 'grid-cols-1'}`}>
-            <div className="flex min-h-0 flex-col rounded-3xl bg-white/[0.03] p-4">
+            <div className="flex min-h-0 flex-col gap-3">
+            <div className="flex min-h-0 flex-1 flex-col rounded-3xl bg-white/[0.03] p-4">
               <div className="mb-3 flex shrink-0 items-center gap-2">
                 {[['daily', 'Daily capacity', Gauge], ['windows', 'Time windows', Clock]].map(([id, label, Icon]: any) => (
                   <button
@@ -280,6 +311,10 @@ export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fe
                 />
               )}
             </div>
+            {view === 'daily' && (
+              <AdminSlotCapacityActions dateKey={selectedSlotDate} disabled={bulkBusy} onEditWindows={() => setView('windows')} onBulk={openBulk} />
+            )}
+            </div>
 
             {inspectingSlot && (
               <AdminSlotCapacityOwnersPanel
@@ -294,6 +329,9 @@ export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fe
           </div>
         </div>
       )}
+
+      {/* Global Actions: confirm, then result */}
+      <AdminSlotCapacityBulkDialog plan={bulkPlan} busy={bulkBusy} result={bulkResult} onConfirm={runBulk} onClose={closeBulk} />
 
       {/* Transfer Schedule Modal */}
       <Dialog open={!!transferringReservation} onOpenChange={(open) => !open && setTransferringReservation(null)}>
