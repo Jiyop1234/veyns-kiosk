@@ -1,5 +1,5 @@
-// VEYNS Admin: tells the dashboard when a screen can use the whole window without a page scroll (Step B10b).
-// True only on a large screen: wide enough for the 3-column Ledger and tall enough for its panels.
+// VEYNS Admin: tells the dashboard when a screen can use the whole window without a page scroll (Steps B10b and B2a2).
+// True only on a large screen: wide and tall enough for the panels of that screen ('ledger' or 'orders').
 // The width needed depends on the navigation pill: the expanded pill takes 192 px more from the page.
 // On smaller screens it is false and the page scrolls as before.
 
@@ -9,7 +9,14 @@ export const ADMIN_FIT_MIN_WIDTH_COLLAPSED = 1600;
 export const ADMIN_FIT_MIN_WIDTH_EXPANDED = 1792;
 export const ADMIN_FIT_MIN_HEIGHT = 840;
 
-export function useAdminFitScreen(navExpanded: boolean): boolean {
+// Orders & POS (Step B2a2): three columns, so it needs less height but enough width for the middle column.
+export const ADMIN_FIT_ORDERS_MIN_WIDTH_COLLAPSED = 1440;
+export const ADMIN_FIT_ORDERS_MIN_WIDTH_EXPANDED = 1632;
+export const ADMIN_FIT_ORDERS_MIN_HEIGHT = 680;
+
+export type AdminFitKind = 'ledger' | 'orders';
+
+export function useAdminFitScreen(navExpanded: boolean, kind: AdminFitKind = 'ledger'): boolean {
   const [size, setSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
 
   useEffect(() => {
@@ -18,6 +25,10 @@ export function useAdminFitScreen(navExpanded: boolean): boolean {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const minWidth = navExpanded ? ADMIN_FIT_MIN_WIDTH_EXPANDED : ADMIN_FIT_MIN_WIDTH_COLLAPSED;
-  return size.width >= minWidth && size.height >= ADMIN_FIT_MIN_HEIGHT;
+  const orders = kind === 'orders';
+  const minWidth = orders
+    ? (navExpanded ? ADMIN_FIT_ORDERS_MIN_WIDTH_EXPANDED : ADMIN_FIT_ORDERS_MIN_WIDTH_COLLAPSED)
+    : (navExpanded ? ADMIN_FIT_MIN_WIDTH_EXPANDED : ADMIN_FIT_MIN_WIDTH_COLLAPSED);
+  const minHeight = orders ? ADMIN_FIT_ORDERS_MIN_HEIGHT : ADMIN_FIT_MIN_HEIGHT;
+  return size.width >= minWidth && size.height >= minHeight;
 }

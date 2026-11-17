@@ -62,10 +62,14 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   // Step B10b: on a large screen the Ledger fills the window and the page does not scroll.
   const fitScreen = useAdminFitScreen(navExpanded);
   const fitLedger = fitScreen && activeTab === 'ledger';
+  // Step B2a2: Orders & POS also fills the window on a large screen (lower height needed than the Ledger).
+  const fitOrdersScreen = useAdminFitScreen(navExpanded, 'orders');
+  const fitOrders = fitOrdersScreen && activeTab === 'process';
+  const fitPage = fitLedger || fitOrders;
 
   // --- Dashboard page layout: sidebar, header and the sections ---
   return (
-    <div className={`bg-[#020b08] text-white ${fitLedger ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
+    <div className={`bg-[#020b08] text-white ${fitPage ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
       <AdminTopBar />
       <AdminSidebar
         activeTab={activeTab}
@@ -80,11 +84,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
         onExit={handleExitStore}
       />
 
-      <div className={`pt-14 transition-[padding] duration-200 md:pl-24 md:pt-0 ${navExpanded ? 'lg:pl-72' : ''} ${fitLedger ? 'h-[calc(100vh-4rem)]' : ''}`}>
-        <div className={fitLedger ? 'h-full px-8 pb-6' : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
+      <div className={`pt-14 transition-[padding] duration-200 md:pl-24 md:pt-0 ${navExpanded ? 'lg:pl-72' : ''} ${fitPage ? 'h-[calc(100vh-4rem)]' : ''}`}>
+        <div className={fitLedger ? 'h-full px-8 pb-6' : fitOrders ? 'flex h-full flex-col gap-3 px-8 pb-6' : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
           {/* The Ledger shows its own heading, so the shared title row is skipped for it */}
           {activeTab !== 'ledger' && (
-            <div className="hidden items-center justify-between gap-4 md:flex">
+            <div className={`hidden items-center justify-between gap-4 md:flex ${fitOrders ? 'shrink-0' : ''}`}>
               <h1 className="font-display text-2xl font-extrabold text-white">{activeTitle}</h1>
             </div>
           )}
@@ -105,7 +109,7 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
 
           {/* Admin order processing: place an order on behalf of an existing or new customer */}
           {activeTab === 'process' && (
-            <AdminOrderProcessing onOrdersChanged={fetchCloudData} onViewSales={() => setActiveTab('sales')} />
+            <AdminOrderProcessing onOrdersChanged={fetchCloudData} onViewSales={() => setActiveTab('sales')} fit={fitOrders} />
           )}
 
           {/* Customer feedback management */}

@@ -4,8 +4,9 @@
 // Pricing, promo validation, delivery fee, order numbering and slot reservation are ALL decided by the
 // database (RPCs admin_preview_order / admin_place_order -> same engine as customer checkout).
 // This component only collects input and displays what the server returns.
+// Step B2a2: with the `fit` prop (large screen) the three columns fill the window height and the page does not scroll.
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, UserPlus, Users, Plus, Minus, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, XCircle, MapPin, Ticket, User } from 'lucide-react';
+import { Search, UserPlus, Users, Plus, Minus, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, XCircle, MapPin, Ticket, User, Lock, Maximize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { formatPeso } from '@/lib/menu-data';
@@ -46,7 +47,7 @@ const groupVisible = (group: any, selected: Record<string, string[]>) => {
   return group.parentOptionIds.some((pid: string) => Object.values(selected).some((list: any) => list.includes(pid)));
 };
 
-export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrdersChanged?: () => void; onViewSales?: () => void }) {
+export function AdminOrderProcessing({ onOrdersChanged, onViewSales, fit = false }: { onOrdersChanged?: () => void; onViewSales?: () => void; fit?: boolean }) {
   // ---------------- customer ----------------
   const [mode, setMode] = useState<'existing' | 'new' | 'walkin'>('existing');
   const [custQuery, setCustQuery] = useState('');
@@ -395,6 +396,22 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
     } finally { setResending(false); }
   };
 
+  // Step B2a2: on the no-scroll screen the delivery map is small; "Enlarge" shows it full size so staff can place the pin.
+  const [mapBig, setMapBig] = useState(false);
+  useEffect(() => {
+    if (fulfillment !== 'delivery') setMapBig(false);
+  }, [fulfillment]);
+  useEffect(() => {
+    if (!mapBig) return undefined;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMapBig(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mapBig]);
+  useEffect(() => {
+    const t = setTimeout(() => { if (mapObj.current) mapObj.current.invalidateSize(); }, 60);
+    return () => clearTimeout(t);
+  }, [mapBig, fit]);
+
   // ======================================================================
   // Delivery map (Leaflet, loaded the same way as the customer checkout)
   // ======================================================================
@@ -556,6 +573,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
   const unitFor = (idx: number, l: any) => (pv && pv.items && pv.items[idx] ? Number(pv.items[idx].unitPrice) : estimateUnit(l.item, l.options));
   const money = (n: any) => formatPeso(Number(n || 0));
   const scheduleText = isOnSite ? 'On-site (Counter)' : orderType === 'reservation' ? `Reservation on ${effectiveDate} (${slotTime || '—'})` : `Today (${slotTime || '—'})`;
+  const cardCls = fit ? 'bg-white/[0.04] rounded-2xl p-4 space-y-3' : card; // tighter cards on the no-scroll screen
 
   if (result) {
     const o = result.order;
@@ -587,11 +605,11 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_380px]">
+    <div className={fit ? 'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_340px] grid-rows-[minmax(0,1fr)] gap-3 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_360px]' : 'grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_380px]'}>
       {/* Column 1: customer and items */}
-      <div className="space-y-4">
+      <div className={fit ? 'flex min-h-0 flex-col gap-3' : 'space-y-4'}>
         {/* ---------------- 1. customer ---------------- */}
-        <div className={card}>
+        <div className={cardCls + (fit ? ' shrink-0' : '')}>
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="font-display text-sm font-extrabold text-white uppercase tracking-wide flex items-center gap-2"><Users className="h-4 w-4 text-lime-400" /> 1. Customer</h2>
             {customer && <Button type="button" onClick={() => { setCustomer(null); setCreateNotice(null); }} className={ghostBtn}>Change customer</Button>}
@@ -636,7 +654,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
                     <div className="text-center py-4 space-y-2"><p className="text-xs text-zinc-400">No registered customer matches “{custQuery.trim()}”.</p>
                       <Button type="button" onClick={() => { setMode('new'); if (EMAIL_RE.test(custQuery.trim())) setNewEmail(custQuery.trim()); else setNewName(custQuery.trim()); }} className={ghostBtn}>Create a new customer</Button></div>
                   )}
-                  <div className="space-y-1.5">
+                  <div className={fit ? 'space-y-1.5 max-h-36 overflow-y-auto' : 'space-y-1.5'}>
                     {custResults.map((c) => (
                       <button key={c.id} type="button" onClick={() => chooseCustomer(c)} className="w-full text-left bg-white/[0.06] hover:bg-white/[0.12] rounded-xl p-3 cursor-pointer">
                         <span className="block text-xs font-extrabold text-white">{c.name || 'Valued Regular'}</span>
@@ -665,11 +683,11 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
         </div>
 
         {/* ---------------- 2. products ---------------- */}
-        <div className={card}>
+        <div className={cardCls + (fit ? ' flex min-h-0 flex-1 flex-col' : '')}>
           <h2 className="font-display text-sm font-extrabold text-white uppercase tracking-wide flex items-center gap-2"><ShoppingBag className="h-4 w-4 text-lime-400" /> 2. Items</h2>
-          <div className="flex flex-col gap-2">
-            <input value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Search menu…" className={inputCls} />
-            <div className="flex flex-wrap gap-2">
+          <div className={fit ? 'flex flex-wrap items-center gap-2' : 'flex flex-col gap-2'}>
+            <input value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Search menu…" className={fit ? inputCls.replace('w-full', 'w-44 shrink-0') : inputCls} />
+            <div className={fit ? 'flex min-w-0 flex-1 flex-wrap gap-2' : 'flex flex-wrap gap-2'}>
               {categories.map((c: string) => (
                 <button key={c} type="button" onClick={() => setCategory(c)} className={`px-3 py-1.5 rounded-full text-[11px] font-bold cursor-pointer ${category === c ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>{c}</button>
               ))}
@@ -678,12 +696,12 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
           {menuLoading && <p className="text-xs text-zinc-400">Loading menu…</p>}
           {menuError && <p className="text-xs text-red-400">{menuError}</p>}
           {!menuLoading && !menuError && visibleItems.length === 0 && <p className="text-center text-xs text-zinc-400 py-6">No available menu items match your search.</p>}
-          <div className="grid grid-cols-2 sm:grid-cols-3 2xl:grid-cols-4 gap-2 max-h-[34rem] overflow-y-auto pr-1">
+          <div className={fit ? 'grid min-h-0 flex-1 grid-cols-3 content-start gap-2 overflow-y-auto pr-1' : 'grid grid-cols-2 sm:grid-cols-3 2xl:grid-cols-4 gap-2 max-h-[34rem] overflow-y-auto pr-1'}>
             {visibleItems.map((m: any) => (
-              <button key={m.id} type="button" onClick={() => openItem(m)} className="group relative text-left bg-white/[0.06] hover:bg-white/[0.12] rounded-xl p-2 flex flex-col gap-2 cursor-pointer">
+              <button key={m.id} type="button" onClick={() => openItem(m)} className={`group relative text-left bg-white/[0.06] hover:bg-white/[0.12] rounded-xl flex flex-col cursor-pointer ${fit ? 'p-1.5 gap-1' : 'p-2 gap-2'}`}>
                 {m.image
-                  ? <img src={m.image} alt="" className="aspect-[4/3] w-full rounded-lg object-cover" />
-                  : <span className="aspect-[4/3] w-full rounded-lg bg-[#0d2e26] flex items-center justify-center font-display text-sm font-bold text-[#d4af37]">VEYNS</span>}
+                  ? <img src={m.image} alt="" className={`${fit ? 'aspect-[3/2]' : 'aspect-[4/3]'} w-full rounded-lg object-cover`} />
+                  : <span className={`${fit ? 'aspect-[3/2]' : 'aspect-[4/3]'} w-full rounded-lg bg-[#0d2e26] flex items-center justify-center font-display text-sm font-bold text-[#d4af37]`}>VEYNS</span>}
                 {m.optionGroups.length > 0 && <span className="absolute left-3 top-3 rounded-full bg-lime-400 px-2 py-0.5 text-[9px] font-extrabold text-black">Customizable</span>}
                 <span className="min-w-0 px-1">
                   <span className="block text-xs font-extrabold text-white truncate">{m.name}</span>
@@ -704,38 +722,40 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
       </div>
 
       {/* Column 2: fulfillment and promotions */}
-      <div className="space-y-4">
+      <div className={fit ? 'flex min-h-0 flex-col gap-3' : 'space-y-4'}>
         {/* ---------------- 3. details ---------------- */}
-        <div className={card}>
+        <div className={cardCls + (fit ? ' min-h-0 shrink overflow-y-auto' : '')}>
           <h2 className="font-display text-sm font-extrabold text-white uppercase tracking-wide flex items-center gap-2"><MapPin className="h-4 w-4 text-lime-400" /> 3. Fulfillment & schedule</h2>
           <div className="grid grid-cols-3 gap-2">
             {(['delivery', 'pickup', 'on-site'] as const).map((f) => (
               <button key={f} type="button" onClick={() => setFulfillment(f)} className={`px-3 py-2.5 rounded-xl text-xs font-extrabold uppercase cursor-pointer ${fulfillment === f ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>{f === 'on-site' ? 'On-site / Counter' : f}</button>
             ))}
           </div>
+          {isOnSite && <p className="text-[11px] text-zinc-300 bg-white/[0.06] rounded-xl p-3">On-site order: served at the counter right now. No schedule or time slot is needed, and it does not use up any slot bowls.</p>}
+          {!isOnSite && (<>
+          <div className={fit ? 'flex gap-3 [&>*]:flex-1' : 'space-y-4'}>
           {fulfillment === 'delivery' && (
             <div className="grid grid-cols-2 gap-2">
               <button type="button" onClick={() => setDeliveryOption('our')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${deliveryOption === 'our' ? 'bg-lime-400/15 text-lime-300 ring-1 ring-lime-400/60' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>Personal delivery</button>
               <button type="button" onClick={() => setDeliveryOption('maxim')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${deliveryOption === 'maxim' ? 'bg-lime-400/15 text-lime-300 ring-1 ring-lime-400/60' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>Maxim delivery</button>
             </div>
           )}
-          {isOnSite && <p className="text-[11px] text-zinc-300 bg-white/[0.06] rounded-xl p-3">On-site order: served at the counter right now. No schedule or time slot is needed, and it does not use up any slot bowls.</p>}
-          {!isOnSite && (<>
           <div className="grid grid-cols-2 gap-2">
             <button type="button" disabled={!orderTodayOpen} onClick={() => setOrderType('today')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${orderType === 'today' ? 'bg-lime-400/15 text-lime-300 ring-1 ring-lime-400/60' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>{orderTodayOpen ? '⚡ Order today' : storeOpenNow ? '⚡ No slots left today' : <span>⚡ Order today · CLOSED<span className="block text-[9px] font-semibold">Be back at {STORE_OPEN_LABEL}</span></span>}</button>
             <button type="button" onClick={() => setOrderType('reservation')} className={`px-3 py-2 rounded-xl text-[11px] font-bold cursor-pointer ${orderType === 'reservation' ? 'bg-lime-400/15 text-lime-300 ring-1 ring-lime-400/60' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>📅 Reservation</button>
+          </div>
           </div>
           {orderType === 'reservation' && (
             <div><label className={labelCls}>Reservation date</label><input type="date" min={todayManila()} value={dateKey} onChange={(e) => setDateKey(e.target.value)} className={inputCls} /></div>
           )}
           <div>
             <label className={labelCls}>Time slot (reserves bowls)</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className={fit ? 'grid grid-cols-2 gap-2 2xl:grid-cols-4' : 'grid grid-cols-2 gap-2'}>
               {TIME_SLOTS.map((s) => {
                 const si = slotInfo(s); const block = slotOrderBlock(effectiveDate, s, nowTick); const ended = block !== null; const full = si.closed || si.remaining < 1; const disabled = ended || full;
                 return (
-                  <button key={s} type="button" disabled={disabled} onClick={() => setSlotTime(s)} className={`px-3 py-2 rounded-xl text-[11px] font-bold text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${slotTime === s ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>
-                    {s}<span className="block text-[10px] font-medium opacity-80">{block === 'ended' ? 'Slot ended' : block === 'cutoff' ? 'Orders closed (1 hr before)' : si.closed ? 'Closed' : full ? 'Fully booked' : `${si.remaining} bowls left`}</span>
+                  <button key={s} type="button" disabled={disabled} onClick={() => setSlotTime(s)} className={`${fit ? 'px-2 py-1.5' : 'px-3 py-2'} rounded-xl text-[11px] font-bold text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${slotTime === s ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>
+                    {s}<span className="flex items-center gap-1 text-[10px] font-medium leading-tight opacity-80">{si.closed ? <Lock className="h-2.5 w-2.5 shrink-0 text-red-400" /> : <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${disabled ? 'bg-zinc-500' : 'bg-lime-400'}`} />}{block === 'ended' ? 'Slot ended' : block === 'cutoff' ? 'Orders closed (1 hr before)' : si.closed ? 'Closed' : full ? 'Fully booked' : `${si.remaining} bowls left`}</span>
                   </button>
                 );
               })}
@@ -744,24 +764,30 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
 
           </>)}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-white/[0.06]">
+          <div className={fit ? 'grid grid-cols-3 gap-2 pt-2 border-t border-white/[0.06]' : 'grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-white/[0.06]'}>
             <div><label className={labelCls}>Contact name *</label><input value={contactName} onChange={(e) => setContactName(e.target.value)} className={inputCls} /></div>
             <div><label className={labelCls}>Contact number {fulfillment === 'delivery' ? '*' : ''}</label><input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} className={inputCls} /></div>
-            <div className="sm:col-span-2"><label className={labelCls}>Contact email</label><input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={inputCls} /></div>
+            <div className={fit ? '' : 'sm:col-span-2'}><label className={labelCls}>Contact email</label><input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={inputCls} /></div>
           </div>
           {fulfillment === 'delivery' && (
-            <div className="space-y-3">
-              <div><label className={labelCls}>Delivery pin (optional for staff: click the map to calculate the fee and record the exact location)</label>
-                <div ref={mapRef} className="h-64 w-full rounded-xl overflow-hidden bg-white/[0.06] z-0" />
-                <p className="text-[11px] mt-1 text-zinc-400">{pin ? `Pinned: ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}${pv && pv.distanceKm != null ? ` • ${pv.distanceKm} km from store` : ''}` : 'No pin: type the address below. The delivery fee will be marked "to be confirmed".'}</p></div>
+            <div className={fit ? 'grid grid-cols-[minmax(0,1fr)_minmax(0,11.5rem)] gap-3' : 'space-y-3'}>
+              <div className={fit ? 'order-2' : ''}><label className={labelCls}>{fit ? 'Delivery pin (optional)' : 'Delivery pin (optional for staff: click the map to calculate the fee and record the exact location)'}</label>
+                <div className={mapBig ? 'fixed inset-0 z-[60] flex flex-col gap-3 bg-black/85 p-6' : 'relative'}>
+                  <div ref={mapRef} className={mapBig ? 'min-h-0 w-full flex-1 overflow-hidden rounded-xl bg-white/[0.06] z-0' : `${fit ? 'h-24' : 'h-64'} w-full rounded-xl overflow-hidden bg-white/[0.06] z-0`} />
+                  {fit && !mapBig && <button key="enlarge" type="button" onClick={() => setMapBig(true)} className="absolute right-1.5 top-1.5 z-10 flex h-6 items-center gap-1 rounded-md bg-black/70 px-1.5 text-[10px] font-bold text-white hover:bg-black cursor-pointer"><Maximize2 className="h-3 w-3" />Enlarge</button>}
+                  {mapBig && <div key="bar" className="order-first flex items-center justify-between gap-3"><span className="text-sm font-bold text-white">Click the map to place the delivery pin</span><Button type="button" onClick={() => setMapBig(false)} className={limeBtn}>Done</Button></div>}
+                </div>
+                <p className="text-[11px] mt-1 text-zinc-400">{fit ? (pin ? `Pinned${pv && pv.distanceKm != null ? ` • ${pv.distanceKm} km from store` : ''}` : 'No pin: fee to be confirmed.') : (pin ? `Pinned: ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}${pv && pv.distanceKm != null ? ` • ${pv.distanceKm} km from store` : ''}` : 'No pin: type the address below. The delivery fee will be marked "to be confirmed".')}</p></div>
+              <div className={fit ? 'order-1 space-y-2' : 'space-y-3'}>
               <div><label className={labelCls}>Delivery address *</label><input value={location} onChange={(e) => { locationTouched.current = true; setLocation(e.target.value); }} className={inputCls} /></div>
               <div><label className={labelCls}>Nearest landmark *</label><input value={landmark} onChange={(e) => setLandmark(e.target.value)} className={inputCls} /></div>
+              </div>
             </div>
           )}
         </div>
 
         {/* ---------------- 4. promos ---------------- */}
-        <div className={card}>
+        <div className={cardCls + (fit ? ' min-h-[7.5rem] flex-1 overflow-y-auto' : '')}>
           <h2 className="font-display text-sm font-extrabold text-white uppercase tracking-wide flex items-center gap-2"><Ticket className="h-4 w-4 text-lime-400" /> 4. Promotions & vouchers</h2>
           {!customer ? <p className="text-xs text-zinc-400">Select a customer to see their eligible promotions.</p> : (
             <>
@@ -782,18 +808,18 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales }: { onOrder
                 <Button type="button" onClick={applyTypedCode} className={ghostBtn}>Apply</Button>
               </div>
               {codeError && <p className="text-[11px] text-red-400">{codeError}</p>}
-              <p className="text-[11px] text-zinc-400">Eligibility, expiry, usage limits and stacking are validated by the same server rules as customer checkout.{customer.isWalkIn ? ' Walk-in orders can use public promos only, and per-person limits cannot be enforced without an account.' : ''}</p>
+              {(!fit || customer.isWalkIn) && <p className="text-[11px] text-zinc-400">Eligibility, expiry, usage limits and stacking are validated by the same server rules as customer checkout.{customer.isWalkIn ? ' Walk-in orders can use public promos only, and per-person limits cannot be enforced without an account.' : ''}</p>}
             </>
           )}
         </div>
       </div>
 
       {/* ---------------- summary ---------------- */}
-      <div>
-        <div className={card + ' xl:sticky xl:top-4'}>
+      <div className={fit ? 'min-h-0' : ''}>
+        <div className={cardCls + (fit ? ' flex h-full min-h-0 flex-col' : ' xl:sticky xl:top-4')}>
           <h2 className="font-display text-sm font-extrabold text-white uppercase tracking-wide">Order summary</h2>
-          {lines.length === 0 ? <p className="text-center text-xs text-zinc-400 py-6">No items added yet.</p> : (
-            <div className="space-y-2">
+          {lines.length === 0 ? <p className={fit ? 'flex-1 text-center text-xs text-zinc-400 py-6' : 'text-center text-xs text-zinc-400 py-6'}>No items added yet.</p> : (
+            <div className={fit ? 'min-h-0 flex-1 space-y-2 overflow-y-auto' : 'space-y-2'}>
               {lines.map((l, idx) => {
                 const unit = unitFor(idx, l);
                 return (
