@@ -4,6 +4,7 @@
 // On phones the three links move into a menu button on the left. Same color as the page (#03120d).
 // Step 8F: the header is fixed to the top of the window (a spacer keeps its place in the page) and has no border.
 // Step 8G: after the page scrolls, a soft fade (no hard line) blends the header into the content under it.
+// Step B8: the cart icon always opens the cart drawer (even when empty); the small "cart is empty" note is gone.
 // Step 8H: that fade is only added to the page while scrolled (no permanent invisible layer under the header at the top).
 import React, { useState, useRef, useEffect } from 'react';
 import { LogOut, ShoppingCart, History, User, UserPlus, Settings, Edit3, KeyRound, ChevronDown, Menu as MenuIcon, X } from 'lucide-react';
@@ -51,12 +52,10 @@ export function SiteHeader({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [accountSubmenuOpen, setAccountSubmenuOpen] = useState(false);
-  const [cartHint, setCartHint] = useState(false);
 
   const mobileRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const cartRef = useRef<HTMLDivElement>(null);
-  const hintTimer = useRef<number | undefined>(undefined);
 
   // A thin line appears under the header only once the page has scrolled.
   useEffect(() => {
@@ -75,14 +74,12 @@ export function SiteHeader({
         setProfileOpen(false);
         setAccountSubmenuOpen(false);
       }
-      if (cartRef.current && !cartRef.current.contains(t)) setCartHint(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setMobileOpen(false);
         setProfileOpen(false);
         setAccountSubmenuOpen(false);
-        setCartHint(false);
       }
     };
     document.addEventListener('mousedown', onDown);
@@ -93,13 +90,10 @@ export function SiteHeader({
     };
   }, []);
 
-  useEffect(() => () => window.clearTimeout(hintTimer.current), []);
-
   const closeAll = () => {
     setMobileOpen(false);
     setProfileOpen(false);
     setAccountSubmenuOpen(false);
-    setCartHint(false);
   };
 
   // Home: close overlays and dialogs, reset the menu (what the old logo did), then scroll to the top.
@@ -122,18 +116,11 @@ export function SiteHeader({
     if (onOpenFeedback) onOpenFeedback();
   };
 
-  // Cart: opens checkout when there is something in it, otherwise shows a short "empty" note.
+  // Cart: opens the cart drawer (it shows its own empty state).
   const handleCart = () => {
     setMobileOpen(false);
     setProfileOpen(false);
-    if (count > 0) {
-      setCartHint(false);
-      if (onOpenCart) onOpenCart();
-      return;
-    }
-    setCartHint(true);
-    window.clearTimeout(hintTimer.current);
-    hintTimer.current = window.setTimeout(() => setCartHint(false), 3000);
+    if (onOpenCart) onOpenCart();
   };
 
   const handleHistory = () => {
@@ -153,7 +140,6 @@ export function SiteHeader({
             onClick={() => {
               setMobileOpen(!mobileOpen);
               setProfileOpen(false);
-              setCartHint(false);
             }}
             className={`${ICON_BTN} md:hidden`}
             aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}
@@ -196,15 +182,6 @@ export function SiteHeader({
                 </span>
               )}
             </button>
-
-            {cartHint && (
-              <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-emerald-800/80 bg-[#051813] p-3 text-xs shadow-2xl z-50" role="status">
-                <p className="font-semibold text-white">Your cart is empty.</p>
-                <button type="button" onClick={goMenu} className="mt-2 font-semibold text-lime-400 hover:underline cursor-pointer">
-                  Browse the menu
-                </button>
-              </div>
-            )}
           </div>
 
           <button type="button" onClick={handleHistory} className={ICON_BTN} aria-label="Order history" title="Order history">
@@ -218,7 +195,6 @@ export function SiteHeader({
                 setProfileOpen(!profileOpen);
                 setAccountSubmenuOpen(false);
                 setMobileOpen(false);
-                setCartHint(false);
               }}
               className={ICON_BTN}
               aria-label="Profile"

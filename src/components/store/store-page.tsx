@@ -3,6 +3,7 @@
 // Owns everything the store shows: header, menu (StoreData, formerly OrderingCounter),
 // feedback/extras overlays, account settings, order history and the recovery dialog.
 // App.tsx is only the auth gate and passes the auth-bridge props below.
+// Step B8: the header's cart icon now opens a cart drawer (cart-drawer.tsx); its Checkout button opens the same checkout as before.
 // Step 13B: the separate Extras page is gone. Extras is a category inside the menu now (menu-page.tsx).
 import React, { useState, useEffect } from 'react';
 import { SiteHeader } from '@/components/store/site-header';
@@ -13,6 +14,7 @@ import { SiteFooter } from '@/components/store/site-footer';
 import { CartProvider } from '@/lib/cart';
 import { AccountSettingsDialog } from '@/components/store/account-settings-dialog';
 import { FeedbackPage } from '@/components/store/feedback-page';
+import { CartDrawer } from '@/components/store/cart-drawer';
 import { FloatingSupportButton } from '@/components/floating-support-button';
 import { ProfilePage } from '@/components/store/profile-page';
 import { ResetPasswordDialog } from '@/components/login-page';
@@ -38,6 +40,7 @@ export function StorePage({
   const [showFeedback, setShowFeedback] = useState(false);
   // The header's cart icon bumps this; StoreData opens checkout when it changes.
   const [openCheckoutTick, setOpenCheckoutTick] = useState(0);
+  const [showCart, setShowCart] = useState(false);
 
   // Account Settings dialog: open flag + which section it should start on.
   const [showAccountSettings, setShowAccountSettings] = useState(false);
@@ -137,7 +140,7 @@ export function StorePage({
           onExitGuest={onLogout}
           onOpenFeedback={() => setShowFeedback(true)}
           onOpenExtras={goToMenu}
-          onOpenCart={() => setOpenCheckoutTick((t) => t + 1)}
+          onOpenCart={() => setShowCart(true)}
           onCloseOverlays={closeOverlays}
         />
         <main className="flex-1">
@@ -163,6 +166,12 @@ export function StorePage({
         <div className="veyns-snap-end">
           <SiteFooter />
         </div>
+        <CartDrawer
+          open={showCart}
+          onClose={() => setShowCart(false)}
+          onCheckout={() => { setShowCart(false); setOpenCheckoutTick((t) => t + 1); }}
+          onBrowseMenu={() => { setShowCart(false); setShowFeedback(false); goToMenu(); }}
+        />
         {showFeedback && <FeedbackPage onBack={() => setShowFeedback(false)} currentUser={currentUser} />}
         <ProfilePage
           open={showMyOrders}
