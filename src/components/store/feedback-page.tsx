@@ -1,9 +1,9 @@
 // @ts-nocheck
-// Customer Feedback page ("Lami Wall"), redesigned in the style of the new home page (Step B7).
-// Looks changed only: a summary row (average rating and star breakdown from the real counts), a composer bar that opens the same Create a Post dialog,
+// Customer Feedback page, redesigned in the style of the new home page (Step B7).
+// Looks changed only: a summary row (average rating and star breakdown from the real counts), a Create post button (plus sign) that opens the same Create a Post dialog,
 // pill filters and softer post cards. Loading, filtering, posting, photos, admin replies and "Load more" are the old code.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Loader2, CheckCircle2, AlertTriangle, MessageSquare, Star, ImagePlus } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle2, AlertTriangle, MessageSquare, Star, Plus } from 'lucide-react';
 import {
   fetchFeedbackPage, signPhotoPaths, formatWhen, ratingLabel, Stars, OfficialReply, PhotoGrid, Lightbox,
 } from '@/lib/feedback';
@@ -133,7 +133,6 @@ export function FeedbackPage({ onBack, currentUser }: { onBack: () => void; curr
 
   // --- Step B7: summary numbers, from the same rating counts as the filter chips ---
   const average = total > 0 ? [1, 2, 3, 4, 5].reduce((sum, n) => sum + n * (counts[n] || 0), 0) / total : 0;
-  const initial = ((currentUser && currentUser.type !== 'guest' && currentUser.name) ? String(currentUser.name)[0] : 'G').toUpperCase();
 
   return (
     <div className="fixed inset-0 z-40 overflow-y-auto bg-[#03120d] text-white" style={{ backgroundImage: 'radial-gradient(60rem 28rem at 85% -5%, rgba(163,230,53,0.07), transparent 60%)' }}>
@@ -152,8 +151,7 @@ export function FeedbackPage({ onBack, currentUser }: { onBack: () => void; curr
         {/* summary row */}
         <section className="animate-fade-up grid items-center gap-6 md:grid-cols-[1.15fr_auto_1.25fr] md:gap-8">
           <div>
-            <h1 className="font-display text-5xl font-extrabold tracking-tight text-white sm:text-6xl">Lami Wall<span className="text-lime-400">.</span></h1>
-            <p className="mt-3 text-sm leading-relaxed text-emerald-100/70">Share your experience with us!<br />Let's keep the good food vibes going.</p>
+            <h1 className="font-display text-2xl font-extrabold leading-snug text-white sm:text-3xl">Share your experience with us!<br /><span className="text-lime-400">Let's keep the good food vibes going.</span></h1>
           </div>
 
           <div className="md:border-l md:border-white/10 md:px-8">
@@ -187,22 +185,9 @@ export function FeedbackPage({ onBack, currentUser }: { onBack: () => void; curr
           </div>
         </section>
 
-        {/* composer bar: opens the same Create a Post dialog */}
-        <section className="animate-fade-up mt-6 flex items-center gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-3 sm:p-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0d2e26] font-display text-sm font-extrabold text-lime-300">{initial}</div>
-          <button type="button" onClick={() => setComposeOpen(true)} className={`min-w-0 flex-1 truncate rounded-2xl bg-white/[0.05] px-4 py-3 text-left text-sm text-emerald-100/50 transition-colors hover:bg-white/[0.08] cursor-pointer ${FOCUS}`}>
-            Share your experience…
-          </button>
-          <button type="button" onClick={() => setComposeOpen(true)} aria-label="Add photos and write a post" className={`hidden size-10 shrink-0 items-center justify-center rounded-full text-emerald-100/70 transition-colors hover:bg-[#0d2e26] hover:text-lime-400 cursor-pointer sm:flex ${FOCUS}`}>
-            <ImagePlus width={18} height={18} />
-          </button>
-          <button type="button" onClick={() => setComposeOpen(true)} className={`shrink-0 rounded-full bg-lime-400 px-5 py-2.5 text-sm font-extrabold text-black transition-colors hover:bg-lime-300 cursor-pointer ${FOCUS}`}>
-            Post
-          </button>
-        </section>
-
         {/* rating filters */}
-        <div className="mt-5 overflow-x-auto pb-1">
+        <div className="mt-6 flex items-center gap-3">
+        <div className="min-w-0 flex-1 overflow-x-auto pb-1">
           <div className="flex gap-2" role="tablist" aria-label="Filter by rating">
             {FILTERS.map((f) => {
               const n = f.key === 0 ? total : counts[f.key] || 0;
@@ -222,6 +207,10 @@ export function FeedbackPage({ onBack, currentUser }: { onBack: () => void; curr
               );
             })}
           </div>
+        </div>
+        <button type="button" onClick={() => setComposeOpen(true)} className={`flex shrink-0 items-center gap-1.5 rounded-full bg-lime-400 px-4 py-2.5 text-xs font-extrabold text-black transition-colors hover:bg-lime-300 cursor-pointer ${FOCUS}`}>
+          <Plus width={16} height={16} /> Create post
+        </button>
         </div>
 
         {/* posts */}
