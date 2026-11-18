@@ -2,16 +2,19 @@
 // Step A6: Menu Manager tab (item list, Hide/Show, Delete) and all Add / Edit item state and handlers,
 // moved unchanged from employee-dashboard.tsx. Only the imports, the props, the 'active' guard and the dialog call are new.
 // The component stays mounted (like the Slot Capacity tab), so the form state survives tab switches exactly as before.
-import React, { useState } from 'react';
-import { Plus, Edit2, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { formatPeso } from '@/lib/menu-data';
+// Step B7: new look (stat cards, search / filters / sort, Bulk Select, item cards, Category Mix) and the Add / Edit form is now a side panel
+// (admin-menu-item-panel.tsx) instead of a pop-up. The state and handlers below are the original ones; the changes are listed in the B7 record.
+import React, { useMemo, useState } from 'react';
+import { Plus, Search } from 'lucide-react';
 import { menuImages } from '@/lib/menu-images';
 import { supabase } from '@/lib/supabase';
-import { AdminMenuImage } from '@/components/admin/menu-manager/admin-menu-image';
-import { AdminMenuItemDialog } from '@/components/admin/menu-manager/admin-menu-item-dialog';
+import { AdminMenuItemPanel } from '@/components/admin/menu-manager/admin-menu-item-panel';
+import { AdminMenuStatCards } from '@/components/admin/menu-manager/admin-menu-stat-cards';
+import { AdminMenuCard } from '@/components/admin/menu-manager/admin-menu-card';
+import { AdminMenuCategoryMix } from '@/components/admin/menu-manager/admin-menu-category-mix';
+import { buildMenuSales } from '@/components/admin/menu-manager/admin-menu-sales';
 
-export function AdminMenuManagerTab({ active, menuItems, fetchCloudData }: { active: boolean; menuItems: any[]; fetchCloudData: () => void }) {
+export function AdminMenuManagerTab({ active, menuItems, orders, fit = false, fetchCloudData }: { active: boolean; menuItems: any[]; orders?: any[]; fit?: boolean; fetchCloudData: () => void }) {
   const [editingItem, setEditingItem] = useState<any>(null);
   const [isAddingNewItem, setIsAddingNewItem] = useState(false);
   const [itemName, setItemName] = useState('');
@@ -25,6 +28,14 @@ export function AdminMenuManagerTab({ active, menuItems, fetchCloudData }: { act
   const [menuSection, setMenuSection] = useState<'main' | 'extras'>('main');
   const [itemImageFile, setItemImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState('');
+  // Step B7: the Available switch of the form (saved with the item), and the search / filter / sort / Bulk Select of the list
+  const [itemAvailable, setItemAvailable] = useState(true);
+  const [menuSearch, setMenuSearch] = useState('');
+  const [catFilter, setCatFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('custom');
+  const [selecting, setSelecting] = useState(false);
+  const [bulkIds, setBulkIds] = useState<string[]>([]);
   
   // Dynamic Option Groups State for Menu Manager
   const [itemOptionGroups, setItemOptionGroups] = useState<any[]>([]);
@@ -64,7 +75,7 @@ export function AdminMenuManagerTab({ active, menuItems, fetchCloudData }: { act
       description: itemDescription.trim(),
       price: parseFloat(itemPrice),
       discount_percent: itemDiscount !== '' ? parseFloat(itemDiscount) : 0,
-      is_available: editingItem ? editingItem.isAvailable : true,
+      is_available: itemAvailable,
       best_seller: itemBestSeller,
       sort_order: editingItem ? (editingItem.sortOrder || 100) : 100,
       image_url: imageUrl,
@@ -91,6 +102,7 @@ export function AdminMenuManagerTab({ active, menuItems, fetchCloudData }: { act
     setItemImageFile(null);
     setItemIsExtra(false);
     setItemOfferInPopup(false);
+    setItemAvailable(true);
     setImagePreviewUrl('');
     setItemOptionGroups([]);
     setPreviewSelections({});
@@ -102,7 +114,7 @@ export function AdminMenuManagerTab({ active, menuItems, fetchCloudData }: { act
     setItemName(''); setItemCategory(asExtra ? 'Extras' : 'Rice Bowls'); setItemDescription('');
     setItemPrice(''); setItemDiscount(''); setItemBestSeller(false); setItemImageFile(null);
     setImagePreviewUrl(''); setItemOptionGroups([]); setPreviewSelections({});
-    setItemIsExtra(asExtra); setItemOfferInPopup(false);
+    setItemIsExtra(asExtra); setItemOfferInPopup(false); setItemAvailable(true);
     setEditingItem(null); setIsAddingNewItem(true);
   };
   const openEditItem = (item: any, displayImage: string) => {
@@ -111,7 +123,7 @@ export function AdminMenuManagerTab({ active, menuItems, fetchCloudData }: { act
     setItemDiscount((item.discountPercent || 0).toString()); setItemBestSeller(item.bestSeller || false);
     setItemImageFile(null); setImagePreviewUrl(displayImage || '');
     setItemOptionGroups(item.optionGroups || []); setPreviewSelections({});
-    setItemIsExtra(!!item.isExtra); setItemOfferInPopup(!!item.offerInPopup);
+    setItemIsExtra(!!item.isExtra); setItemOfferInPopup(!!item.offerInPopup); setItemAvailable(item.isAvailable !== false);
     setIsAddingNewItem(true);
   };
 
@@ -128,6 +140,16 @@ export function AdminMenuManagerTab({ active, menuItems, fetchCloudData }: { act
     if (!confirm('Are you sure you want to delete this menu item from the database?')) return;
     const { error } = await supabase.from('menu_items').delete().eq('id', id);
     if (error) { alert('Delete failed: ' + error.message); return; }
+    fetchCloudData();
+  };
+
+  // --- Step B7: hide or show several items at once (Bulk Select). It writes the same column the Hide / Show button writes. ---
+  const handleBulkAvailability = async (ids: string[], show: boolean) => {
+    if (ids.length === 0) return;
+    if (!confirm(`${show ? 'Show' : 'Hide'} ${ids.length} menu item${ids.length === 1 ? '' : 's'} ${show ? 'on' : 'from'} the customer menu?`)) return;
+    const { error } = await supabase.from('menu_items').update({ is_available: show }).in('id', ids);
+    if (error) { alert('Could not update the menu: ' + error.message); return; }
+    setBulkIds([]);
     fetchCloudData();
   };
 
@@ -253,91 +275,40 @@ export function AdminMenuManagerTab({ active, menuItems, fetchCloudData }: { act
       .reduce((sum: number, o: any) => sum + (Number(o.price) || 0), 0);
     return acc + groupAddons;
   }, 0);
-  return (
-    <>
-    {/* Menu item list and menu management actions */}
-    {active && (
-      <div className="bg-[#051813] border border-emerald-800/60 rounded-2xl p-5 space-y-5 shadow-xl">
-        <div className="flex items-center justify-between border-b border-emerald-900/60 pb-3">
-          <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Database Menu Manager (Live Sync)</h3>
-          <Button onClick={() => openAddItem(menuSection === 'extras')} className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold text-xs px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg">
-            <Plus className="h-4 w-4" /> {menuSection === 'extras' ? 'Add New Extra' : 'Add New Menu Item'}
-          </Button>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => setMenuSection('main')} className={`px-4 py-2 rounded-full text-xs font-extrabold cursor-pointer ${menuSection === 'main' ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>Main Menu ({menuItems.filter((i) => !i.isExtra).length})</button>
-          <button onClick={() => setMenuSection('extras')} className={`px-4 py-2 rounded-full text-xs font-extrabold cursor-pointer ${menuSection === 'extras' ? 'bg-lime-400 text-black' : 'bg-[#061c16] text-emerald-200 border border-emerald-800/60'}`}>Extras ({menuItems.filter((i) => i.isExtra).length})</button>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {menuItems.filter((i) => (menuSection === 'extras' ? i.isExtra : !i.isExtra)).map((item) => {
-            const discountPct = item.discountPercent || 0;
-            const effectivePrice = discountPct > 0 ? item.price * (1 - discountPct / 100) : item.price;
-            const isAvailable = item.isAvailable !== false;
-            const displayImage = item.image || menuImages[item.id];
-            return (
-              <div key={item.id} className={`bg-[#061d16] border rounded-2xl p-4 flex flex-col justify-between transition-all ${isAvailable ? 'border-emerald-800/80' : 'border-red-900/60 opacity-60'}`}>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      <div className="h-14 w-14 rounded-xl bg-[#08291f] overflow-hidden shrink-0 border border-emerald-800/50 flex items-center justify-center">
-                        <AdminMenuImage src={displayImage} alt={item.name} className="h-full w-full object-cover" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <h4 className="font-display font-bold text-white text-sm">{item.name}</h4>
-                          {item.bestSeller && <span className="bg-lime-400 text-black px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase">BEST SELLER</span>}
-                        </div>
-                        <span className="text-[10px] text-emerald-400/80 uppercase font-semibold">{item.category}</span>
-                      </div>
-                    </div>
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${isAvailable ? 'bg-lime-400/20 text-lime-400 border border-lime-400/40' : 'bg-red-950 text-red-400 border border-red-800'}`}>
-                      {isAvailable ? 'Available' : 'Hidden'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-emerald-300/80 line-clamp-2">{item.description}</p>
-                  <div className="flex items-center justify-between bg-[#04140f] border border-emerald-900/80 rounded-xl p-2.5 text-xs">
-                    <div>
-                      <span className="text-[10px] text-emerald-400/70 uppercase block font-bold">Base Price</span>
-                      <span className="font-bold text-white">{formatPeso(item.price)}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-amber-400 uppercase block font-bold">Discount</span>
-                      <span className="font-bold text-amber-400">{discountPct}% OFF</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] text-lime-400 uppercase block font-bold">Effective</span>
-                      <span className="font-extrabold text-lime-400">{formatPeso(effectivePrice)}</span>
-                    </div>
-                  </div>
-                  {item.optionGroups && item.optionGroups.length > 0 && (
-                    <div className="bg-[#04140f] border border-emerald-900/60 rounded-xl p-2 text-[10px] text-emerald-300">
-                      <span className="font-bold text-lime-400 block mb-0.5">Customizations ({item.optionGroups.length} groups):</span>
-                      <p className="truncate font-mono">{item.optionGroups.map((g: any) => g.name).join(', ')}</p>
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center justify-between border-t border-emerald-900/60 pt-3 mt-4">
-                  <div className="flex gap-1.5">
-                    <Button onClick={() => handleToggleAvailability(item.id, isAvailable)} size="sm" className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl cursor-pointer ${isAvailable ? 'bg-red-950/60 text-red-300 border border-red-800/60' : 'bg-emerald-950 text-lime-400 border border-emerald-800'}`}>
-                      {isAvailable ? 'Hide' : 'Show'}
-                    </Button>
-                    <Button onClick={() => handleDeleteMenuItem(item.id)} size="sm" className="bg-red-950/40 hover:bg-red-900 text-red-400 border border-red-900/60 px-2.5 py-1.5 rounded-xl text-[11px] cursor-pointer">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                  <Button onClick={() => openEditItem(item, displayImage)} size="sm" className="bg-[#082d22] hover:bg-lime-400 hover:text-black text-lime-400 border border-emerald-700/80 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1">
-                    <Edit2 className="h-3.5 w-3.5" /> Edit Item
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    )}
+  // --- Step B7: sales numbers, and the list after the tab, search, filters and sort ---
+  const sales = useMemo(() => buildMenuSales(orders || [], menuItems), [orders, menuItems]);
+  const sectionItems = menuItems.filter((i: any) => (menuSection === 'extras' ? i.isExtra : !i.isExtra));
+  const mainCount = menuItems.filter((i: any) => !i.isExtra).length;
+  const extrasCount = menuItems.length - mainCount;
+  const categoryOptions = Array.from(new Set(sectionItems.map((i: any) => i.category).filter(Boolean))) as string[];
+  const soldOf = (i: any) => sales.monthQty[String(i.id)] || 0;
+  const q = menuSearch.trim().toLowerCase();
+  const visibleItems = sectionItems
+    .filter((i: any) => {
+      if (catFilter !== 'all' && i.category !== catFilter) return false;
+      if (statusFilter === 'available' && i.isAvailable === false) return false;
+      if (statusFilter === 'hidden' && i.isAvailable !== false) return false;
+      if (statusFilter === 'discount' && !(Number(i.discountPercent || 0) > 0)) return false;
+      if (statusFilter === 'best' && !i.bestSeller) return false;
+      if (statusFilter === 'custom' && !(Array.isArray(i.optionGroups) && i.optionGroups.length > 0)) return false;
+      return !q || String(i.name || '').toLowerCase().includes(q) || String(i.description || '').toLowerCase().includes(q);
+    })
+    .sort((a: any, b: any) => {
+      const eff = (m: any) => Number(m.price || 0) * (1 - Number(m.discountPercent || 0) / 100);
+      if (sortBy === 'name') return String(a.name).localeCompare(String(b.name));
+      if (sortBy === 'price-low') return eff(a) - eff(b);
+      if (sortBy === 'price-high') return eff(b) - eff(a);
+      if (sortBy === 'sold') return soldOf(b) - soldOf(a) || String(a.name).localeCompare(String(b.name));
+      if (sortBy === 'discount') return Number(b.discountPercent || 0) - Number(a.discountPercent || 0);
+      return Number(a.sortOrder || 100) - Number(b.sortOrder || 100) || String(a.name).localeCompare(String(b.name));
+    });
+  const toggleSelect = (id: string) => setBulkIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const pickSection = (section: 'main' | 'extras') => { setMenuSection(section); setCatFilter('all'); setBulkIds([]); };
+  const selectCls = 'rounded-xl bg-white/[0.06] px-3 py-2 text-xs font-semibold text-zinc-200 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 [&>option]:bg-[#141817]';
 
-    {/* Add / Edit menu item dialog lives in admin-menu-item-dialog.tsx; it is open only while isAddingNewItem is true */}
-    <AdminMenuItemDialog
+  const panel = (
+    <AdminMenuItemPanel
+      fit={fit}
       isAddingNewItem={isAddingNewItem}
       setIsAddingNewItem={setIsAddingNewItem}
       editingItem={editingItem}
@@ -353,6 +324,8 @@ export function AdminMenuManagerTab({ active, menuItems, fetchCloudData }: { act
       setItemDiscount={setItemDiscount}
       itemBestSeller={itemBestSeller}
       setItemBestSeller={setItemBestSeller}
+      itemAvailable={itemAvailable}
+      setItemAvailable={setItemAvailable}
       itemOfferInPopup={itemOfferInPopup}
       setItemOfferInPopup={setItemOfferInPopup}
       itemDescription={itemDescription}
@@ -370,6 +343,104 @@ export function AdminMenuManagerTab({ active, menuItems, fetchCloudData }: { act
       handleReorderOptionInGroup={handleReorderOptionInGroup}
       handleDeleteOptionFromGroup={handleDeleteOptionFromGroup}
     />
+  );
+
+  return (
+    <>
+    {/* Menu Manager screen: heading, stat cards, tabs with search / filters, item cards, Category Mix, and the Add / Edit panel */}
+    {active && (
+      <div className={fit ? 'flex min-h-0 flex-1 flex-col gap-3' : 'space-y-4'}>
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-display text-2xl font-extrabold text-white">Database Menu Manager <span className="text-lime-400">(Live Sync)</span></h2>
+            <p className="text-xs text-zinc-400">Manage your menu items, categories and pricing.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="hidden items-center gap-2 rounded-full bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-zinc-300 md:flex"><span className="h-2 w-2 rounded-full bg-lime-400" /> Live sync on</span>
+            <button type="button" onClick={() => openAddItem(menuSection === 'extras')} className="flex cursor-pointer items-center gap-2 rounded-xl bg-lime-400 px-4 py-2 text-xs font-extrabold text-black shadow-lg hover:bg-lime-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
+              <Plus className="h-4 w-4" /> {menuSection === 'extras' ? 'Add New Extra' : 'Add New Menu Item'}
+            </button>
+          </div>
+        </div>
+
+        <AdminMenuStatCards menuItems={menuItems} sales={sales} />
+
+        <div className={fit ? 'flex min-h-0 flex-1 gap-3' : 'space-y-4'}>
+          {!fit && isAddingNewItem && panel}
+          <div className={fit ? 'flex min-h-0 min-w-0 flex-1 flex-col gap-3' : 'space-y-4'}>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <button type="button" onClick={() => pickSection('main')} className={`cursor-pointer rounded-full px-4 py-2 text-xs font-extrabold ${menuSection === 'main' ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>Main Menu ({mainCount})</button>
+              <button type="button" onClick={() => pickSection('extras')} className={`cursor-pointer rounded-full px-4 py-2 text-xs font-extrabold ${menuSection === 'extras' ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>Extras ({extrasCount})</button>
+              <div className="relative ml-auto w-56 min-w-[10rem]">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+                <input value={menuSearch} onChange={(e) => setMenuSearch(e.target.value)} placeholder="Search menu items…" className="w-full rounded-xl bg-white/[0.06] py-2 pl-8 pr-3 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400" />
+              </div>
+              <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} aria-label="Filter by category" className={selectCls}>
+                <option value="all">All categories</option>
+                {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filter items" className={selectCls}>
+                <option value="all">All items</option>
+                <option value="available">Available</option>
+                <option value="hidden">Hidden</option>
+                <option value="discount">On discount</option>
+                <option value="best">Best sellers</option>
+                <option value="custom">Customizable</option>
+              </select>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sort items" className={selectCls}>
+                <option value="custom">Sort: Custom order</option>
+                <option value="name">Sort: Name A to Z</option>
+                <option value="price-low">Sort: Price, low to high</option>
+                <option value="price-high">Sort: Price, high to low</option>
+                <option value="sold">Sort: Sold this month</option>
+                <option value="discount">Sort: Biggest discount</option>
+              </select>
+              <button type="button" onClick={() => { setSelecting((v) => !v); setBulkIds([]); }} aria-pressed={selecting} className={`cursor-pointer rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 ${selecting ? 'bg-lime-400 text-black' : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12]'}`}>Bulk Select</button>
+            </div>
+
+            {selecting && (
+              <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-xl bg-lime-400/10 px-3 py-2 text-xs">
+                <span className="font-bold text-lime-300">{bulkIds.length} selected</span>
+                <button type="button" onClick={() => setBulkIds(visibleItems.map((i: any) => i.id))} className="cursor-pointer rounded-lg bg-white/[0.08] px-2.5 py-1 font-bold text-zinc-200 hover:bg-white/[0.16]">Select all shown ({visibleItems.length})</button>
+                <button type="button" disabled={bulkIds.length === 0} onClick={() => handleBulkAvailability(bulkIds, false)} className="cursor-pointer rounded-lg bg-red-500/15 px-2.5 py-1 font-bold text-red-300 hover:bg-red-500 hover:text-black disabled:cursor-not-allowed disabled:opacity-40">Hide selected</button>
+                <button type="button" disabled={bulkIds.length === 0} onClick={() => handleBulkAvailability(bulkIds, true)} className="cursor-pointer rounded-lg bg-lime-400/15 px-2.5 py-1 font-bold text-lime-300 hover:bg-lime-400 hover:text-black disabled:cursor-not-allowed disabled:opacity-40">Show selected</button>
+                <button type="button" onClick={() => { setSelecting(false); setBulkIds([]); }} className="ml-auto cursor-pointer rounded-lg bg-white/[0.08] px-2.5 py-1 font-bold text-zinc-200 hover:bg-white/[0.16]">Done</button>
+              </div>
+            )}
+
+            <div className={fit ? 'min-h-0 flex-1 overflow-y-auto pr-1' : ''}>
+              {visibleItems.length === 0 ? (
+                <p className="py-10 text-center text-xs font-semibold text-zinc-400">{sectionItems.length === 0 ? 'No items in this section yet.' : 'No menu items match this search or filter.'}</p>
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
+                  {visibleItems.map((item: any) => {
+                    const displayImage = item.image || menuImages[item.id];
+                    return (
+                      <AdminMenuCard
+                        key={item.id}
+                        item={item}
+                        displayImage={displayImage}
+                        sold={soldOf(item)}
+                        selecting={selecting}
+                        selected={bulkIds.includes(item.id)}
+                        editing={isAddingNewItem && !!editingItem && editingItem.id === item.id}
+                        onToggleSelect={toggleSelect}
+                        onEdit={openEditItem}
+                        onToggleAvailability={handleToggleAvailability}
+                        onDelete={handleDeleteMenuItem}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <AdminMenuCategoryMix menuItems={menuItems} />
+          </div>
+          {fit && isAddingNewItem && panel}
+        </div>
+      </div>
+    )}
     </>
   );
 }
