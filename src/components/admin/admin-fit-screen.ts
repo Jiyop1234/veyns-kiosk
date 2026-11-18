@@ -1,4 +1,4 @@
-// VEYNS Admin: tells the dashboard when a screen can use the whole window without a page scroll (Steps B10b, B2a2, B3a, B4, B4b, B5, B6, B7 and B12).
+// VEYNS Admin: tells the dashboard when a screen can use the whole window without a page scroll (Steps B10b, B2a2, B3a, B4, B4b, B5, B6, B7, B12 and B11a).
 // True only on a large screen: wide and tall enough for the panels of that screen ('ledger', 'orders', 'users' or 'slots').
 // The width needed depends on the navigation pill: the expanded pill takes 192 px more from the page.
 // On smaller screens it is false and the page scrolls as before.
@@ -34,7 +34,10 @@ export const ADMIN_FIT_MENU_MIN_HEIGHT = 780;
 // Inventory (Step B12): heading, stat cards, Bowls Left Right Now, Pantry + Recipe Editor, Shopping List + Stock Ledger; tables scroll inside their panels; same widths as Orders & POS.
 export const ADMIN_FIT_INVENTORY_MIN_HEIGHT = 880;
 
-export type AdminFitKind = 'ledger' | 'orders' | 'orders-table' | 'users' | 'slots' | 'feedback' | 'vouchers' | 'menu' | 'inventory';
+// Delivery Fee (Step B11a): heading, then three columns (map + fee curve + rate ladder, estimate + simulator + impact, fare rules + scenarios) that scroll inside themselves; same widths as Orders & POS.
+export const ADMIN_FIT_FEES_MIN_HEIGHT = 900;
+
+export type AdminFitKind = 'ledger' | 'orders' | 'orders-table' | 'users' | 'slots' | 'feedback' | 'vouchers' | 'menu' | 'inventory' | 'fees';
 
 export function useAdminFitScreen(navExpanded: boolean, kind: AdminFitKind = 'ledger'): boolean {
   const [size, setSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -49,6 +52,6 @@ export function useAdminFitScreen(navExpanded: boolean, kind: AdminFitKind = 'le
   const minWidth = orders
     ? (navExpanded ? ADMIN_FIT_ORDERS_MIN_WIDTH_EXPANDED : ADMIN_FIT_ORDERS_MIN_WIDTH_COLLAPSED)
     : (navExpanded ? ADMIN_FIT_MIN_WIDTH_EXPANDED : ADMIN_FIT_MIN_WIDTH_COLLAPSED);
-  const minHeight = kind === 'orders-table' ? ADMIN_FIT_ORDERS_TABLE_MIN_HEIGHT : kind === 'users' ? ADMIN_FIT_USERS_MIN_HEIGHT : kind === 'slots' ? ADMIN_FIT_SLOTS_MIN_HEIGHT : kind === 'feedback' ? ADMIN_FIT_FEEDBACK_MIN_HEIGHT : kind === 'vouchers' ? ADMIN_FIT_VOUCHERS_MIN_HEIGHT : kind === 'menu' ? ADMIN_FIT_MENU_MIN_HEIGHT : kind === 'inventory' ? ADMIN_FIT_INVENTORY_MIN_HEIGHT : orders ? ADMIN_FIT_ORDERS_MIN_HEIGHT : ADMIN_FIT_MIN_HEIGHT;
+  const minHeight = kind === 'orders-table' ? ADMIN_FIT_ORDERS_TABLE_MIN_HEIGHT : kind === 'users' ? ADMIN_FIT_USERS_MIN_HEIGHT : kind === 'slots' ? ADMIN_FIT_SLOTS_MIN_HEIGHT : kind === 'feedback' ? ADMIN_FIT_FEEDBACK_MIN_HEIGHT : kind === 'vouchers' ? ADMIN_FIT_VOUCHERS_MIN_HEIGHT : kind === 'menu' ? ADMIN_FIT_MENU_MIN_HEIGHT : kind === 'inventory' ? ADMIN_FIT_INVENTORY_MIN_HEIGHT : kind === 'fees' ? ADMIN_FIT_FEES_MIN_HEIGHT : orders ? ADMIN_FIT_ORDERS_MIN_HEIGHT : ADMIN_FIT_MIN_HEIGHT;
   return size.width >= minWidth && size.height >= minHeight;
 }

@@ -16,10 +16,10 @@ import { useAdminDashboardData } from '@/components/admin/admin-dashboard-data';
 import { AdminSidebar } from '@/components/admin/admin-sidebar';
 import { AdminTopBar } from '@/components/admin/admin-top-bar';
 import { useAdminFitScreen } from '@/components/admin/admin-fit-screen';
-import { AdminComingSoon } from '@/components/admin/admin-coming-soon';
 import { AdminOverviewTab } from '@/components/admin/overview/admin-overview-tab';
 import { AdminLedgerTab } from '@/components/admin/ledger/admin-ledger-tab';
 import { AdminInventoryTab } from '@/components/admin/inventory/admin-inventory-tab';
+import { AdminDeliveryFeesTab } from '@/components/admin/delivery-fees/admin-delivery-fees-tab';
 import { ADMIN_NAV_ITEMS, type AdminTabId } from '@/components/admin/admin-nav-items';
 
 // --- Main employee/admin dashboard component ---
@@ -81,7 +81,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
   const fitMenu = useAdminFitScreen(navExpanded, 'menu') && activeTab === 'menu';
   // Step B12: the Inventory screen also fills the window on a large screen (same widths as Orders & POS, more height).
   const fitInventory = useAdminFitScreen(navExpanded, 'inventory') && activeTab === 'inventory';
-  const fitPage = fitLedger || fitOrdersTall || fitUsers || fitSlots || fitFeedback || fitVouchers || fitMenu || fitInventory;
+  // Step B11a: the Delivery Fee screen also fills the window on a large screen (same widths as Orders & POS, more height).
+  const fitFees = useAdminFitScreen(navExpanded, 'fees') && activeTab === 'fees';
+  const fitPage = fitLedger || fitOrdersTall || fitUsers || fitSlots || fitFeedback || fitVouchers || fitMenu || fitInventory || fitFees;
 
   // --- Dashboard page layout: sidebar, header and the sections ---
   return (
@@ -101,9 +103,9 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
       />
 
       <div className={`pt-14 transition-[padding] duration-200 md:pl-24 md:pt-0 ${navExpanded ? 'lg:pl-72' : ''} ${fitPage ? 'h-[calc(100vh-4rem)]' : ''}`}>
-        <div className={fitLedger ? 'h-full px-8 pb-6' : fitUsers || fitSlots || fitFeedback || fitVouchers || fitMenu || fitInventory ? 'flex h-full flex-col gap-3 px-8 pb-6' : fitOrders ? `flex flex-col gap-3 px-8 pb-6 ${fitOrdersTall ? 'h-full' : ''}` : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
-          {/* The Ledger, the Menu Manager and Inventory show their own heading, so the shared title row is skipped for them */}
-          {activeTab !== 'ledger' && activeTab !== 'menu' && activeTab !== 'inventory' && !fitFeedback && (
+        <div className={fitLedger ? 'h-full px-8 pb-6' : fitUsers || fitSlots || fitFeedback || fitVouchers || fitMenu || fitInventory || fitFees ? 'flex h-full flex-col gap-3 px-8 pb-6' : fitOrders ? `flex flex-col gap-3 px-8 pb-6 ${fitOrdersTall ? 'h-full' : ''}` : `mx-auto ${activeTab === 'process' ? 'max-w-[1800px]' : 'max-w-7xl'} space-y-6 p-4 sm:p-6 lg:p-8`}>
+          {/* The Ledger, the Menu Manager, Inventory and Delivery Fees show their own heading, so the shared title row is skipped for them */}
+          {activeTab !== 'ledger' && activeTab !== 'menu' && activeTab !== 'inventory' && activeTab !== 'fees' && !fitFeedback && (
             <div className={`hidden items-center justify-between gap-4 md:flex ${fitOrders || fitUsers || fitSlots || fitVouchers ? 'shrink-0' : ''}`}>
               <h1 className="font-display text-2xl font-extrabold text-white">{activeTitle}</h1>
             </div>
@@ -125,8 +127,8 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           {/* Inventory screen lives in admin/inventory/ (sample data until its database step) */}
           <AdminInventoryTab active={activeTab === 'inventory'} fit={fitInventory} />
 
-          {/* Delivery Fees: in the navigation, not built yet (Part B) */}
-          {activeTab === 'fees' && <AdminComingSoon title="Delivery fees are coming" text="The delivery fee rules will be managed here." />}
+          {/* Delivery Fee screen lives in admin/delivery-fees/ (a simulator on the live rule; nothing is published yet) */}
+          <AdminDeliveryFeesTab active={activeTab === 'fees'} orders={orders} fit={fitFees} />
 
           {/* Orders & POS: the order form (AdminOrderProcessing, passed as children above) with the Order Transactions table under it */}
 
