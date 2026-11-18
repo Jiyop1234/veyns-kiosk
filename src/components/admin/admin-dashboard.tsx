@@ -11,7 +11,7 @@ import { AdminVouchersTab } from '@/components/admin/vouchers/admin-vouchers-tab
 import { AdminMenuManagerTab } from '@/components/admin/menu-manager/admin-menu-manager-tab';
 import { AdminUsersTab } from '@/components/admin/users/admin-users-tab';
 import { AdminOrderLogTab } from '@/components/admin/orders-pos/admin-order-log-tab';
-import { AdminSalesSummaryCards } from '@/components/admin/sales-analytics/admin-sales-summary-cards';
+import { AdminSalesAnalytics } from '@/components/admin/sales-analytics/admin-sales-analytics';
 import { useAdminDashboardData } from '@/components/admin/admin-dashboard-data';
 import { AdminSidebar } from '@/components/admin/admin-sidebar';
 import { AdminTopBar } from '@/components/admin/admin-top-bar';
@@ -114,11 +114,11 @@ export function EmployeeDashboard({ onBackToStore }: { onBackToStore?: () => voi
           {/* Overview page lives in admin/overview/ (placeholder until Step B1b) */}
           <AdminOverviewTab active={activeTab === 'overview'} orders={orders} menuItems={menuItems} />
 
-          {/* Sales analytics and Orders & POS: summary cards live in admin/sales-analytics/; the order log, its state and all order dialogs live in admin/orders-pos/ and serve both screens */}
+          {/* Sales analytics and Orders & POS: the Sales Analytics page above the log lives in admin/sales-analytics/ (Step B9); the order log, its state and all order dialogs live in admin/orders-pos/ and serve both screens */}
           <AdminOrderLogTab active={activeTab === 'sales' || activeTab === 'process'} view={activeTab === 'process' ? 'pos' : 'sales'} fitMode={fitOrdersTall ? 'all' : fitOrders ? 'form' : 'none'} orders={orders} setOrders={setOrders} slotCapacities={slotCapacities} timeSlotsList={timeSlotsList} fetchCloudData={fetchCloudData}>
             {activeTab === 'process'
               ? <AdminOrderProcessing onOrdersChanged={fetchCloudData} onViewSales={() => setActiveTab('sales')} fit={fitOrders} />
-              : <AdminSalesSummaryCards orders={orders} />}
+              : <AdminSalesAnalytics orders={orders} customers={customers} promos={promos} onRefresh={fetchCloudData} onOpenTab={setActiveTab} />}
           </AdminOrderLogTab>
 
           {/* Ledger screen lives in admin/ledger/ (sample data until its database step) */}
