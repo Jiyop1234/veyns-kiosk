@@ -3,7 +3,7 @@
 // Looks changed only: a summary row (average rating and star breakdown from the real counts), a Create post button (plus sign) that opens the same Create a Post dialog,
 // pill filters and softer post cards. Loading, filtering, posting, photos, admin replies and "Load more" are the old code.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Loader2, CheckCircle2, AlertTriangle, MessageSquare, Star, Plus } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle2, AlertTriangle, MessageSquare, Star, Plus, Heart, MessageCircle, Share2, MoreHorizontal, Flag, Check } from 'lucide-react';
 import {
   fetchFeedbackPage, signPhotoPaths, formatWhen, ratingLabel, Stars, OfficialReply, PhotoGrid, Lightbox,
 } from '@/lib/feedback';
@@ -26,6 +26,32 @@ function PostCard({ post, urlMap, onOpenPhoto }: any) {
   const urls = photos.map((p) => urlMap[p.storage_path]);
   const reply = Array.isArray(post.feedback_replies) ? post.feedback_replies[0] : post.feedback_replies;
   const foods = post.feedback_post_items || [];
+
+  // Step B7: share (copies the review text and the store link) and the three-dot menu.
+  // Heart, comment and Report are shown but switched off until their database step (no data to save them yet).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [menuOpen]);
+  const handleShare = async () => {
+    const text = `"${String(post.comment || '').slice(0, 200)}" - ${post.is_guest ? 'Guest' : post.display_name} on VEYNS ${window.location.origin}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) { /* clipboard blocked: nothing to do */ }
+    setMenuOpen(false);
+  };
+  const ACTION = `flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold text-emerald-100/70 ${FOCUS}`;
+  const OFF = 'opacity-40 cursor-not-allowed';
+
   return (
     <article className="animate-fade-up rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
       <header className="flex items-start justify-between gap-3">
@@ -38,7 +64,24 @@ function PostCard({ post, urlMap, onOpenPhoto }: any) {
             <p className="text-[11px] text-emerald-200/60">{formatWhen(post.created_at)}</p>
           </div>
         </div>
-        <Stars value={post.rating} />
+        <div className="flex items-start gap-1.5">
+          <Stars value={post.rating} />
+          <div className="relative" ref={menuRef}>
+            <button type="button" onClick={() => setMenuOpen(!menuOpen)} aria-label="More options" aria-haspopup="menu" aria-expanded={menuOpen} className={`-mr-1 flex size-7 items-center justify-center rounded-full text-emerald-100/70 transition-colors hover:bg-[#0d2e26] hover:text-lime-400 cursor-pointer ${FOCUS}`}>
+              <MoreHorizontal width={18} height={18} />
+            </button>
+            {menuOpen && (
+              <div role="menu" className="absolute right-0 z-20 mt-1 w-44 rounded-2xl border border-emerald-800/80 bg-[#051813] p-1.5 text-xs shadow-2xl">
+                <button type="button" role="menuitem" onClick={handleShare} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-semibold text-white transition-colors hover:bg-[#082d22] hover:text-lime-400 cursor-pointer">
+                  <Share2 width={14} height={14} className="text-lime-400" /> Copy review
+                </button>
+                <button type="button" role="menuitem" aria-disabled="true" title="Coming soon" className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-semibold text-red-300 ${OFF}`}>
+                  <Flag width={14} height={14} /> Report <span className="ml-auto text-[10px] font-normal text-emerald-200/60">soon</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </header>
 
       {foods.length > 0 && (
@@ -54,6 +97,15 @@ function PostCard({ post, urlMap, onOpenPhoto }: any) {
       <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-emerald-50">{post.comment}</p>
 
       <PhotoGrid urls={urls} onOpen={(i) => onOpenPhoto(urls.filter(Boolean), urls.slice(0, i).filter(Boolean).length)} />
+
+      {/* actions: heart and comments are switched off until their database step; share works now */}
+      <div className="mt-3 flex items-center gap-1">
+        <button type="button" aria-disabled="true" title="Coming soon" aria-label="Like (coming soon)" className={`${ACTION} ${OFF}`}><Heart width={16} height={16} /></button>
+        <button type="button" aria-disabled="true" title="Coming soon" aria-label="Comment (coming soon)" className={`${ACTION} ${OFF}`}><MessageCircle width={16} height={16} /></button>
+        <button type="button" onClick={handleShare} aria-label="Copy review to share" title="Copy review" className={`${ACTION} transition-colors hover:text-lime-400 cursor-pointer`}>
+          {copied ? <><Check width={16} height={16} className="text-lime-400" /> Copied</> : <Share2 width={16} height={16} />}
+        </button>
+      </div>
 
       {reply && <OfficialReply reply={reply} />}
     </article>
