@@ -1,82 +1,45 @@
-// VEYNS Admin, Inventory: the Inventory screen (Step B12).
+// VEYNS Admin, Inventory: the Inventory screen (Steps B12 and B12b).
 // Two layouts share the same panels:
-// - fit (large screen, set by the dashboard): the page does not scroll. Heading, stat cards and Bowls Left Right Now on top; then
-//   Pantry | Recipe Editor; then Auto Shopping List | Stock Ledger. Tables scroll inside their panels.
+// - fit (large screen, set by the dashboard): the page does not scroll. Heading and stat cards on top; below them
+//   Ingredient Stock (with a short list of recent stock movements under it) | Recipe costing. Tables scroll inside their panels.
 // - normal (smaller screens): the same panels stacked; the page scrolls.
 // Data comes from useAdminInventoryData (sample data for now).
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Package, RefreshCw, ShoppingCart } from 'lucide-react';
-import { byIdMap, inventoryStats, shoppingCsv, shoppingList } from './admin-inventory-calc';
+import { useMemo, useState } from 'react';
+import { Package, RefreshCw } from 'lucide-react';
+import { inventoryStats } from './admin-inventory-calc';
 import { useAdminInventoryData } from './admin-inventory-data';
-import { AdminInventoryBowls } from './admin-inventory-bowls';
 import { AdminInventoryDialog } from './admin-inventory-dialog';
-import type { InventoryDialogMode } from './admin-inventory-dialog';
+import type { InventoryDialogState } from './admin-inventory-dialog';
 import { AdminInventoryLedger } from './admin-inventory-ledger';
 import { AdminInventoryPantry } from './admin-inventory-pantry';
 import { AdminInventoryRecipe } from './admin-inventory-recipe';
-import { AdminInventoryShopping } from './admin-inventory-shopping';
 import { AdminInventoryStatCards } from './admin-inventory-stat-cards';
 
 type Props = { active?: boolean; fit?: boolean };
 
 export function AdminInventoryTab({ active = true, fit = false }: Props) {
-  const { ingredients, dishes, ledger, restock, waste, updateIngredient, cook, updateRecipe, resetSample } = useAdminInventoryData();
+  const { ingredients, dishes, ledger, restock, waste, saveIngredient, cook, saveRecipe, addDish, resetSample } = useAdminInventoryData();
   const [selectedDishId, setSelectedDishId] = useState<string>(dishes[0]?.id ?? '');
-  const [rush, setRush] = useState(false);
-  const [dialog, setDialog] = useState<{ mode: InventoryDialogMode; id: string | null } | null>(null);
-  const [unchecked, setUnchecked] = useState<Set<string>>(() => new Set());
-  const [flash, setFlash] = useState(false);
-  const flashTimer = useRef<number | undefined>(undefined);
-  const shoppingRef = useRef<HTMLElement>(null);
-
-  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
+  const [dialog, setDialog] = useState<InventoryDialogState | null>(null);
 
   const stats = useMemo(() => inventoryStats(ingredients, dishes), [ingredients, dishes]);
-  const shopping = useMemo(() => shoppingList(ingredients), [ingredients]);
-  const selected = dishes.find((d) => d.id === selectedDishId) ?? dishes[0];
+  const selectedId = dishes.some((d) => d.id === selectedDishId) ? selectedDishId : dishes[0]?.id ?? '';
 
-  const toggleChecked = (id: string) =>
-    setUnchecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  const restockChecked = () => {
-    shopping.filter((it) => !unchecked.has(it.ingredient.id)).forEach((it) => restock(it.ingredient.id, it.qty));
-  };
-
-  const exportShopping = () => {
-    const chosen = shopping.filter((it) => !unchecked.has(it.ingredient.id));
-    const blob = new Blob([shoppingCsv(chosen)], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `veyns-shopping-list-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  };
-
-  // The Shopping List button brings the panel into view and lights it for a moment (on the fit layout it is already on screen).
-  const showShopping = () => {
-    shoppingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    setFlash(true);
-    window.clearTimeout(flashTimer.current);
-    flashTimer.current = window.setTimeout(() => setFlash(false), 1400);
-  };
-
-  const handleReset = () => {
-    resetSample();
-    setUnchecked(new Set());
-    setRush(false);
-  };
-
-  const sampleIds = useMemo(() => byIdMap(ingredients), [ingredients]);
-  const dialogOpen = dialog !== null && ingredients.length > 0 && (dialog.id === null || sampleIds.has(dialog.id));
+  const pantry = (
+    <AdminInventoryPantry
+      ingredients={ingredients}
+      fill={fit}
+      onAdd={(id) => setDialog({ mode: 'restock', id })}
+      onWaste={(id) => setDialog({ mode: 'waste', id })}
+      onEdit={(id) => setDialog({ mode: 'edit', id })}
+      onNew={() => setDialog({ mode: 'new' })}
+    />
+  );
+  const ledgerPanel = <AdminInventoryLedger entries={ledger} fill={fit} />;
+  const recipe = (
+    <AdminInventoryRecipe dishes={dishes} selectedId={selectedId} onSelect={setSelectedDishId} ingredients={ingredients} fill={fit} onSave={saveRecipe} onCook={cook} onAddDish={addDish} />
+  );
 
   return (
     <div className={!active ? 'hidden' : fit ? 'flex h-full min-h-0 flex-col gap-3' : 'space-y-4'}>
@@ -86,7 +49,7 @@ export function AdminInventoryTab({ active = true, fit = false }: Props) {
             <Package className="h-6 w-6 text-lime-400" aria-hidden="true" />
             Inventory
           </h1>
-          <p className="text-xs text-zinc-400">Track ingredients, manage recipes, and know how many bowls you can cook right now.</p>
+          <p className="text-xs text-zinc-400">Ingredient stock and recipe costing by batch, like your Excel sheet.</p>
         </div>
 
         <div className="min-w-0 flex-1">
@@ -95,56 +58,42 @@ export function AdminInventoryTab({ active = true, fit = false }: Props) {
           </p>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          <button type="button" onClick={showShopping} className="flex items-center gap-1.5 rounded-xl bg-amber-400/15 px-3 py-2 text-xs font-extrabold text-amber-300 hover:bg-amber-400/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400">
-            <ShoppingCart className="h-4 w-4" aria-hidden="true" />
-            Shopping List ({shopping.length})
-          </button>
-          <button type="button" onClick={() => setDialog({ mode: 'restock', id: null })} className="rounded-xl bg-lime-400 px-3 py-2 text-xs font-extrabold text-black hover:bg-lime-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400">
-            + Restock Items
-          </button>
-          <button type="button" onClick={handleReset} aria-label="Reset sample data" title="Reset sample data" className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12] focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400">
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
+        <button type="button" onClick={resetSample} aria-label="Reset sample data" title="Reset sample data" className="ml-auto flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12] focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400">
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+        </button>
       </div>
 
       <div className="shrink-0">
         <AdminInventoryStatCards stats={stats} />
       </div>
 
-      <AdminInventoryBowls dishes={dishes} ingredients={ingredients} selectedId={selected ? selected.id : ''} onSelect={setSelectedDishId} rush={rush} onToggleRush={() => setRush((r) => !r)} onCook={cook} />
+      {fit ? (
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] grid-rows-[minmax(0,1fr)] gap-3">
+          <div className="flex min-h-0 min-w-0 flex-col gap-3">
+            <div className="min-h-0 flex-1">{pantry}</div>
+            <div className="h-36 shrink-0">{ledgerPanel}</div>
+          </div>
+          <div className="min-h-0 min-w-0">{recipe}</div>
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+            <div className="min-w-0">{pantry}</div>
+            <div className="min-w-0">{recipe}</div>
+          </div>
+          {ledgerPanel}
+        </>
+      )}
 
-      <div className={fit ? 'grid min-h-0 flex-1 grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-3' : 'grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]'}>
-        <div className="min-h-0 min-w-0">
-          <AdminInventoryPantry ingredients={ingredients} fill={fit} onAdd={(id) => setDialog({ mode: 'restock', id })} onWaste={(id) => setDialog({ mode: 'waste', id })} onEdit={(id) => setDialog({ mode: 'edit', id })} />
-        </div>
-        <div className="min-h-0 min-w-0">
-          {selected && (
-            <AdminInventoryRecipe key={`${selected.id}:${selected.recipe.map((r) => r.qty).join('-')}`} dish={selected} ingredients={ingredients} fill={fit} onSave={updateRecipe} />
-          )}
-        </div>
-      </div>
-
-      <div className={fit ? 'grid h-44 shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-3' : 'grid gap-4 lg:grid-cols-2'}>
-        <div className="min-h-0 min-w-0">
-          <AdminInventoryShopping items={shopping} unchecked={unchecked} onToggle={toggleChecked} onRestock={restockChecked} onExport={exportShopping} flash={flash} sectionRef={shoppingRef} fill={fit} />
-        </div>
-        <div className="min-h-0 min-w-0">
-          <AdminInventoryLedger entries={ledger} fill={fit} />
-        </div>
-      </div>
-
-      {dialogOpen && dialog && (
+      {dialog && (
         <AdminInventoryDialog
-          key={`${dialog.mode}:${dialog.id ?? 'any'}`}
-          mode={dialog.mode}
+          key={dialog.mode === 'new' ? 'new' : `${dialog.mode}:${dialog.id}`}
+          state={dialog}
           ingredients={ingredients}
-          ingredientId={dialog.id}
           onClose={() => setDialog(null)}
           onRestock={restock}
           onWaste={waste}
-          onEdit={updateIngredient}
+          onSave={saveIngredient}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-// VEYNS Admin, Inventory: the five stat cards with a small 7-day chart each (Step B12).
+// VEYNS Admin, Inventory: the five stat cards with a small 7-day chart each (Steps B12 and B12b).
 // The six earlier points of each chart are sample data; the last point is the live number.
 import type { ReactNode } from 'react';
 import { AlertTriangle, Ban, Coins, Percent, UtensilsCrossed } from 'lucide-react';
@@ -40,7 +40,7 @@ export function AdminInventoryStatCards({ stats }: { stats: InventoryStats }) {
       <StatCard icon={<Coins className="h-5 w-5" />} iconCls="bg-lime-400/15 text-lime-300" label="Total Stock Value" value={peso(stats.totalValue)} values={[...h.value, stats.totalValue]} stroke="#a3e635" />
       <StatCard icon={<AlertTriangle className="h-5 w-5" />} iconCls="bg-amber-400/15 text-amber-300" label="Ingredients Below Par" value={String(stats.belowPar)} values={[...h.belowPar, stats.belowPar]} stroke="#fbbf24" />
       <StatCard icon={<Ban className="h-5 w-5" />} iconCls="bg-red-400/15 text-red-300" label="Out of Stock" value={String(stats.out)} values={[...h.out, stats.out]} stroke="#f87171" />
-      <StatCard icon={<UtensilsCrossed className="h-5 w-5" />} iconCls="bg-emerald-400/15 text-emerald-300" label={`Mains Cookable Now (of ${stats.dishCount})`} value={String(stats.cookable)} values={[...h.cookable, stats.cookable]} stroke="#34d399" />
+      <StatCard icon={<UtensilsCrossed className="h-5 w-5" />} iconCls="bg-emerald-400/15 text-emerald-300" label={`Recipes Cookable Now (of ${stats.dishCount})`} value={String(stats.cookable)} values={[...h.cookable, stats.cookable]} stroke="#34d399" />
       <StatCard icon={<Percent className="h-5 w-5" />} iconCls="bg-sky-400/15 text-sky-300" label="Avg Food Cost" value={`${stats.avgFoodCostPct.toFixed(1)}%`} values={[...h.foodCost, Number(stats.avgFoodCostPct.toFixed(1))]} stroke="#38bdf8" />
     </div>
   );

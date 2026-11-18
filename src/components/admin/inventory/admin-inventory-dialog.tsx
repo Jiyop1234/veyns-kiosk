@@ -1,81 +1,142 @@
-// VEYNS Admin, Inventory: one small dialog for the three stock actions (Step B12): add stock, record waste, edit par level and unit cost.
-// The parent renders it only while it is open, so the fields below always start from the chosen ingredient.
+// VEYNS Admin, Inventory: one dialog for the stock actions (Step B12b): add stock, record waste, edit an ingredient, new ingredient.
+// Amounts are typed freely: add only what you really added (half a pack is fine). No lists to choose from.
+// The parent renders it only while it is open, so the fields always start from the chosen ingredient.
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { formatQty } from './admin-inventory-calc';
-import type { Ingredient } from './admin-inventory-types';
+import { SECTIONS } from './admin-inventory-types';
+import type { Ingredient, IngredientInput, Section } from './admin-inventory-types';
 
-export type InventoryDialogMode = 'restock' | 'waste' | 'edit';
+export type InventoryDialogState = { mode: 'restock' | 'waste' | 'edit'; id: string } | { mode: 'new' };
 
 type Props = {
-  mode: InventoryDialogMode;
+  state: InventoryDialogState;
   ingredients: Ingredient[];
-  ingredientId: string | null; // null = opened from the top Restock Items button: the ingredient is chosen here
   onClose: () => void;
-  onRestock: (id: string, amount: number) => boolean;
+  onRestock: (id: string, amount: number, paid?: number) => boolean;
   onWaste: (id: string, amount: number) => boolean;
-  onEdit: (id: string, par: number, unitCost: number) => boolean;
+  onSave: (input: IngredientInput, id: string | null) => string | null;
 };
 
-const TITLES: Record<InventoryDialogMode, string> = { restock: 'Add stock', waste: 'Record waste', edit: 'Edit ingredient' };
+const num = (s: string): number => (s.trim() === '' ? NaN : Number(s));
+const field = 'h-9 w-full rounded-lg bg-white/[0.08] px-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 [color-scheme:dark]';
+const label = 'font-bold uppercase tracking-wider text-lime-400';
 
-export function AdminInventoryDialog({ mode, ingredients, ingredientId, onClose, onRestock, onWaste, onEdit }: Props) {
-  const [id, setId] = useState<string>(ingredientId ?? ingredients[0]?.id ?? '');
-  const start = ingredients.find((i) => i.id === (ingredientId ?? ''));
+export function AdminInventoryDialog({ state, ingredients, onClose, onRestock, onWaste, onSave }: Props) {
+  const ing = state.mode === 'new' ? undefined : ingredients.find((i) => i.id === state.id);
   const [amount, setAmount] = useState('');
-  const [par, setPar] = useState(start ? String(start.par) : '');
-  const [cost, setCost] = useState(start ? String(start.unitCost) : '');
+  const [paid, setPaid] = useState('');
+  const [name, setName] = useState(ing?.name ?? '');
+  const [category, setCategory] = useState<Section>(ing?.category ?? 'Marinade');
+  const [unit, setUnit] = useState(ing?.unit ?? 'g');
+  const [price, setPrice] = useState(ing ? String(ing.price) : '');
+  const [packs, setPacks] = useState(ing ? String(ing.packs) : '1');
+  const [bought, setBought] = useState(ing ? String(ing.amount) : '');
+  const [stock, setStock] = useState(ing ? String(ing.stock) : '');
+  const [par, setPar] = useState(ing ? String(ing.par) : '');
   const [error, setError] = useState('');
 
-  const ing = ingredients.find((i) => i.id === id);
-  const field = 'h-9 w-full rounded-lg bg-white/[0.08] px-3 text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 [color-scheme:dark]';
+  const editing = state.mode === 'edit' || state.mode === 'new';
+  const typed = num(amount);
 
   const submit = () => {
-    if (!ing) return;
-    let ok = false;
-    if (mode === 'edit') {
-      const p = Number(par), c = Number(cost);
-      if (!(p >= 0) || !(c >= 0) || par.trim() === '' || cost.trim() === '') { setError('Enter a par level and a unit cost of 0 or more.'); return; }
-      ok = onEdit(ing.id, p, c);
-    } else {
-      const n = Number(amount);
-      if (!(n > 0)) { setError('Enter an amount greater than 0.'); return; }
-      ok = mode === 'restock' ? onRestock(ing.id, n) : onWaste(ing.id, n);
-      if (!ok) { setError(mode === 'waste' ? 'There is no stock of this ingredient to remove.' : 'This could not be saved.'); return; }
+    if (state.mode === 'restock' || state.mode === 'waste') {
+      if (!ing) return;
+      if (!(typed > 0)) { setError('Type an amount greater than 0.'); return; }
+      if (state.mode === 'restock') {
+        const p = paid.trim() === '' ? undefined : num(paid);
+        if (p !== undefined && !(p >= 0)) { setError('The amount paid must be 0 or more, or left empty.'); return; }
+        if (onRestock(ing.id, typed, p)) onClose();
+        else setError('This could not be saved.');
+      } else if (onWaste(ing.id, typed)) onClose();
+      else setError('There is no stock of this ingredient to remove.');
+      return;
     }
-    if (ok) onClose();
+    const p = num(price), k = num(packs), b = num(bought);
+    const s = stock.trim() === '' && state.mode === 'new' ? b : num(stock);
+    const pr = par.trim() === '' ? 0 : num(par);
+    if (!name.trim()) { setError('Type the ingredient name.'); return; }
+    if (!unit.trim()) { setError('Type the unit (g, ml, pcs, cloves, sachet...).'); return; }
+    if (!(p >= 0)) { setError('Type the price of one pack (0 if not priced yet).'); return; }
+    if (!(k > 0)) { setError('Type how many packs were bought.'); return; }
+    if (!(b > 0)) { setError('Type the total amount bought, in the unit above.'); return; }
+    if (!(s >= 0)) { setError('Type the stock on hand (0 or more).'); return; }
+    if (!(pr >= 0)) { setError('The par level must be 0 or more.'); return; }
+    const err = onSave({ name, category, unit, stock: s, par: pr, price: p, packs: k, amount: b }, state.mode === 'edit' ? state.id : null);
+    if (err) setError(err);
+    else onClose();
   };
+
+  const title = state.mode === 'new' ? 'New ingredient' : !ing ? 'Ingredient' : state.mode === 'restock' ? `Add stock: ${ing.name}` : state.mode === 'waste' ? `Record waste: ${ing.name}` : `Edit ${ing.name}`;
 
   return (
     <Dialog open onOpenChange={(open: boolean) => { if (!open) onClose(); }}>
-      <DialogContent className="w-full max-w-sm rounded-3xl bg-[#141817] p-5 text-white">
-        <DialogTitle className="font-display text-lg font-extrabold text-white">{TITLES[mode]}</DialogTitle>
+      <DialogContent className={`w-full rounded-3xl bg-[#141817] p-5 text-white ${editing ? 'max-w-md' : 'max-w-sm'}`}>
+        <DialogTitle className="font-display text-lg font-extrabold text-white">{title}</DialogTitle>
         <DialogDescription className="text-xs text-zinc-400">Sample data: this is not saved to the database yet.</DialogDescription>
         <div className="space-y-3 text-xs">
-          <label className="block space-y-1">
-            <span className="font-bold uppercase tracking-wider text-lime-400">Ingredient</span>
-            <select value={id} disabled={ingredientId !== null} onChange={(e) => { setId(e.target.value); setError(''); }} className={field}>
-              {ingredients.map((i) => (
-                <option key={i.id} value={i.id} className="bg-[#141817]">{i.name} ({formatQty(i.stock, i.unit)} in stock)</option>
-              ))}
-            </select>
-          </label>
-          {mode === 'edit' ? (
-            <div className="grid grid-cols-2 gap-3">
+          {(state.mode === 'restock' || state.mode === 'waste') && ing && (
+            <>
+              <p className="rounded-lg bg-white/[0.06] px-3 py-2 text-zinc-300">
+                Stock now: <strong className="text-white">{formatQty(ing.stock, ing.unit)}</strong>
+                {typed > 0 && <> → <strong className="text-lime-300">{formatQty(state.mode === 'restock' ? ing.stock + typed : Math.max(0, ing.stock - typed), ing.unit)}</strong></>}
+              </p>
               <label className="block space-y-1">
-                <span className="font-bold uppercase tracking-wider text-lime-400">Par level ({ing?.unit})</span>
-                <input type="number" min="0" step="any" value={par} onChange={(e) => setPar(e.target.value)} className={field} />
+                <span className={label}>{state.mode === 'restock' ? 'Amount added' : 'Amount removed'} ({ing.unit})</span>
+                <input type="number" min="0" step="any" autoFocus value={amount} onChange={(e) => { setAmount(e.target.value); setError(''); }} placeholder={state.mode === 'restock' ? 'Only what you really added, e.g. half a pack' : ''} className={field} />
               </label>
+              {state.mode === 'restock' && (
+                <label className="block space-y-1">
+                  <span className={label}>Total paid ₱ (optional)</span>
+                  <input type="number" min="0" step="any" value={paid} onChange={(e) => setPaid(e.target.value)} placeholder="If typed, the cost per unit follows this purchase" className={field} />
+                </label>
+              )}
+            </>
+          )}
+          {editing && (
+            <>
               <label className="block space-y-1">
-                <span className="font-bold uppercase tracking-wider text-lime-400">Cost per {ing?.unit} (₱)</span>
-                <input type="number" min="0" step="any" value={cost} onChange={(e) => setCost(e.target.value)} className={field} />
+                <span className={label}>Ingredient</span>
+                <input type="text" value={name} onChange={(e) => { setName(e.target.value); setError(''); }} placeholder="e.g. Pork Belly" autoFocus={state.mode === 'new'} className={field} />
               </label>
-            </div>
-          ) : (
-            <label className="block space-y-1">
-              <span className="font-bold uppercase tracking-wider text-lime-400">Amount to {mode === 'restock' ? 'add' : 'remove'} ({ing?.unit})</span>
-              <input type="number" min="0" step="any" autoFocus value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
-            </label>
+              <div className="space-y-1">
+                <span className={label}>Category</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {SECTIONS.map((c) => (
+                    <button key={c} type="button" aria-pressed={category === c} onClick={() => setCategory(c)} className={`rounded-lg px-2.5 py-1 text-[11px] font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 ${category === c ? 'bg-lime-400 text-black' : 'bg-white/[0.08] text-zinc-200 hover:bg-white/[0.14]'}`}>{c}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <label className="block space-y-1">
+                  <span className={label}>Unit</span>
+                  <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="g, ml, pcs" className={field} />
+                </label>
+                <label className="block space-y-1">
+                  <span className={label}>Price (pack)</span>
+                  <input type="number" min="0" step="any" value={price} onChange={(e) => setPrice(e.target.value)} className={field} />
+                </label>
+                <label className="block space-y-1">
+                  <span className={label}>Qty bought</span>
+                  <input type="number" min="0" step="any" value={packs} onChange={(e) => setPacks(e.target.value)} className={field} />
+                </label>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <label className="block space-y-1">
+                  <span className={label}>Unit bought</span>
+                  <input type="number" min="0" step="any" value={bought} onChange={(e) => setBought(e.target.value)} placeholder="Total amount" className={field} />
+                </label>
+                <label className="block space-y-1">
+                  <span className={label}>Stock now</span>
+                  <input type="number" min="0" step="any" value={stock} onChange={(e) => setStock(e.target.value)} placeholder={state.mode === 'new' ? 'Same as bought' : ''} className={field} />
+                </label>
+                <label className="block space-y-1">
+                  <span className={label}>Par level</span>
+                  <input type="number" min="0" step="any" value={par} onChange={(e) => setPar(e.target.value)} placeholder="Low stock at" className={field} />
+                </label>
+              </div>
+              <p className="text-zinc-500">Price × qty bought is the overall cost. Unit bought is the total amount of all the packs, as in your sheet.</p>
+            </>
           )}
           {error && <p className="rounded-lg bg-red-400/10 px-3 py-2 text-red-300">{error}</p>}
           <div className="flex gap-2 pt-1">

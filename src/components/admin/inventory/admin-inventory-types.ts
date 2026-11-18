@@ -1,34 +1,39 @@
-// VEYNS Admin, Inventory: the shapes of the data shown on the Inventory screen (Step B12, sample data for now).
+// VEYNS Admin, Inventory: the shapes of the data on the Inventory screen (Steps B12 and B12b, sample data for now).
+// The model follows the owner's Excel costing sheet (Pork Sugba): ingredients are bought in packs, recipes are costed by batch.
 
-export type IngredientCategory = 'Protein' | 'Produce' | 'Sauce' | 'Dairy' | 'Grain' | 'Packaging';
+// The CATEGORY column of the sheet. The same five names group the pantry and the lines of a recipe.
+export type Section = 'Marinade' | 'Garnish' | 'Sauce' | 'Packaging' | 'Utilities';
 
-export const INGREDIENT_CATEGORIES: IngredientCategory[] = ['Protein', 'Produce', 'Sauce', 'Dairy', 'Grain', 'Packaging'];
-
-// g and ml are shown as kg and L from 1,000 up; pcs stays pcs.
-export type StockUnit = 'g' | 'ml' | 'pcs';
+export const SECTIONS: Section[] = ['Marinade', 'Garnish', 'Sauce', 'Packaging', 'Utilities'];
 
 export type Ingredient = {
   id: string;
-  name: string;
-  category: IngredientCategory;
-  unit: StockUnit;
-  stock: number; // in the unit above
-  par: number; // the level below which the ingredient needs restocking
-  unitCost: number; // pesos per one unit (per g, per ml or per pcs)
+  name: string; // DESCRIPTION
+  category: Section;
+  unit: string; // g, ml, pcs, cloves, sachet, bag...
+  stock: number; // what is on the shelf now, in the unit above
+  par: number; // low-stock level
+  // The last purchase, as in the sheet:
+  price: number; // PRICE: one pack
+  packs: number; // QTY BOUGHT: number of packs
+  amount: number; // UNIT BOUGHT: total amount of all those packs, in the unit above
 };
 
-export type RecipeLine = { ingredientId: string; qty: number }; // qty per one bowl, in the ingredient's unit
+export type IngredientInput = Omit<Ingredient, 'id'>;
 
-export type DishCategory = 'Rice Bowls' | 'Noodle Bowls';
+// One row of a recipe. "used" is the amount that is enough for "serves" bowls:
+// 100 g of pork belly for 1 bowl; 285 ml of soy sauce for the whole 20-bowl batch; 2 bags of charcoal for the batch.
+export type RecipeLine = { ingredientId: string; section: Section; used: number; serves: number };
 
 export type Dish = {
   id: string;
   name: string;
-  category: DishCategory;
-  price: number; // selling price of one bowl
-  description: string;
-  recipe: RecipeLine[];
+  bowls: number; // BOWLS YIELDED by one batch
+  price: number; // SELLING PRICE of one bowl
+  lines: RecipeLine[];
 };
+
+export type RecipePatch = { lines: RecipeLine[]; bowls: number; price: number };
 
 export type LedgerAction = 'Restock' | 'Usage' | 'Waste' | 'Adjust';
 
@@ -42,8 +47,6 @@ export type InventoryLedgerEntry = {
 };
 
 export type StockStatus = 'OK' | 'LOW' | 'CRITICAL' | 'OUT';
-
-export type ShoppingItem = { ingredient: Ingredient; qty: number; cost: number };
 
 export type InventoryStats = {
   totalValue: number;

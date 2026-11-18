@@ -1,47 +1,64 @@
-// VEYNS Admin, Inventory: the sample data (Step B12). Nothing here comes from the database.
-import type { Dish, Ingredient, InventoryLedgerEntry } from './admin-inventory-types';
+// VEYNS Admin, Inventory: the sample data (Steps B12 and B12b). Nothing here comes from the database.
+// Prices, amounts, "used" and the 20-bowl batch are the owner's Excel sheet for Pork Sugba. The stock levels are invented.
+import type { Dish, Ingredient, InventoryLedgerEntry, RecipeLine, Section } from './admin-inventory-types';
 
+const ing = (id: string, name: string, category: Section, unit: string, price: number, packs: number, amount: number, stock: number, par: number): Ingredient => ({
+  id, name, category, unit, price, packs, amount, stock, par,
+});
+
+//                id              name              category     unit      price packs amount  stock  par
 export const SAMPLE_INGREDIENTS: Ingredient[] = [
-  { id: 'pork-belly', name: 'Pork Belly', category: 'Protein', unit: 'g', stock: 3600, par: 2000, unitCost: 0.32 },
-  { id: 'cheese', name: 'Cheese', category: 'Dairy', unit: 'g', stock: 90, par: 200, unitCost: 0.8 },
-  { id: 'eggs', name: 'Eggs', category: 'Protein', unit: 'pcs', stock: 12, par: 12, unitCost: 8 },
-  { id: 'noodles', name: 'Noodles', category: 'Grain', unit: 'g', stock: 3600, par: 3000, unitCost: 0.12 },
-  { id: 'green-onions', name: 'Green Onions', category: 'Produce', unit: 'g', stock: 250, par: 200, unitCost: 0.3 },
-  { id: 'rice', name: 'Rice', category: 'Grain', unit: 'g', stock: 9000, par: 6000, unitCost: 0.04 },
-  { id: 'chicken', name: 'Chicken Thigh', category: 'Protein', unit: 'g', stock: 2400, par: 1500, unitCost: 0.28 },
-  { id: 'pork-cutlet', name: 'Pork Cutlet', category: 'Protein', unit: 'pcs', stock: 30, par: 20, unitCost: 18 },
-  { id: 'soy', name: 'Soy Sauce', category: 'Sauce', unit: 'ml', stock: 1800, par: 1000, unitCost: 0.06 },
-  { id: 'buldak-sauce', name: 'Buldak Sauce', category: 'Sauce', unit: 'ml', stock: 450, par: 500, unitCost: 0.45 },
-  { id: 'broth', name: 'Ramen Broth', category: 'Sauce', unit: 'ml', stock: 9000, par: 4000, unitCost: 0.03 },
-  { id: 'garlic', name: 'Garlic', category: 'Produce', unit: 'g', stock: 600, par: 300, unitCost: 0.12 },
-  { id: 'kimchi', name: 'Kimchi', category: 'Produce', unit: 'g', stock: 0, par: 500, unitCost: 0.25 },
-  { id: 'bowl', name: 'Takeaway Bowl', category: 'Packaging', unit: 'pcs', stock: 150, par: 100, unitCost: 4 },
+  ing('pork-belly', 'Pork Belly', 'Marinade', 'g', 560, 1, 2000, 1500, 500),
+  ing('oyster-sauce', 'Oyster Sauce', 'Marinade', 'g', 196, 1, 765, 500, 150),
+  ing('brown-sugar', 'Brown Sugar', 'Marinade', 'g', 18, 1, 250, 150, 50),
+  ing('magic-sarap', 'Magic Sarap', 'Marinade', 'sachet', 6, 3, 3, 3, 3),
+  ing('garlic', 'Garlic', 'Marinade', 'cloves', 7, 2, 20, 14, 6),
+  ing('calamansi', 'Calamansi', 'Marinade', 'pcs', 45, 1, 26, 6, 6),
+  ing('cucumber', 'Cucumber', 'Garnish', 'g', 22, 2, 550, 300, 100),
+  ing('green-onion', 'Green Onion', 'Garnish', 'g', 45, 2, 64, 40, 20),
+  ing('chili', 'Chili', 'Garnish', 'pcs', 10, 1, 48, 30, 10),
+  ing('soy-sauce', 'Soy Sauce', 'Sauce', 'ml', 57, 1, 1000, 600, 250),
+  ing('vinegar', 'Vinegar', 'Sauce', 'ml', 47, 1, 1000, 700, 250),
+  ing('onion', 'Onion', 'Sauce', 'g', 14, 2, 154, 240, 60),
+  ing('paper-bowl', 'Paper Bowl', 'Packaging', 'pcs', 10, 1, 1, 40, 20),
+  ing('spork', 'Spork', 'Packaging', 'pcs', 2, 1, 1, 60, 20),
+  ing('sauce-cup', 'Sauce Cup', 'Packaging', 'pcs', 2, 1, 1, 45, 20),
+  ing('paper-bag', 'Paper Bag', 'Packaging', 'pcs', 1, 1, 1, 38, 20),
+  ing('rice', 'Rice', 'Utilities', 'g', 114, 1, 2000, 2640, 1000),
+  ing('charcoal', 'Charcoal', 'Utilities', 'bag', 20, 2, 2, 3, 2),
+  ing('butane', 'Butane', 'Utilities', 'pcs', 0, 1, 1, 0, 1), // no price in the sheet yet
 ];
 
+const line = (ingredientId: string, section: Section, used: number, serves: number): RecipeLine => ({ ingredientId, section, used, serves });
+
+// serves 1 = per bowl; 20 = per batch of 20 bowls; 50 = the sauce batch (1,000 ml = 50 sauce cups of 20 g).
 export const SAMPLE_DISHES: Dish[] = [
   {
-    id: 'pork-sugba', name: 'Pork Sugba', category: 'Rice Bowls', price: 149, description: 'Grilled pork with special sinugba sauce.',
-    recipe: [{ ingredientId: 'pork-belly', qty: 120 }, { ingredientId: 'rice', qty: 180 }, { ingredientId: 'eggs', qty: 1 }, { ingredientId: 'soy', qty: 20 }, { ingredientId: 'garlic', qty: 5 }, { ingredientId: 'bowl', qty: 1 }],
-  },
-  {
-    id: 'cheesy-buldak', name: 'Cheesy Buldak', category: 'Noodle Bowls', price: 159, description: 'Spicy buldak noodles topped with melted cheese.',
-    recipe: [{ ingredientId: 'noodles', qty: 150 }, { ingredientId: 'buldak-sauce', qty: 40 }, { ingredientId: 'cheese', qty: 30 }, { ingredientId: 'green-onions', qty: 5 }, { ingredientId: 'bowl', qty: 1 }],
-  },
-  {
-    id: 'katsu-don', name: 'Katsu Don', category: 'Rice Bowls', price: 155, description: 'Crispy pork cutlet and egg over steamed rice.',
-    recipe: [{ ingredientId: 'rice', qty: 180 }, { ingredientId: 'pork-cutlet', qty: 1 }, { ingredientId: 'eggs', qty: 2 }, { ingredientId: 'soy', qty: 15 }, { ingredientId: 'bowl', qty: 1 }],
-  },
-  {
-    id: 'ramen-bowl', name: 'Ramen Bowl', category: 'Noodle Bowls', price: 169, description: 'Rich pork broth, noodles and sliced belly.',
-    recipe: [{ ingredientId: 'noodles', qty: 120 }, { ingredientId: 'broth', qty: 350 }, { ingredientId: 'pork-belly', qty: 60 }, { ingredientId: 'green-onions', qty: 8 }, { ingredientId: 'bowl', qty: 1 }],
-  },
-  {
-    id: 'chicken-teriyaki', name: 'Chicken Teriyaki', category: 'Rice Bowls', price: 145, description: 'Glazed chicken thigh over steamed rice.',
-    recipe: [{ ingredientId: 'chicken', qty: 150 }, { ingredientId: 'rice', qty: 180 }, { ingredientId: 'soy', qty: 25 }, { ingredientId: 'garlic', qty: 5 }, { ingredientId: 'bowl', qty: 1 }],
-  },
-  {
-    id: 'kimchi-fried-rice', name: 'Kimchi Fried Rice', category: 'Rice Bowls', price: 135, description: 'Garlic fried rice with kimchi and a sunny egg.',
-    recipe: [{ ingredientId: 'rice', qty: 180 }, { ingredientId: 'kimchi', qty: 60 }, { ingredientId: 'eggs', qty: 1 }, { ingredientId: 'garlic', qty: 5 }, { ingredientId: 'bowl', qty: 1 }],
+    id: 'pork-sugba',
+    name: 'Pork Sugba',
+    bowls: 20,
+    price: 99,
+    lines: [
+      line('pork-belly', 'Marinade', 100, 1),
+      line('soy-sauce', 'Marinade', 285, 20),
+      line('oyster-sauce', 'Marinade', 90, 20),
+      line('brown-sugar', 'Marinade', 40, 20),
+      line('magic-sarap', 'Marinade', 3, 20),
+      line('garlic', 'Marinade', 12, 20),
+      line('calamansi', 'Marinade', 6, 20),
+      line('cucumber', 'Garnish', 4, 1),
+      line('green-onion', 'Garnish', 4, 1),
+      line('chili', 'Garnish', 1, 1),
+      line('soy-sauce', 'Sauce', 526, 50),
+      line('vinegar', 'Sauce', 474, 50),
+      line('onion', 'Sauce', 20, 1),
+      line('paper-bowl', 'Packaging', 1, 1),
+      line('spork', 'Packaging', 1, 1),
+      line('sauce-cup', 'Packaging', 1, 1),
+      line('paper-bag', 'Packaging', 1, 1),
+      line('rice', 'Utilities', 220, 1),
+      line('charcoal', 'Utilities', 2, 20), // charcoal is costed by batch
+    ],
   },
 ];
 
@@ -50,21 +67,20 @@ const HOUR = 60 * MIN;
 
 export function makeSampleLedger(now: number): InventoryLedgerEntry[] {
   const rows: [number, InventoryLedgerEntry['action'], string, string, string][] = [
-    [20 * MIN, 'Restock', 'Pork Belly', '+1 kg', 'Admin'],
-    [55 * MIN, 'Usage', 'Pork Sugba', '-5 bowls', 'System'],
-    [2 * HOUR, 'Waste', 'Cheese', '-50 g', 'Admin'],
-    [5 * HOUR, 'Restock', 'Eggs', '+30 pcs', 'Admin'],
-    [26 * HOUR, 'Usage', 'Ramen Bowl', '-8 bowls', 'System'],
-    [29 * HOUR, 'Adjust', 'Green Onions', '+20 g', 'Admin'],
+    [20 * MIN, 'Restock', 'Pork Belly', '+1,000 g', 'Admin'],
+    [55 * MIN, 'Usage', 'Pork Sugba', '-5 bowls', 'Admin'],
+    [2 * HOUR, 'Waste', 'Calamansi', '-4 pcs', 'Admin'],
+    [5 * HOUR, 'Restock', 'Rice', '+2,000 g', 'Admin'],
+    [26 * HOUR, 'Usage', 'Pork Sugba', '-20 bowls (1 batch)', 'Admin'],
   ];
   return rows.map(([ago, action, item, qtyLabel, by], i) => ({ id: `sample-${i}`, at: now - ago, action, item, qtyLabel, by }));
 }
 
 // Six earlier days of each stat card number, for the small charts (sample). The last point of each chart is the live number.
 export const SAMPLE_HISTORY = {
-  value: [4380, 4520, 4310, 4700, 4580, 4490],
-  belowPar: [1, 2, 2, 3, 2, 3],
-  out: [0, 0, 1, 0, 1, 1],
-  cookable: [6, 6, 5, 6, 5, 5],
-  foodCost: [33.2, 33.8, 34.5, 34, 34.3, 34.1],
+  value: [1480, 1590, 1530, 1650, 1560, 1610],
+  belowPar: [1, 1, 2, 3, 2, 2],
+  out: [0, 0, 1, 1, 1, 1],
+  cookable: [1, 1, 1, 1, 1, 1],
+  foodCost: [72.8, 72.1, 73, 72.6, 73.4, 72.9],
 };
