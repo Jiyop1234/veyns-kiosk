@@ -1,10 +1,13 @@
 // Shared types for the VEYNS API gateway.
 // Access levels, from open to strict:
 //   public   anyone (no token needed)
+//   optional anyone may call. A valid token, if sent, gives the route an identity; no token (or a token that is
+//            not valid) gives the route identity = null. The ROUTE must then prove the caller another way and
+//            must treat a null identity as an anonymous visitor. Use only where a guest needs the route (4C-3).
 //   customer any signed-in user that has a profile (regular, employee or admin)
 //   staff    employee or admin
 //   admin    admin only
-export type Access = 'public' | 'customer' | 'staff' | 'admin';
+export type Access = 'public' | 'optional' | 'customer' | 'staff' | 'admin';
 export type Role = 'regular' | 'employee' | 'admin';
 
 export interface Identity {
@@ -18,7 +21,7 @@ export interface RouteContext {
   path: string;
   query: Record<string, string>;
   body: Record<string, unknown>; // already parsed, size-limited and validated
-  identity: Identity | null;     // null only on 'public' routes
+  identity: Identity | null;     // null only on 'public' routes, and on 'optional' routes when the caller is anonymous
 }
 
 export interface RouteResult {

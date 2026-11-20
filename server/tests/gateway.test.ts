@@ -181,3 +181,33 @@ test('fallback: path taken from the catch-all segment when the URL was rewritten
   await g(req, res);
   assert.equal(out.status, 200);
 });
+
+test("'optional' access: anonymous, valid token and invalid token all reach the route; a failed lookup is 503", async () => {
+  const route: RouteDef = {
+    method: 'GET', path: '/maybe', access: 'optional',
+    handle: async (ctx) => ({ status: 200, body: { ok: true, who: ctx.identity ? ctx.identity.userId : null } }),
+  };
+  const g = make([route]);
+  const anon = await call(g, { url: '/api/maybe' });
+  assert.equal(anon.status, 200);
+  assert.equal(anon.body.who, null);
+  const known = await call(g, { url: '/api/maybe', token: 'customer-token' });
+  assert.equal(known.status, 200);
+  assert.equal(known.body.who, 'u-customer');
+  const stale = await call(g, { url: '/api/maybe', token: 'expired-token' });
+  assert.equal(stale.status, 200);          // an invalid token is treated as anonymous; the route decides what that may do
+  assert.equal(stale.body.who, null);
+  const down = await call(g, { url: '/api/maybe', token: 'boom' });
+  assert.equal(down.status, 503);           // a failed lookup never turns into "allowed"
+});
+
+test("'optional' access: the log shows the role of a signed-in caller and '-' for an anonymous one", async () => {
+  const lines: any[] = [];
+  const route: RouteDef = { method: 'GET', path: '/maybe', access: 'optional', handle: async () => ({ status: 200, body: { ok: true } }) };
+  const g = make([route], (l) => lines.push(l));
+  await call(g, { url: '/api/maybe' });
+  await call(g, { url: '/api/maybe', token: 'employee-token' });
+  assert.equal(lines[0].access, 'optional');
+  assert.equal(lines[0].role, '-');
+  assert.equal(lines[1].role, 'employee');
+});

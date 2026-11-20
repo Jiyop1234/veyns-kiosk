@@ -1,7 +1,7 @@
 // The VEYNS API gateway: the single door for everything under /api.
 // Order of checks for every request:
 //   1 route exists (else 404)  2 method allowed (else 405)  3 rate limit (else 429)
-//   4 login token + role for the route's access level (else 401 / 403)
+//   4 login token + role for the route's access level (else 401 / 403); 'optional' routes accept anonymous callers
 //   5 body size and JSON shape (else 413 / 400)  6 route validation (else 400)
 //   7 route runs under a timeout (else 504)  8 safe error answers, one log line per request.
 // Routes NEVER do their own token or role checks. They only declare `access`.
@@ -11,7 +11,7 @@ import { createRateLimiter } from './rateLimit.js';
 import { defaultLog } from './requestLog.js';
 import type { Access, GatewayDeps, Identity, RouteDef } from './types.js';
 
-const ACCESS_LEVELS: Access[] = ['public', 'customer', 'staff', 'admin'];
+const ACCESS_LEVELS: Access[] = ['public', 'optional', 'customer', 'staff', 'admin'];
 // Single segment only: on Vercel this catch-all file receives /api/<name> and nothing deeper (found on the 4B preview:
 // /api/health worked, /api/health/staff never reached the gateway). Use flat names like /health-staff.
 const PATH_RE = /^\/[a-z0-9_-]+$/;
@@ -21,7 +21,7 @@ const DEFAULT_MAX_BODY = 100_000;      // bytes
 const GLOBAL_LIMIT = { max: 120, windowSeconds: 60 }; // per caller IP, all routes together
 
 function roleAllows(access: Access, identity: Identity | null): boolean {
-  if (access === 'public') return true;
+  if (access === 'public' || access === 'optional') return true; // 'optional': the route itself decides what an anonymous caller may do
   if (!identity) return false;
   if (access === 'customer') return true;
   if (access === 'staff') return identity.role === 'employee' || identity.role === 'admin';
@@ -146,16 +146,20 @@ export function createGateway(deps: GatewayDeps) {
       let identity: Identity | null = null;
       if (route.access !== 'public') {
         const token = String(req.headers?.authorization || '').replace(/^Bearer\s+/i, '').trim();
-        if (!token) return send(401, { ok: false, error: 'Sign in required.' });
-        try {
-          identity = await withTimeout(deps.resolveIdentity(token), AUTH_TIMEOUT_MS);
-        } catch (e: any) {
-          console.error(`gateway ${requestId}: identity lookup failed:`, e?.message);
-          return send(503, { ok: false, error: 'Service temporarily unavailable.' });
+        const optional = route.access === 'optional';
+        if (!token && !optional) return send(401, { ok: false, error: 'Sign in required.' });
+        if (token) {
+          try {
+            identity = await withTimeout(deps.resolveIdentity(token), AUTH_TIMEOUT_MS);
+          } catch (e: any) {
+            console.error(`gateway ${requestId}: identity lookup failed:`, e?.message);
+            return send(503, { ok: false, error: 'Service temporarily unavailable.' });
+          }
+          // 'optional' routes treat a token that is not valid like no token (anonymous); the route decides what that may do.
+          if (!identity && !optional) return send(401, { ok: false, error: 'Your session is invalid or expired. Please sign in again.' });
         }
-        if (!identity) return send(401, { ok: false, error: 'Your session is invalid or expired. Please sign in again.' });
-        role = identity.role;
-        if (!roleAllows(route.access, identity)) return send(403, { ok: false, error: 'You are not allowed to do that.' });
+        if (identity) role = identity.role;
+        if (!optional && !roleAllows(route.access, identity)) return send(403, { ok: false, error: 'You are not allowed to do that.' });
       }
 
       // ---- body, validation ----
