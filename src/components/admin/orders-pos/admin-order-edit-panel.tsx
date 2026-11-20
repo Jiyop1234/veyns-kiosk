@@ -263,7 +263,7 @@ export function AdminOrderEditPanel({
                 <>
                   <div>
                     <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest block mb-1">Delivery Pin (click the map)</label>
-                    <DeliveryPinMap value={editPin} onChange={setEditPin} />
+                    <DeliveryPinMap value={editPin} onChange={setEditPin} savedPin={editOrder.pinLat != null && editOrder.pinLng != null ? { lat: Number(editOrder.pinLat), lng: Number(editOrder.pinLng) } : null} />
                     <p className="text-[10px] text-zinc-300 mt-1">
                       {editPin
                         ? `Pinned: ${editPin.lat.toFixed(5)}, ${editPin.lng.toFixed(5)}${editPinFee ? ` • ${editPinFee.km} km from store • delivery fee ${formatPeso(editPinFee.fee)}` : ' • calculating the fee…'}`

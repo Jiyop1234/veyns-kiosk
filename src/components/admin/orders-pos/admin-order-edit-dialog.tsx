@@ -164,7 +164,7 @@ export function AdminOrderEditDialog({
                   <>
                     <div>
                       <label className="font-bold text-lime-400 uppercase tracking-wider block mb-1">Delivery Pin (click the map)</label>
-                      <DeliveryPinMap value={editPin} onChange={setEditPin} />
+                      <DeliveryPinMap value={editPin} onChange={setEditPin} savedPin={editOrder.pinLat != null && editOrder.pinLng != null ? { lat: Number(editOrder.pinLat), lng: Number(editOrder.pinLng) } : null} />
                       <p className="text-[10px] text-emerald-300 mt-1">
                         {editPin
                           ? `Pinned: ${editPin.lat.toFixed(5)}, ${editPin.lng.toFixed(5)}${editPinFee ? ` • ${editPinFee.km} km from store • delivery fee ${formatPeso(editPinFee.fee)}` : ' • calculating the fee…'}`

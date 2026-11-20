@@ -10,18 +10,23 @@ export type DeliveryPin = { lat: number; lng: number };
 export function DeliveryPinMap({
   value,
   onChange,
+  savedPin = null,
   heightClass = 'h-56',
 }: {
   value: DeliveryPin | null;
+  // display only: the pin already saved on the order. Shown while no new pin has been chosen; never sent anywhere.
+  savedPin?: DeliveryPin | null;
   onChange: (pin: DeliveryPin) => void;
   heightClass?: string;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const mapObj = useRef<any>(null);
   const markerObj = useRef<any>(null);
-  const valueRef = useRef<DeliveryPin | null>(value);
+  const shown: DeliveryPin | null = value ?? savedPin ?? null;
+  const valueRef = useRef<DeliveryPin | null>(shown);
+  const centred = useRef(false);
   const onChangeRef = useRef(onChange);
-  valueRef.current = value;
+  valueRef.current = shown;
   onChangeRef.current = onChange;
 
   useEffect(() => {
@@ -40,6 +45,7 @@ export function DeliveryPinMap({
       if (v) {
         markerObj.current = L.marker([v.lat, v.lng]).addTo(map);
         map.setView([v.lat, v.lng], 15);
+        centred.current = true;
       }
       // the map sits inside an animated dialog, so re-measure once it has finished opening
       setTimeout(() => mapObj.current && mapObj.current.invalidateSize(), 250);
@@ -73,16 +79,22 @@ export function DeliveryPinMap({
         mapObj.current = null;
         markerObj.current = null;
       }
+      centred.current = false;
     };
   }, []);
 
   // keep the marker in step with the chosen pin
   useEffect(() => {
     const L = (window as any).L;
-    if (!value || !L || !mapObj.current) return;
-    if (markerObj.current) markerObj.current.setLatLng([value.lat, value.lng]);
-    else markerObj.current = L.marker([value.lat, value.lng]).addTo(mapObj.current);
-  }, [value]);
+    if (!shown || !L || !mapObj.current) return;
+    if (markerObj.current) markerObj.current.setLatLng([shown.lat, shown.lng]);
+    else markerObj.current = L.marker([shown.lat, shown.lng]).addTo(mapObj.current);
+    // first pin to appear after the map opened: bring it into view once
+    if (!centred.current) {
+      mapObj.current.setView([shown.lat, shown.lng], 15);
+      centred.current = true;
+    }
+  }, [shown?.lat, shown?.lng]);
 
   return (
     <div
