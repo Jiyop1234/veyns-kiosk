@@ -43,7 +43,7 @@ test('public health route answers without a token', async () => {
 
 test('unknown path is a JSON 404', async () => {
   const g = make();
-  for (const url of ['/api/nope', '/api/login-check', '/api', '/api/', '/api/HEALTH', '/api/health/../admin', '/api/health%00', '/other']) {
+  for (const url of ['/api/nope', '/api/login-check', '/api', '/api/', '/api/HEALTH', '/api/health/staff', '/api/health/../admin', '/api/health%00', '/other']) {
     const r = await call(g, { url });
     assert.equal(r.status, 404, url);
     assert.equal(r.body.ok, false, url);
@@ -58,16 +58,16 @@ test('wrong method is 405 with Allow', async () => {
 
 test('protected route: no token = 401, bad token = 401', async () => {
   const g = make();
-  assert.equal((await call(g, { url: '/api/health/staff' })).status, 401);
-  assert.equal((await call(g, { url: '/api/health/staff', token: 'wrong' })).status, 401);
+  assert.equal((await call(g, { url: '/api/health-staff' })).status, 401);
+  assert.equal((await call(g, { url: '/api/health-staff', token: 'wrong' })).status, 401);
 });
 
 test('role matrix: customer / employee / admin on each level', async () => {
   const g = make();
   const expect: Record<string, Record<string, number>> = {
-    '/api/health/customer': { 'customer-token': 200, 'employee-token': 200, 'admin-token': 200 },
-    '/api/health/staff': { 'customer-token': 403, 'employee-token': 200, 'admin-token': 200 },
-    '/api/health/admin': { 'customer-token': 403, 'employee-token': 403, 'admin-token': 200 },
+    '/api/health-customer': { 'customer-token': 200, 'employee-token': 200, 'admin-token': 200 },
+    '/api/health-staff': { 'customer-token': 403, 'employee-token': 200, 'admin-token': 200 },
+    '/api/health-admin': { 'customer-token': 403, 'employee-token': 403, 'admin-token': 200 },
   };
   for (const [url, byToken] of Object.entries(expect)) {
     for (const [token, status] of Object.entries(byToken)) {
@@ -77,12 +77,12 @@ test('role matrix: customer / employee / admin on each level', async () => {
 });
 
 test('role comes from the lookup, not from the request', async () => {
-  const r = await call(make(), { url: '/api/health/admin?role=admin', token: 'customer-token', headers: { 'x-role': 'admin' } });
+  const r = await call(make(), { url: '/api/health-admin?role=admin', token: 'customer-token', headers: { 'x-role': 'admin' } });
   assert.equal(r.status, 403);
 });
 
 test('identity lookup failure is 503, never "allowed"', async () => {
-  const r = await call(make(), { url: '/api/health/staff', token: 'boom' });
+  const r = await call(make(), { url: '/api/health-staff', token: 'boom' });
   assert.equal(r.status, 503);
 });
 
@@ -152,7 +152,7 @@ test('slow route = 504', async () => {
 test('log has one line per request and never holds tokens, bodies or IPs', async () => {
   const lines: any[] = [];
   const g = make(healthRoutes, (l) => lines.push(l));
-  await call(g, { url: '/api/health/staff', token: 'employee-token', ip: '203.0.113.7' });
+  await call(g, { url: '/api/health-staff', token: 'employee-token', ip: '203.0.113.7' });
   await call(g, { url: '/api/nope' });
   assert.equal(lines.length, 2);
   const text = JSON.stringify(lines);
@@ -167,6 +167,7 @@ test('gateway refuses to start with a badly declared route', () => {
   assert.throws(() => make([{ method: 'GET', path: '/x', handle: ok } as any]), /access/);
   assert.throws(() => make([{ method: 'GET', path: '/x', access: 'everyone', handle: ok } as any]), /access/);
   assert.throws(() => make([{ method: 'GET', path: '/Bad Path', access: 'public', handle: ok }]), /not allowed/);
+  assert.throws(() => make([{ method: 'GET', path: '/two/segments', access: 'public', handle: ok }]), /not allowed/);
   assert.throws(() => make([{ method: 'GET', path: '/x', access: 'public', handle: ok }, { method: 'GET', path: '/x', access: 'public', handle: ok }]), /duplicate/);
 });
 

@@ -12,7 +12,9 @@ import { defaultLog } from './requestLog.js';
 import type { Access, GatewayDeps, Identity, RouteDef } from './types.js';
 
 const ACCESS_LEVELS: Access[] = ['public', 'customer', 'staff', 'admin'];
-const PATH_RE = /^\/[a-z0-9_-]+(\/[a-z0-9_-]+)*$/;
+// Single segment only: on Vercel this catch-all file receives /api/<name> and nothing deeper (found on the 4B preview:
+// /api/health worked, /api/health/staff never reached the gateway). Use flat names like /health-staff.
+const PATH_RE = /^\/[a-z0-9_-]+$/;
 const DEFAULT_TIMEOUT_MS = 8000;       // Free plan functions stop at about 10 s; stay under it
 const AUTH_TIMEOUT_MS = 4000;
 const DEFAULT_MAX_BODY = 100_000;      // bytes
@@ -94,7 +96,7 @@ export function createGateway(deps: GatewayDeps) {
   const table = new Map<string, Map<string, RouteDef>>(); // path -> method -> route
   for (const r of deps.routes) {
     if (!ACCESS_LEVELS.includes(r.access)) throw new Error(`gateway: route ${r.method} ${r.path} has no valid access level`);
-    if (!PATH_RE.test(r.path)) throw new Error(`gateway: route path "${r.path}" is not allowed`);
+    if (!PATH_RE.test(r.path)) throw new Error(`gateway: route path "${r.path}" is not allowed (one lowercase segment only, e.g. /health-staff)`);
     if (typeof r.handle !== 'function') throw new Error(`gateway: route ${r.method} ${r.path} has no handler`);
     const methods = table.get(r.path) || new Map<string, RouteDef>();
     if (methods.has(r.method)) throw new Error(`gateway: duplicate route ${r.method} ${r.path}`);
