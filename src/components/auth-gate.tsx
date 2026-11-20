@@ -7,6 +7,7 @@ import { EmployeeDashboard } from '@/components/admin/admin-dashboard';
 import { supabase } from '@/lib/supabase';
 import { LoginPage } from '@/components/login-page';
 import { StorePage } from '@/components/store/store-page';
+import { clearOldBrowserCopies } from '@/lib/clear-old-browser-copies';
 
 export function AuthGate() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
@@ -59,16 +60,11 @@ export function AuthGate() {
     const normalized = Array.from({ length: 12 }).map((_, idx) => profile.stamps_data?.[idx] || { status: 'empty', date: '' });
     setStamps(normalized);
     setFairPlayPenalty(profile.penalty_data || null);
-    const key = (userObj.identifier || '').toLowerCase().trim();
-    if (key) {
-      localStorage.setItem('veyns_detailed_stamps_' + key, JSON.stringify(normalized));
-      if (profile.penalty_data) localStorage.setItem('veyns_fair_play_penalty_' + key, JSON.stringify(profile.penalty_data));
-      else localStorage.removeItem('veyns_fair_play_penalty_' + key);
-    }
   };
 
   // Restore session and handle verification email redirects.
   useEffect(() => {
+    clearOldBrowserCopies();
     let alive = true;
     const restoreAuthUser = async (session: any) => {
       if (!session?.user) return;

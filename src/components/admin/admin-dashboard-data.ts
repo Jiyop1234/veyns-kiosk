@@ -5,7 +5,6 @@
 // Step A5: the 1-second countdown clock (nowTimestamp) moved to admin-promos-tab.tsx, so this hook no longer ticks every second.
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { getActivePromoCodes } from '@/lib/menu-data';
 import { requestStaffGeocode } from '@/lib/order-geocode';
 
 export function useAdminDashboardData() {
@@ -54,7 +53,6 @@ export function useAdminDashboardData() {
           optionGroups: m.option_groups || []
         }));
         setMenuItems(formattedMenu);
-        localStorage.setItem('veyns_manageable_menu', JSON.stringify(formattedMenu));
       }
 
       const { data: cloudOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
@@ -127,17 +125,6 @@ export function useAdminDashboardData() {
       }
       if (cloudProfiles && cloudProfiles.length > 0) {
         const formattedProfiles = cloudProfiles.map((p: any) => {
-          const identifierKey = (p.identifier || '').toLowerCase().trim();
-          if (p.stamps_data) {
-            localStorage.setItem(`veyns_detailed_stamps_${identifierKey}`, JSON.stringify(p.stamps_data));
-            const validDates = p.stamps_data.filter((s: any) => s && s.status === 'valid').map((s: any) => s.date);
-            localStorage.setItem(`veyns_stamps_${identifierKey}`, JSON.stringify(validDates));
-          }
-          if (p.penalty_data) {
-            localStorage.setItem(`veyns_fair_play_penalty_${identifierKey}`, JSON.stringify(p.penalty_data));
-          } else {
-            localStorage.removeItem(`veyns_fair_play_penalty_${identifierKey}`);
-          }
           return { id: p.id, name: p.name || 'Valued Regular', identifier: p.identifier, type: p.role || 'regular', auth_user_id: p.auth_user_id, created_at: p.created_at, status: p.status === undefined ? undefined : (p.status || 'ACTIVE'), tier: p.tier || null, current_stamp_count: p.current_stamp_count === undefined ? undefined : Number(p.current_stamp_count ?? 0), block_start: !!p.block_start };
         });
         setCustomers(formattedProfiles);
@@ -174,11 +161,10 @@ export function useAdminDashboardData() {
         }));
         setPromos(formattedPromos);
       } else {
-        setPromos(getActivePromoCodes());
+        setPromos([]);
       }
     } catch (e) {
       console.error('Error fetching cloud data:', e);
-      setPromos(getActivePromoCodes());
     }
   };
 

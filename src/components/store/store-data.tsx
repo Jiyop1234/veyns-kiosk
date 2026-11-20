@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar, UserPlus, Ticket, X, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { formatPeso, getActivePromoCodes } from '@/lib/menu-data';
+import { formatPeso } from '@/lib/menu-data';
 import { getPromoStatus, getPromoEndMs } from '@/lib/promo-campaigns';
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
@@ -119,10 +119,10 @@ export function StoreData({ orderHistory, setOrderHistory, resetKey, currentUser
         }));
         setAvailablePromos(formatted);
       } else {
-        setAvailablePromos(getActivePromoCodes());
+        setAvailablePromos([]);
       }
     } catch (e) {
-      setAvailablePromos(getActivePromoCodes());
+      console.error('Error fetching promos:', e);
     }
   };
 
