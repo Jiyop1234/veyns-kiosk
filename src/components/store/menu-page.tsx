@@ -1,7 +1,7 @@
 // @ts-nocheck
 // MenuPage — the menu screen: search, category tabs, item cards, the customization modal and the upsell popup.
 // Moved out of ordering-counter.tsx (Step 4). Look and behavior are unchanged.
-// It loads the menu itself (Supabase + bundled fallback, kept live by Realtime) and talks to the cart through useCart().
+// It loads the menu itself (Supabase only, kept live by Realtime) and talks to the cart through useCart().
 // OrderingCounter only passes the account/loyalty/checkout hooks listed in the props below.
 // Step 13: new layout. Heading, a pill category bar with a sliding neon highlight (category-tabs.tsx) next to the search,
 // and a 4-column grid whose cards are revealed with a mask wipe (menu-page.css). Cart, customization and upsell logic are unchanged.
@@ -11,7 +11,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRight, Check, Minus, Plus, Search, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { MENU_GRID, CATEGORIES, formatPeso } from '@/lib/menu-data';
+import { CATEGORIES, formatPeso } from '@/lib/menu-data';
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
 import { supabase } from '@/lib/supabase';
@@ -52,6 +52,7 @@ export function MenuPage({
   const [category, setCategory] = useState('All items');
   const [search, setSearch] = useState('');
   const [currentMenuGrid, setCurrentMenuGrid] = useState<any[]>([]);
+  const [menuLoadFailed, setMenuLoadFailed] = useState(false);
 
   // Item customization and upsell state
   const [selected, setSelected] = useState(null);
@@ -114,46 +115,45 @@ export function MenuPage({
   }, [resetKey]);
 
 
-  // SECTION 7: Merge Supabase menu records with the existing local menu data and sort the result.
+  // SECTION 7: Load the menu from Supabase and sort it. The database is the only source of the menu and its prices.
+  // If it can't be reached, keep whatever is already on screen (never swap in an old copy with old prices);
+  // when there is nothing on screen yet, a "Try again" message is shown instead.
   const loadMenuFromCloud = async () => {
-    // Fallback to the bundled menu ONLY if the database can't be reached.
-    let mergedMenu = [...MENU_GRID];
-
     try {
       const { data: cloudMenu, error } = await supabase.from('menu_items').select('*');
-      if (!error && cloudMenu) {
-        mergedMenu = cloudMenu.map((m: any) => ({
-          id: m.id,
-          name: m.name,
-          category: m.category,
-          description: m.description,
-          price: Number(m.price),
-          discountPercent: Number(m.discount_percent || 0),
-          isAvailable: m.is_available,
-          bestSeller: m.best_seller,
-          isExtra: !!m.is_extra,
-          offerInPopup: !!m.offer_in_popup,
-          sortOrder: Number(m.sort_order || 100),
-          isCustomizable: m.is_customizable,
-          hasBrothEggOption: m.has_broth_egg_option,
-          image: m.image_url,
-          optionGroups: m.option_groups || []
-        }));
-      }
+      if (error || !cloudMenu) throw error || new Error('empty menu response');
+      const mergedMenu = cloudMenu.map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        category: m.category,
+        description: m.description,
+        price: Number(m.price),
+        discountPercent: Number(m.discount_percent || 0),
+        isAvailable: m.is_available,
+        bestSeller: m.best_seller,
+        isExtra: !!m.is_extra,
+        offerInPopup: !!m.offer_in_popup,
+        sortOrder: Number(m.sort_order || 100),
+        isCustomizable: m.is_customizable,
+        hasBrothEggOption: m.has_broth_egg_option,
+        image: m.image_url,
+        optionGroups: m.option_groups || []
+      }));
+      mergedMenu.sort((a, b) => {
+        if (a.category === 'Apparel' && b.category !== 'Apparel') return 1;
+        if (a.category !== 'Apparel' && b.category === 'Apparel') return -1;
+        if (a.bestSeller && !b.bestSeller) return -1;
+        if (!a.bestSeller && b.bestSeller) return 1;
+        return (a.sortOrder || 100) - (b.sortOrder || 100);
+      });
+      setCurrentMenuGrid(mergedMenu);
+      setMenuLoadFailed(false);
     } catch (e) {
       console.error('Error fetching cloud menu:', e);
+      setMenuLoadFailed(true);
     }
-
-    mergedMenu.sort((a, b) => {
-      if (a.category === 'Apparel' && b.category !== 'Apparel') return 1;
-      if (a.category !== 'Apparel' && b.category === 'Apparel') return -1;
-      if (a.bestSeller && !b.bestSeller) return -1;
-      if (!a.bestSeller && b.bestSeller) return 1;
-      return (a.sortOrder || 100) - (b.sortOrder || 100);
-    });
-
-    setCurrentMenuGrid(mergedMenu);
   };
+  const showMenuError = menuLoadFailed && currentMenuGrid.length === 0;
 
   // SECTION 16: Filter visible menu items by availability, category, and search text.
   const filtered = currentMenuGrid.filter((item) => {
@@ -461,6 +461,12 @@ export function MenuPage({
           >
             <p className="veyns-coming-soon font-display text-4xl font-bold uppercase tracking-tight sm:text-6xl">Coming Soon</p>
           </div>
+        </div>
+      )}
+      {showMenuError && (
+        <div className="py-16 text-center">
+          <p className="text-sm text-emerald-300/80">The menu could not be loaded. Please check your connection and try again.</p>
+          <Button onClick={() => loadMenuFromCloud()} className="mt-4 rounded-full bg-lime-400 px-6 font-bold text-black hover:bg-lime-300">Try again</Button>
         </div>
       )}
       {noMatches && <p className="py-16 text-center text-sm text-emerald-300/70">No items match your search.</p>}

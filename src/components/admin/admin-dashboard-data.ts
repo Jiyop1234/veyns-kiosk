@@ -5,7 +5,7 @@
 // Step A5: the 1-second countdown clock (nowTimestamp) moved to admin-promos-tab.tsx, so this hook no longer ticks every second.
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { MENU_GRID, getActivePromoCodes } from '@/lib/menu-data';
+import { getActivePromoCodes } from '@/lib/menu-data';
 import { requestStaffGeocode } from '@/lib/order-geocode';
 
 export function useAdminDashboardData() {
@@ -34,7 +34,9 @@ export function useAdminDashboardData() {
   // --- Load menu, orders, customer profiles, slot capacities, and promos from Supabase ---
   const fetchCloudData = async () => {
     try {
-      const { data: cloudMenu } = await supabase.from('menu_items').select('*');
+      const { data: cloudMenu, error: menuErr } = await supabase.from('menu_items').select('*');
+      // The database is the only source of the menu: if it can't be read, keep the menu already on screen (never an old bundled copy).
+      if (menuErr) console.error('menu load failed, keeping the menu already on screen:', menuErr.message);
       if (cloudMenu) {
         const formattedMenu = cloudMenu.map((m: any) => ({
           id: m.id,
@@ -53,8 +55,6 @@ export function useAdminDashboardData() {
         }));
         setMenuItems(formattedMenu);
         localStorage.setItem('veyns_manageable_menu', JSON.stringify(formattedMenu));
-      } else {
-        setMenuItems(MENU_GRID);
       }
 
       const { data: cloudOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
@@ -178,7 +178,6 @@ export function useAdminDashboardData() {
       }
     } catch (e) {
       console.error('Error fetching cloud data:', e);
-      setMenuItems(MENU_GRID);
       setPromos(getActivePromoCodes());
     }
   };
