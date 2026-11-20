@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGateway } from '../gateway/gateway.js';
-import { orderGeocodeRoute } from '../routes/orderGeocode.js';
+import { orderGeocodeRoute, reverseGeocode } from '../routes/orderGeocode.js';
 import type { Identity } from '../gateway/types.js';
 
 const O1 = '11111111-1111-4111-8111-111111111111';
@@ -26,22 +26,27 @@ const resolveIdentity = async (token: string) => {
 
 // ---- a tiny fake of the Supabase calls this route uses ----
 type Row = Record<string, any>;
-function fakeDb(tables: Record<string, Row[]>) {
+interface DbOpts { failUpdate?: boolean; failReadOf?: string; updateMatchesNothing?: boolean }
+function fakeDb(tables: Record<string, Row[]>, opts: DbOpts = {}) {
   const updates: { table: string; patch: Row; filters: Row }[] = [];
   const client = {
     from(table: string) {
       const filters: Row = {};
       let patch: Row | null = null;
+      let wantRows = false;
       const match = () => (tables[table] || []).filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v));
       const api: any = {
-        select() { return api; },
+        select() { if (patch) wantRows = true; return api; },
         update(p: Row) { patch = p; return api; },
         eq(k: string, v: any) { filters[k] = v; return api; },
-        maybeSingle: async () => ({ data: match()[0] ? { ...match()[0] } : null, error: null }),
+        maybeSingle: async () => (opts.failReadOf === table
+          ? { data: null, error: { message: 'read failed' } }
+          : { data: match()[0] ? { ...match()[0] } : null, error: null }),
         then(resolve: any) {
-          const rows = match();
+          if (patch && opts.failUpdate) return resolve({ data: null, error: { message: 'update failed' } });
+          const rows = patch && opts.updateMatchesNothing ? [] : match();
           if (patch) { updates.push({ table, patch, filters: { ...filters } }); rows.forEach((r) => Object.assign(r, patch)); }
-          resolve({ data: null, error: null });
+          resolve({ data: wantRows ? rows.map((r) => ({ order_id: r.order_id })) : null, error: null });
         },
       };
       return api;
@@ -50,7 +55,15 @@ function fakeDb(tables: Record<string, Row[]>) {
   return { client, updates };
 }
 
-function setup(opts: { pins?: Row[]; orders?: Row[]; geocode?: (lat: number, lng: number) => Promise<string | null> } = {}) {
+async function captureLogs<T>(fn: () => Promise<T>) {
+  const lines: string[] = [];
+  const e = console.error, w = console.warn;
+  console.error = (...a: any[]) => { lines.push(a.join(' ')); };
+  console.warn = (...a: any[]) => { lines.push(a.join(' ')); };
+  try { return { result: await fn(), lines }; } finally { console.error = e; console.warn = w; }
+}
+
+function setup(opts: { pins?: Row[]; orders?: Row[]; db?: DbOpts; geocode?: (lat: number, lng: number) => Promise<string | null> } = {}) {
   const tables = {
     orders: opts.orders || [
       { id: O1, user_id: null, idempotency_key: KEY },                 // guest order
@@ -61,7 +74,7 @@ function setup(opts: { pins?: Row[]; orders?: Row[]; geocode?: (lat: number, lng
       { order_id: O2, delivery_lat: 10.2, delivery_lng: 122.2, map_address_status: 'pending', map_address: null },
     ],
   };
-  const db = fakeDb(tables);
+  const db = fakeDb(tables, opts.db);
   const calls: [number, number][] = [];
   let clock = 1_000_000;
   const inner = opts.geocode || (async (lat: number, lng: number) => `Address for ${lat},${lng}`);
@@ -141,12 +154,60 @@ test('customer mode: geocoder fails -> pin marked failed, answer is still { ok: 
   assert.equal(t2.calls.length, 0);
 });
 
-test('the save is limited to the pin that was read (skipped if the pin moved meanwhile)', async () => {
+test('the save is by order id only (no exact-number match on the pin, which never matched the real data)', async () => {
   const t = setup();
   await post(t.gateway, { orderId: O1, idempotencyKey: KEY });
   const u = t.db.updates[0];
   assert.equal(u.table, 'order_delivery_private');
-  assert.deepEqual(u.filters, { order_id: O1, delivery_lat: 10.1, delivery_lng: 122.1 });
+  assert.deepEqual(u.filters, { order_id: O1 });
+});
+
+test('the save works for a pin with long decimals', async () => {
+  const t = setup({ pins: [{ order_id: O1, delivery_lat: 10.3418767278971, delivery_lng: 123.911652359402, map_address_status: 'pending', map_address: null }] });
+  await post(t.gateway, { orderId: O1, idempotencyKey: KEY });
+  assert.equal(t.tables.order_delivery_private[0].map_address_status, 'ok');
+});
+
+test('pin moved while the lookup was running: nothing is saved', async () => {
+  let t: any;
+  t = setup({ geocode: async () => { t.tables.order_delivery_private[0].delivery_lat = 11.5; return 'Old pin address'; } });
+  const r = await post(t.gateway, { orderIds: [O1] }, 'employee-token');
+  assert.equal(r.body.results[O1], 'moved');
+  assert.equal(t.tables.order_delivery_private[0].map_address_status, 'pending');
+  assert.equal(t.tables.order_delivery_private[0].map_address, null);
+});
+
+test('database problems are logged (without addresses, coordinates or keys) and reported as error; the customer still gets { ok: true }', async () => {
+  const cases: [string, DbOpts][] = [['save', { failUpdate: true }], ['read', { failReadOf: 'order_delivery_private' }], ['no row changed', { updateMatchesNothing: true }]];
+  for (const [name, db] of cases) {
+    const t = setup({ db });
+    const { result: staff, lines } = await captureLogs(() => post(t.gateway, { orderIds: [O1] }, 'employee-token'));
+    assert.equal(staff.status, 200, name);
+    assert.equal(staff.body.results[O1], 'error', name);
+    assert.ok(lines.some((l) => l.includes('order-geocode')), name);
+    const text = lines.join('\n');
+    assert.ok(!text.includes('Address for') && !text.includes('10.1') && !text.includes(KEY), name);
+    const t2 = setup({ db });
+    const { result: cust } = await captureLogs(() => post(t2.gateway, { orderId: O1, idempotencyKey: KEY }));
+    assert.deepEqual(cust.body, { ok: true }, name);
+  }
+});
+
+test('map service: an error answer or a failed call is logged by status or name only; a good answer returns the address', async () => {
+  const real = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => ({ ok: false, status: 403, json: async () => ({}) })) as any;
+    const denied = await captureLogs(() => reverseGeocode(10.1, 122.1));
+    assert.equal(denied.result, null);
+    assert.ok(denied.lines.some((l) => l.includes('HTTP 403')));
+    globalThis.fetch = (async () => { const e: any = new Error('x'); e.name = 'AbortError'; throw e; }) as any;
+    const slow = await captureLogs(() => reverseGeocode(10.1, 122.1));
+    assert.equal(slow.result, null);
+    assert.ok(slow.lines.some((l) => l.includes('AbortError')));
+    assert.ok(!slow.lines.join('').includes('10.1'));
+    globalThis.fetch = (async () => ({ ok: true, status: 200, json: async () => ({ display_name: '  Some Street, Cebu  ' }) })) as any;
+    assert.equal(await reverseGeocode(10.1, 122.1), 'Some Street, Cebu');
+  } finally { globalThis.fetch = real; }
 });
 
 // ---------------- staff mode ----------------
