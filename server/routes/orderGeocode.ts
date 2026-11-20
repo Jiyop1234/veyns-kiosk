@@ -12,6 +12,8 @@
 //   2. STAFF call (dashboard). Needs a signed-in employee or admin. Body: { orderIds: string[], force?: boolean }.
 //      Fills pending pins (and failed ones when force is true). At most 3 orders per call, spaced out to respect the
 //      public Nominatim usage policy (max 1 request per second, identifying User-Agent).
+// Problems (database errors, a map service that answers with an error or times out) are written to the server log
+// as short lines without the address, coordinates or keys, so they can be found in Vercel > Logs.
 //
 // Server environment: SUPABASE_URL (or VITE_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY (used by server/db/client.ts);
 // GEOCODER_USER_AGENT is optional, e.g. "VeynsKiosk/1.0 (you@yourdomain.com)" (set a real contact address).
@@ -33,6 +35,10 @@ export interface GeocodeDeps {
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+// Same pin? Compared as numbers with a tiny tolerance (about 1 cm), never as text.
+const samePin = (a: any, b: any) =>
+  Math.abs(Number(a.delivery_lat) - Number(b.delivery_lat)) < 1e-7 && Math.abs(Number(a.delivery_lng) - Number(b.delivery_lng)) < 1e-7;
+
 export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 3000);
@@ -44,11 +50,13 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
         signal: ctrl.signal,
       },
     );
-    if (!r.ok) return null;
+    if (!r.ok) { console.warn(`order-geocode: map service answered HTTP ${r.status}`); return null; }
     const d: any = await r.json();
     const name = typeof d?.display_name === 'string' ? d.display_name.trim().slice(0, 500) : '';
+    if (!name) console.warn('order-geocode: map service returned no address');
     return name || null;
-  } catch {
+  } catch (e: any) {
+    console.warn(`order-geocode: map service call failed (${e?.name || 'error'})`); // e.g. AbortError = the 3 s limit
     return null;
   } finally {
     clearTimeout(timer);
@@ -74,20 +82,38 @@ async function handle(ctx: RouteContext, admin: any, deps: GeocodeDeps): Promise
   const body = ctx.body as Record<string, any>;
   const identity = ctx.identity; // null = anonymous visitor (no token, or a token that is not valid)
 
+  // Log a problem without any secret, address, coordinate or order key.
+  const problem = (step: string, e?: { message?: string } | null) =>
+    console.error(`order-geocode ${ctx.requestId}: ${step}${e?.message ? ': ' + e.message : ''}`);
+
   // Fill one pin. onlyPending=true: never retry a pin that already failed (customer calls).
+  // Returns 'ok' | 'failed' | 'missing' | 'moved' | 'error' | the pin's current status when it is skipped.
+  // The save is by order id only. (The old function also matched the exact latitude and longitude, but that
+  // comparison of decimal numbers never matched, so nothing was ever saved. The pin is now re-checked in code.)
   const fill = async (orderId: string, onlyPending: boolean): Promise<string> => {
-    const { data: row } = await admin.from('order_delivery_private')
+    const { data: row, error: readErr } = await admin.from('order_delivery_private')
       .select('order_id,delivery_lat,delivery_lng,map_address_status').eq('order_id', orderId).maybeSingle();
+    if (readErr) { problem('could not read the pin', readErr); return 'error'; }
     if (!row) return 'missing';
     if (row.map_address_status === 'ok') return 'ok';
     if (onlyPending && row.map_address_status !== 'pending') return row.map_address_status;
     const address = await geocode(Number(row.delivery_lat), Number(row.delivery_lng));
+
+    // skip the save if the pin was moved (or the order removed) while the lookup was running
+    const { data: again, error: againErr } = await admin.from('order_delivery_private')
+      .select('delivery_lat,delivery_lng').eq('order_id', orderId).maybeSingle();
+    if (againErr) { problem('could not re-check the pin', againErr); return 'error'; }
+    if (!again) return 'missing';
+    if (!samePin(again, row)) return 'moved';
+
     const stamp = new Date(now()).toISOString();
-    await admin.from('order_delivery_private').update(
+    const { data: saved, error: saveErr } = await admin.from('order_delivery_private').update(
       address
         ? { map_address: address, map_address_status: 'ok', map_address_at: stamp, updated_at: stamp }
         : { map_address_status: 'failed', map_address_at: stamp, updated_at: stamp },
-    ).eq('order_id', orderId).eq('delivery_lat', row.delivery_lat).eq('delivery_lng', row.delivery_lng); // skip if the pin moved meanwhile
+    ).eq('order_id', orderId).select('order_id');
+    if (saveErr) { problem('could not save the result', saveErr); return 'error'; }
+    if (!saved || saved.length === 0) { problem('the save changed no row'); return 'error'; }
     return address ? 'ok' : 'failed';
   };
 
