@@ -1,0 +1,275 @@
+/* HomePage styles: the infinite marquee only. Colors and fonts come from Tailwind classes in the components. */
+
+/* Content moves to the RIGHT (left to right). */
+@keyframes veyns-marquee-ltr {
+  from { transform: translate3d(-50%, 0, 0); }
+  to   { transform: translate3d(0, 0, 0); }
+}
+
+/* Content moves to the LEFT (right to left). */
+@keyframes veyns-marquee-rtl {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+
+.veyns-marquee {
+  --gap: 0.5rem;
+  overflow: hidden;
+}
+
+.veyns-marquee-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation-duration: var(--marquee-duration, 60s);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.veyns-marquee-ltr { animation-name: veyns-marquee-ltr; }
+.veyns-marquee-rtl { animation-name: veyns-marquee-rtl; }
+
+/* Each group ends with the same gap that sits between tiles, so sliding by -50% loops exactly. */
+.veyns-marquee-group {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--gap);
+  padding-right: var(--gap);
+}
+
+@media (min-width: 640px) {
+  .veyns-marquee { --gap: 0.625rem; }
+}
+
+/* Smaller tiles on phones: shorten the loop so the speed feels the same. */
+@media (max-width: 639px) {
+  .veyns-marquee-track { animation-duration: calc(var(--marquee-duration, 60s) * 0.7); }
+}
+
+/* People who ask their device for less motion get a still row they can scroll by hand. */
+@media (prefers-reduced-motion: reduce) {
+  .veyns-marquee-track { animation: none; }
+  .veyns-marquee { overflow-x: auto; }
+}
+
+/* "Scroll down" on the welcome screen: see-through text with a light that sweeps across it. */
+@keyframes veyns-shine {
+  from { background-position: 100% 0; }
+  to   { background-position: 0% 0; }
+}
+
+.veyns-shine-text {
+  background-image: linear-gradient(110deg, rgba(209, 250, 229, 0.3) 40%, rgba(255, 255, 255, 0.95) 50%, rgba(209, 250, 229, 0.3) 60%);
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: veyns-shine 3.2s linear infinite;
+}
+
+/* No sweep for people who ask for less motion; the text stays softly visible. */
+@media (prefers-reduced-motion: reduce) {
+  .veyns-shine-text, .veyns-shine-arrow { animation: none; }
+}
+
+/* Welcome screen: exactly one screen minus the fixed header (4rem, 5rem from 640px), so 'Scroll down' shows without scrolling. */
+.veyns-welcome { min-height: calc(100vh - 4rem); min-height: calc(100svh - 4rem); }
+@media (min-width: 640px) {
+  .veyns-welcome { min-height: calc(100vh - 5rem); min-height: calc(100svh - 5rem); }
+}
+
+/* The arrow under 'Scroll down': a chevron shape filled with the same sweeping light (no bounce). */
+.veyns-shine-arrow {
+  display: block;
+  width: 2rem;
+  height: 2rem;
+  background-image: linear-gradient(110deg, rgba(209, 250, 229, 0.4) 40%, rgba(255, 255, 255, 0.95) 50%, rgba(209, 250, 229, 0.4) 60%);
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  animation: veyns-shine 3.2s linear infinite;
+}
+
+/* Step 9, testimonials row: wider gaps between review cards than between photo tiles (rule is more specific than .veyns-marquee, so it wins at every width). */
+.veyns-marquee.veyns-testimonials { --gap: 1rem; }
+@media (min-width: 640px) {
+  .veyns-marquee.veyns-testimonials { --gap: 1.25rem; }
+}
+
+/* Stay paused until the row has scrolled into view; pause under the mouse so a review can be read. */
+.veyns-testimonials[data-running='false'] .veyns-marquee-track { animation-play-state: paused; }
+@media (hover: hover) {
+  .veyns-testimonials:hover .veyns-marquee-track { animation-play-state: paused; }
+}
+
+/* Reduced motion: a still row that scrolls by hand, without the duplicate copy of the reviews. */
+@media (prefers-reduced-motion: reduce) {
+  .veyns-testimonials .veyns-marquee-group[aria-hidden='true'] { display: none; }
+  .veyns-testimonials .veyns-marquee-track { padding: 0 1rem; }
+}
+
+/* Step 9A/9B, "Explore menu" glass button: small, almost fully see-through, thin bright border, light blur so the moving photos show through. It fills with lime when touched, hovered or focused. */
+.veyns-glass-btn {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  backdrop-filter: blur(8px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 6px 20px -8px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+/* Lit state: pressed (finger or mouse down), keyboard focus, and hover on devices that have a mouse. */
+.veyns-glass-btn:active,
+.veyns-glass-btn:focus-visible {
+  background: rgba(163, 230, 53, 0.92);
+  color: #03120d;
+  border-color: rgba(217, 249, 157, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 0 0 1px rgba(163, 230, 53, 0.4), 0 10px 40px -6px rgba(163, 230, 53, 0.75);
+  text-shadow: none;
+}
+.veyns-glass-btn:active { transform: scale(0.97); }
+
+@media (hover: hover) {
+  .veyns-glass-btn:hover {
+    background: rgba(163, 230, 53, 0.92);
+    color: #03120d;
+    border-color: rgba(217, 249, 157, 0.9);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 0 0 1px rgba(163, 230, 53, 0.4), 0 10px 40px -6px rgba(163, 230, 53, 0.75);
+    text-shadow: none;
+    transform: scale(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .veyns-glass-btn { transition: none; }
+  .veyns-glass-btn:hover, .veyns-glass-btn:active { transform: none; }
+}
+
+/* Step 9C: one section per screen. Snapping is switched on by HomePage (html.veyns-snap-page) only while the store is shown.
+   scroll-padding equals the fixed header height, so a section's top lands right under the header.
+   If it ever feels too sticky, change 'mandatory' to 'proximity' (it then only snaps when you stop near a section). */
+html.veyns-snap-page { scroll-snap-type: y mandatory; scroll-padding-top: 4rem; }
+@media (min-width: 640px) {
+  html.veyns-snap-page { scroll-padding-top: 5rem; }
+}
+
+.veyns-welcome { scroll-snap-align: start; scroll-snap-stop: always; }
+
+/* The menu: one snap section as tall as the whole menu, so scrolling inside it is free. */
+.veyns-snap { scroll-snap-align: start; }
+
+/* Full-screen sections (hero and testimonials): exactly one screen minus the header, content centered. */
+.veyns-fullscreen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: calc(100vh - 4rem);
+  min-height: calc(100svh - 4rem);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+@media (min-width: 640px) {
+  .veyns-fullscreen { min-height: calc(100vh - 5rem); min-height: calc(100svh - 5rem); }
+}
+
+/* Hero tiles: the height follows the screen height so both photo rows plus the heading fit one screen
+   (screen - header - heading block - paddings, split over two rows), never taller than 18rem. Width keeps the old 240:288 shape. */
+.veyns-hero { --screen-h: 100vh; }
+@supports (height: 100svh) {
+  .veyns-hero { --screen-h: 100svh; }
+}
+.veyns-hero { --tile-h: clamp(8rem, calc((var(--screen-h) - 18rem) / 2), 18rem); }
+@media (min-width: 640px) {
+  .veyns-hero { --tile-h: clamp(9rem, calc((var(--screen-h) - 22rem) / 2), 18rem); }
+}
+.veyns-tile { height: var(--tile-h); width: calc(var(--tile-h) * 0.8333); }
+
+/* Step 11: the site footer is the last snap stop (aligned to the bottom of the page) so snap scrolling can reach it. */
+.veyns-snap-end { scroll-snap-align: end; }
+
+/* Step 12: the loyalty card section. The card box is a size container, so everything on the card is sized in cqw (1% of its width)
+   and scales like a picture. The card keeps the 1029 x 660 shape of the artwork. */
+.veyns-lc-section { --screen-h: 100vh; }
+@supports (height: 100svh) {
+  .veyns-lc-section { --screen-h: 100svh; }
+}
+/* Never taller than one screen: the width is limited by the screen height (about 24rem is the header, heading, text under the card and padding). */
+.veyns-lc-wrap { max-width: clamp(300px, calc((var(--screen-h) - 24rem) * 1.559), 600px); }
+
+.veyns-lc-card { container-type: inline-size; container-name: lc; width: 100%; }
+
+/* The flip: the card turns around its vertical axis. The hidden face is also made invisible (after half the turn) so its buttons cannot be tabbed to. */
+.veyns-flip { perspective: 1400px; }
+.veyns-flip-inner {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1029 / 660;
+  transform-style: preserve-3d;
+  /* Step 12A: even ease-in-out (slow start, slow end) and the browser told ahead of time that this layer will turn. */
+  transition: transform 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+.veyns-flipped .veyns-flip-inner { transform: rotateY(180deg); }
+.veyns-flip-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 4.2cqw;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.85);
+  transition: visibility 0s linear 0.45s;
+}
+/* The rounded corners are on the pictures themselves (no clipping box on a turning layer: it makes the turn choppy). */
+.veyns-flip-face > img { border-radius: 4.2cqw; }
+.veyns-flip-back { transform: rotateY(180deg); visibility: hidden; }
+.veyns-flipped .veyns-flip-back { visibility: visible; }
+.veyns-flipped .veyns-flip-front { visibility: hidden; }
+
+/* Platinum and Diamond backs: the full layout needs a wide card; phones get the compact one. */
+@container lc (max-width: 479px) { .veyns-lc-full { display: none; } }
+@container lc (min-width: 480px) { .veyns-lc-compact { display: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .veyns-flip-inner, .veyns-flip-face { transition: none; }
+}
+
+/* Step 12A: 'Tap to flip' under the card: silver text with a light that sweeps across it (same sweep as 'Scroll down', in silver). */
+.veyns-silver-shine {
+  border: 0;
+  background-image: linear-gradient(110deg, rgba(148, 163, 184, 0.55) 40%, rgba(255, 255, 255, 0.98) 50%, rgba(148, 163, 184, 0.55) 60%);
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: veyns-shine 3.2s linear infinite;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .veyns-silver-shine { animation: none; background-position: 50% 0; }
+}
+
+/* Step 12B: 'Tap to flip' on touch screens, 'Click to flip' where the main input is a mouse or trackpad.
+   Decided by what the device can do (not by phone or computer name), so an iPad with a keyboard, a touch laptop or a phone with a mouse all get the right word. */
+.veyns-label-mouse { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .veyns-label-touch { display: none; }
+  .veyns-label-mouse { display: inline; }
+}
+
+/* The card itself: a tap flips at once (no double-tap-zoom wait on iPhone and Android), no grey flash on tap,
+   and a double click on a computer no longer highlights the text on the card. */
+.veyns-lc-card {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}

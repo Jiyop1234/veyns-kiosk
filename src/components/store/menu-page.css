@@ -1,0 +1,82 @@
+/* Menu page styles (Step 13): the sliding category window and the mask reveals. Colors and sizes come from Tailwind classes in the components. */
+
+/* The neon copy of the category bar is visible only through a rounded window (clip-path).
+   Step 13A: the window's two edges are two separate registered lengths (--win-l = distance from the bar's left edge, --win-r = from its right edge),
+   so each edge has its own timing: the edge in front (the side it travels toward) is quick and arrives first, the edge behind starts a little later
+   and follows. The window therefore stretches to the new category first, then the rest catches up. component sets data-dir to 'right' or 'left'. */
+@property --win-l {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --win-r {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+.veyns-tabs-lit {
+  clip-path: inset(0px var(--win-r) 0px var(--win-l) round 9999px);
+  -webkit-clip-path: inset(0px var(--win-r) 0px var(--win-l) round 9999px);
+  will-change: clip-path;
+}
+/* Going right: the right edge leads, the left edge follows. */
+.veyns-tabs-lit[data-dir='right'] {
+  transition: --win-r 0.34s cubic-bezier(0.2, 0.8, 0.25, 1), --win-l 0.46s cubic-bezier(0.5, 0, 0.2, 1) 0.2s;
+}
+/* Going left: the left edge leads, the right edge follows. */
+.veyns-tabs-lit[data-dir='left'] {
+  transition: --win-l 0.34s cubic-bezier(0.2, 0.8, 0.25, 1), --win-r 0.46s cubic-bezier(0.5, 0, 0.2, 1) 0.2s;
+}
+/* Hide the scrollbar of the category bar on narrow screens (it still scrolls by finger or wheel). */
+.veyns-tabs-scroll { scrollbar-width: none; }
+.veyns-tabs-scroll::-webkit-scrollbar { display: none; }
+
+/* Mask reveals: a soft edge sweeps over the element (down for cards, to the right for the heading) and uncovers it.
+   --veyns-reveal is the position of the edge; it is a registered property so the browser can animate it smoothly. */
+@property --veyns-reveal {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 130%;
+}
+@keyframes veyns-reveal {
+  from { --veyns-reveal: 0%; }
+  to   { --veyns-reveal: 130%; }
+}
+.veyns-reveal {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(var(--veyns-reveal) - 30%), transparent var(--veyns-reveal));
+  mask-image: linear-gradient(to bottom, #000 calc(var(--veyns-reveal) - 30%), transparent var(--veyns-reveal));
+  animation: veyns-reveal 0.9s cubic-bezier(0.22, 0.7, 0.2, 1) both;
+}
+.veyns-reveal-x {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(var(--veyns-reveal) - 30%), transparent var(--veyns-reveal));
+  mask-image: linear-gradient(to right, #000 calc(var(--veyns-reveal) - 30%), transparent var(--veyns-reveal));
+  animation: veyns-reveal 1.1s cubic-bezier(0.22, 0.7, 0.2, 1) both;
+}
+/* Wait (hidden) until the menu has scrolled into view; the parent's data-inview turns to 'true' once. */
+[data-inview='false'] .veyns-reveal,
+[data-inview='false'] .veyns-reveal-x { animation-play-state: paused; }
+/* When the sweep has finished the mask is removed, so hover shadows and borders are never clipped (set by onAnimationEnd). */
+.veyns-reveal[data-done='1'],
+.veyns-reveal-x[data-done='1'] { animation: none; -webkit-mask-image: none; mask-image: none; }
+
+/* Step 13A: "Coming Soon" for a category with no items yet (Apparel, Accessories): silver text with a light that sweeps across it, then rests. */
+.veyns-coming-soon {
+  background: linear-gradient(100deg, #8d969e 0%, #8d969e 40%, #ffffff 50%, #8d969e 60%, #8d969e 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: veyns-soon-shine 3s linear infinite;
+}
+@keyframes veyns-soon-shine {
+  from { background-position: 150% 0; }
+  to   { background-position: -50% 0; }
+}
+
+/* People who ask their device for less motion get no sweep and no sliding. */
+@media (prefers-reduced-motion: reduce) {
+  .veyns-reveal, .veyns-reveal-x { animation: none; -webkit-mask-image: none; mask-image: none; }
+  .veyns-tabs-lit, .veyns-tabs-lit[data-dir] { transition: none; }
+  .veyns-coming-soon { animation: none; }
+}
