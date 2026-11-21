@@ -60,13 +60,13 @@ export function StorePage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // A password-recovery link was opened: show the reset dialog and the password form,
+  // A password-recovery (or account activation) link was opened: show ONE dialog, "Set New Password",
   // then tell App it was handled so it does not reopen after a later logout/login.
+  // (Step REC-1: Account Settings used to open at the same time with a second password form; that is gone.
+  // Account Settings still has its own Reset Password option in the profile menu.)
   useEffect(() => {
     if (passwordRecoveryTick > 0) {
       setIsResetPasswordOpen(true);
-      setAccountSettingsTab('password');
-      setShowAccountSettings(true);
       if (onPasswordRecoveryHandled) onPasswordRecoveryHandled();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
