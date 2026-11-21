@@ -66,7 +66,8 @@ export function useAdminDashboardData() {
           orderNumber: o.order_number,
           userId: o.user_id || null,
           createdAt: o.created_at || null,
-          accountNickname: o.account_nickname || 'Guest',
+          // Step GR-B: an order with no owner is a walk-in, never a "guest" (old guest orders were saved with the text 'Guest').
+          accountNickname: !o.user_id && (!o.account_nickname || /^guest( user| diner)?$/i.test(String(o.account_nickname).trim())) ? 'Walk-in' : (o.account_nickname || 'Customer'),
           name: o.customer_name,
           email: o.email || '',
           phone: o.phone || '',

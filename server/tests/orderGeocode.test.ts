@@ -11,6 +11,7 @@ const O1 = '11111111-1111-4111-8111-111111111111';
 const O2 = '22222222-2222-4222-8222-222222222222';
 const O3 = '33333333-3333-4333-8333-333333333333';
 const O4 = '44444444-4444-4444-8444-444444444444';
+const O5 = '55555555-5555-4555-8555-555555555555'; // an old order with no owner
 const KEY = 'secret-key-1234';
 
 const TOKENS: Record<string, Identity> = {
@@ -66,8 +67,9 @@ async function captureLogs<T>(fn: () => Promise<T>) {
 function setup(opts: { pins?: Row[]; orders?: Row[]; db?: DbOpts; geocode?: (lat: number, lng: number) => Promise<string | null> } = {}) {
   const tables = {
     orders: opts.orders || [
-      { id: O1, user_id: null, idempotency_key: KEY },                 // guest order
-      { id: O2, user_id: 'u-owner', idempotency_key: KEY },            // order of a signed-in customer
+      { id: O1, user_id: 'u-owner', idempotency_key: KEY },            // order of a signed-in customer
+      { id: O2, user_id: 'u-owner', idempotency_key: KEY },            // another order of the same customer
+      { id: O5, user_id: null, idempotency_key: KEY },                 // old order with no owner (an old guest order or a staff walk-in)
     ],
     order_delivery_private: opts.pins || [
       { order_id: O1, delivery_lat: 10.1, delivery_lng: 122.1, map_address_status: 'pending', map_address: null },
@@ -93,9 +95,9 @@ function post(gateway: (req: any, res: any) => Promise<void>, body: any, token?:
 }
 
 // ---------------- customer mode ----------------
-test('guest: right order id + key, no token -> 200, one lookup, address saved, nothing about it returned', async () => {
+test('customer: right order id + key, signed in as the owner -> 200, one lookup, address saved, nothing about it returned', async () => {
   const t = setup();
-  const r = await post(t.gateway, { orderId: O1, idempotencyKey: KEY });
+  const r = await post(t.gateway, { orderId: O1, idempotencyKey: KEY }, 'owner-token');
   assert.equal(r.status, 200);
   assert.deepEqual(r.body, { ok: true });
   assert.equal(t.calls.length, 1);
@@ -103,30 +105,40 @@ test('guest: right order id + key, no token -> 200, one lookup, address saved, n
   assert.equal(t.tables.order_delivery_private[0].map_address, 'Address for 10.1,122.1');
 });
 
-test('guest: wrong key, missing key, short key, unknown order -> no lookup', async () => {
+test('customer: wrong key, missing key, short key, unknown order -> no lookup', async () => {
   const t = setup();
-  assert.equal((await post(t.gateway, { orderId: O1, idempotencyKey: 'wrong-key-9999' })).status, 403);
-  assert.equal((await post(t.gateway, { orderId: O3, idempotencyKey: KEY })).status, 403);
-  assert.equal((await post(t.gateway, { orderId: O1 })).status, 400);
-  assert.equal((await post(t.gateway, { orderId: O1, idempotencyKey: 'short' })).status, 400);
-  assert.equal((await post(t.gateway, { orderId: 'not-a-uuid', idempotencyKey: KEY })).status, 400);
-  assert.equal((await post(t.gateway, { orderId: O1, idempotencyKey: 'x'.repeat(101) })).status, 400);
+  assert.equal((await post(t.gateway, { orderId: O1, idempotencyKey: 'wrong-key-9999' }, 'owner-token')).status, 403);
+  assert.equal((await post(t.gateway, { orderId: O3, idempotencyKey: KEY }, 'owner-token')).status, 403);
+  assert.equal((await post(t.gateway, { orderId: O1 }, 'owner-token')).status, 400);
+  assert.equal((await post(t.gateway, { orderId: O1, idempotencyKey: 'short' }, 'owner-token')).status, 400);
+  assert.equal((await post(t.gateway, { orderId: 'not-a-uuid', idempotencyKey: KEY }, 'owner-token')).status, 400);
+  assert.equal((await post(t.gateway, { orderId: O1, idempotencyKey: 'x'.repeat(101) }, 'owner-token')).status, 400);
   assert.equal(t.calls.length, 0);
 });
 
-test('guest: a token that is not valid is treated as anonymous (still works on a guest order)', async () => {
+test('no token, or a token that is not valid: 401 before the route runs, no lookup (guests are gone)', async () => {
   const t = setup();
-  const r = await post(t.gateway, { orderId: O1, idempotencyKey: KEY }, 'expired-token');
-  assert.equal(r.status, 200);
-  assert.equal(t.calls.length, 1);
+  const body = { orderId: O1, idempotencyKey: KEY };
+  assert.equal((await post(t.gateway, body)).status, 401);
+  assert.equal((await post(t.gateway, body, 'expired-token')).status, 401);
+  assert.equal(t.calls.length, 0);
 });
 
-test('order of a signed-in customer: no token = 403, other customer = 403, owner = 200', async () => {
+test('an order with no owner (old guest order or staff walk-in) is never filled in from customer mode', async () => {
+  const t = setup();
+  const body = { orderId: O5, idempotencyKey: KEY };
+  assert.equal((await post(t.gateway, body, 'owner-token')).status, 403);
+  assert.equal((await post(t.gateway, body, 'other-token')).status, 403);
+  assert.equal(t.calls.length, 0);
+  assert.equal(t.tables.order_delivery_private.find((p: any) => p.order_id === O5), undefined);
+});
+
+test('order of a signed-in customer: no token = 401, other customer = 403, owner = 200', async () => {
   const t = setup();
   const body = { orderId: O2, idempotencyKey: KEY };
-  assert.equal((await post(t.gateway, body)).status, 403);
+  assert.equal((await post(t.gateway, body)).status, 401);
   assert.equal((await post(t.gateway, body, 'other-token')).status, 403);
-  assert.equal((await post(t.gateway, body, 'expired-token')).status, 403);
+  assert.equal((await post(t.gateway, body, 'expired-token')).status, 401);
   assert.equal(t.calls.length, 0);
   assert.equal((await post(t.gateway, body, 'owner-token')).status, 200);
   assert.equal(t.calls.length, 1);
@@ -137,7 +149,7 @@ test('customer mode only works once per order: a failed or finished pin is never
     { order_id: O1, delivery_lat: 1, delivery_lng: 2, map_address_status: 'failed', map_address: null },
     { order_id: O2, delivery_lat: 3, delivery_lng: 4, map_address_status: 'ok', map_address: 'Done' },
   ] });
-  assert.equal((await post(t.gateway, { orderId: O1, idempotencyKey: KEY })).status, 200);
+  assert.equal((await post(t.gateway, { orderId: O1, idempotencyKey: KEY }, 'owner-token')).status, 200);
   assert.equal((await post(t.gateway, { orderId: O2, idempotencyKey: KEY }, 'owner-token')).status, 200);
   assert.equal(t.calls.length, 0);
   assert.equal(t.tables.order_delivery_private[0].map_address_status, 'failed');
@@ -146,17 +158,17 @@ test('customer mode only works once per order: a failed or finished pin is never
 
 test('customer mode: geocoder fails -> pin marked failed, answer is still { ok: true }; order without a pin -> 200', async () => {
   const t = setup({ geocode: async () => null });
-  const r = await post(t.gateway, { orderId: O1, idempotencyKey: KEY });
+  const r = await post(t.gateway, { orderId: O1, idempotencyKey: KEY }, 'owner-token');
   assert.deepEqual(r.body, { ok: true });
   assert.equal(t.tables.order_delivery_private[0].map_address_status, 'failed');
   const t2 = setup({ pins: [] });
-  assert.equal((await post(t2.gateway, { orderId: O1, idempotencyKey: KEY })).status, 200);
+  assert.equal((await post(t2.gateway, { orderId: O1, idempotencyKey: KEY }, 'owner-token')).status, 200);
   assert.equal(t2.calls.length, 0);
 });
 
 test('the save is by order id only (no exact-number match on the pin, which never matched the real data)', async () => {
   const t = setup();
-  await post(t.gateway, { orderId: O1, idempotencyKey: KEY });
+  await post(t.gateway, { orderId: O1, idempotencyKey: KEY }, 'owner-token');
   const u = t.db.updates[0];
   assert.equal(u.table, 'order_delivery_private');
   assert.deepEqual(u.filters, { order_id: O1 });
@@ -164,7 +176,7 @@ test('the save is by order id only (no exact-number match on the pin, which neve
 
 test('the save works for a pin with long decimals', async () => {
   const t = setup({ pins: [{ order_id: O1, delivery_lat: 10.3418767278971, delivery_lng: 123.911652359402, map_address_status: 'pending', map_address: null }] });
-  await post(t.gateway, { orderId: O1, idempotencyKey: KEY });
+  await post(t.gateway, { orderId: O1, idempotencyKey: KEY }, 'owner-token');
   assert.equal(t.tables.order_delivery_private[0].map_address_status, 'ok');
 });
 
@@ -188,7 +200,7 @@ test('database problems are logged (without addresses, coordinates or keys) and 
     const text = lines.join('\n');
     assert.ok(!text.includes('Address for') && !text.includes('10.1') && !text.includes(KEY), name);
     const t2 = setup({ db });
-    const { result: cust } = await captureLogs(() => post(t2.gateway, { orderId: O1, idempotencyKey: KEY }));
+    const { result: cust } = await captureLogs(() => post(t2.gateway, { orderId: O1, idempotencyKey: KEY }, 'owner-token'));
     assert.deepEqual(cust.body, { ok: true }, name);
   }
 });
@@ -281,7 +293,7 @@ test('only POST is allowed; the route has its own rate limit; the body is size-l
 test('a database error inside the route is a safe 500 that shows nothing internal', async () => {
   const route = orderGeocodeRoute(() => { throw new Error('postgres://user:pw@host failed'); });
   const gateway = createGateway({ routes: [route], resolveIdentity, log: () => {} });
-  const r = await post(gateway, { orderId: O1, idempotencyKey: KEY });
+  const r = await post(gateway, { orderId: O1, idempotencyKey: KEY }, 'owner-token');
   assert.equal(r.status, 500);
   assert.ok(!JSON.stringify(r.body).includes('postgres'));
 });

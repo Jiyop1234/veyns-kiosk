@@ -3,10 +3,11 @@
 // readable "map address" and saves it next to them. The address is ADMIN-ONLY: it is never returned to the browser
 // of a customer, and it never touches the address the customer typed (orders.location).
 //
-// Access level 'optional' (new in 4C-3): the gateway verifies a token if one is sent, and otherwise lets the call
-// through with identity = null. This route then decides:
+// Access level 'customer' (Step GR-B; it was 'optional' in 4C-3 while guests could order): the gateway requires a
+// signed-in user with a profile before this route runs. This route then decides:
 //   1. CUSTOMER call (right after checkout). Body: { orderId, idempotencyKey }. The order id and the order's secret
-//      idempotency key must match. If the order belongs to an account, the caller must be signed in as that owner.
+//      idempotency key must match, and the caller must be the signed-in OWNER of the order. An order with no owner
+//      (an old guest order or a staff walk-in) is never filled in from here; staff do those in staff mode.
 //      Only 'pending' pins are processed and a failure marks the pin 'failed', so a customer can trigger at most
 //      ONE outbound lookup per order. Answer: { ok: true } only (no address).
 //   2. STAFF call (dashboard). Needs a signed-in employee or admin. Body: { orderIds: string[], force?: boolean }.
@@ -67,7 +68,7 @@ export function orderGeocodeRoute(getClient: () => any, deps: GeocodeDeps = {}):
   return {
     method: 'POST',
     path: '/order-geocode',
-    access: 'optional',                          // guests may call the customer mode; staff mode checks the role below
+    access: 'customer',                          // signed-in users only (Step GR-B); staff mode checks the role below
     timeoutMs: 9000,                             // just under the Free plan limit of about 10 s
     maxBodyBytes: 20_000,                        // tighter than the default: the body is two ids or a few order ids
     rateLimit: { max: 30, windowSeconds: 60 },   // new: the old function had no rate limit (per caller IP)
@@ -80,7 +81,7 @@ async function handle(ctx: RouteContext, admin: any, deps: GeocodeDeps): Promise
   const sleep = deps.sleep || defaultSleep;
   const now = deps.now || Date.now;
   const body = ctx.body as Record<string, any>;
-  const identity = ctx.identity; // null = anonymous visitor (no token, or a token that is not valid)
+  const identity = ctx.identity; // always set on a 'customer' route; the checks below stay as a second lock
 
   // Log a problem without any secret, address, coordinate or order key.
   const problem = (step: string, e?: { message?: string } | null) =>
@@ -139,11 +140,9 @@ async function handle(ctx: RouteContext, admin: any, deps: GeocodeDeps): Promise
   if (!UUID_RE.test(orderId) || key.length < 8 || key.length > 100) throw new HttpError(400, 'Invalid request.');
   const { data: order } = await admin.from('orders').select('id,user_id,idempotency_key').eq('id', orderId).maybeSingle();
   if (!order || order.idempotency_key !== key) throw new HttpError(403, FORBIDDEN);
-  // GUEST-ORDER BRANCH: an order with no user_id was placed by a guest. When guest checkout is removed (master plan,
-  // waiting-for-owner item 4), change this route's access to 'customer' and delete the "no user_id" case.
-  if (order.user_id) {
-    if (!identity || identity.userId !== order.user_id) throw new HttpError(403, FORBIDDEN);
-  }
+  // Step GR-B: guest checkout is gone, so the caller must be the owner. An order with no owner (an old guest order
+  // or a staff walk-in) is never filled in from here; staff fill those in from the dashboard (staff mode above).
+  if (!order.user_id || !identity || identity.userId !== order.user_id) throw new HttpError(403, FORBIDDEN);
   await fill(orderId, true);
   return { status: 200, body: { ok: true } }; // deliberately returns nothing about the address
 }

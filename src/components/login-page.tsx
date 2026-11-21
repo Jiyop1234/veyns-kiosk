@@ -5,7 +5,7 @@
 // because App.tsx had it; remove it later once the code is typed.
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { User, Sparkles, CheckCircle2, KeyRound, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { User, CheckCircle2, KeyRound, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import veynsSymbol from '@/assets/VEYNS SYMBOL.png';
 import { supabase } from '@/lib/supabase';
 
@@ -18,10 +18,7 @@ export function LoginPage({
   isSignUp, setIsSignUp,
   loginError, setLoginError,
   loadUserStampsAndPenalties,
-  onContinueAsGuest,
 }) {
-  const handleGuestLogin = onContinueAsGuest;
-
   const [authEmailInput, setAuthEmailInput] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
@@ -222,7 +219,7 @@ export function LoginPage({
             <h1 className="font-display text-3xl font-extrabold tracking-tight text-white pt-2">
               WELCOME TO <span className="text-lime-400">VEYNS.</span>
             </h1>
-            <p className="text-xs text-emerald-300/80">Please select how you would like to enter our store:</p>
+            <p className="text-xs text-emerald-300/80">Please log in to enter our store:</p>
           </div>
           <div className="space-y-3 pt-2">
             <Button
@@ -242,15 +239,6 @@ export function LoginPage({
               <span className="relative leading-tight">
                 <User className="size-4 text-lime-400 shrink-0 absolute right-full mr-2 top-1/2 -translate-y-1/2" />
                 Login
-              </span>
-            </Button>
-            <Button
-              onClick={handleGuestLogin}
-              className="relative w-full bg-[#061d16] hover:bg-[#0a3629] text-emerald-200 border border-emerald-800/60 py-4 px-10 rounded-2xl font-bold text-xs flex items-center justify-center gap-2.5 transition-all cursor-pointer text-center"
-            >
-              <span className="relative">
-                <Sparkles className="size-4 text-lime-400 shrink-0 absolute right-full mr-2 top-1/2 -translate-y-1/2" />
-                Continue as Guest
               </span>
             </Button>
           </div>

@@ -15,7 +15,7 @@ export function AuthGate() {
   const [isSignUp, setIsSignUp] = useState(false);
 
   // Authentication & Current User State
-  const [authMode, setAuthMode] = useState<'select' | 'regular' | 'guest' | 'employee' | 'forgot'>('select');
+  const [authMode, setAuthMode] = useState<'select' | 'regular' | 'employee' | 'forgot'>('select');
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Password-recovery link opened: StorePage shows the reset dialog + password form when this goes above 0.
@@ -111,27 +111,15 @@ export function AuthGate() {
         void restoreAuthUser(session);
       }, 0);
     });
+    // Step GR-B: guest mode is gone. Wipe what an old guest visit left in this browser, so it opens on the login screen.
     try {
-      if (localStorage.getItem('veyns_auth_mode') === 'guest') {
-        const savedGuest = localStorage.getItem('veyns_current_user');
-        if (savedGuest) setCurrentUser(JSON.parse(savedGuest));
-        setAuthMode('guest');
-        // The guest's saved order history is restored inside StorePage.
-      }
+      localStorage.removeItem('veyns_auth_mode');
+      localStorage.removeItem('veyns_current_user');
+      localStorage.removeItem('veyns_feedback_guest_token');
+      sessionStorage.removeItem('veyns_guest_order_history');
     } catch (e) { console.error(e); }
     return () => { alive = false; listener.subscription.unsubscribe(); };
   }, []);
-
-  const handleGuestLogin = () => {
-    const guestData = { name: 'Guest Diner', identifier: 'guest_trial', type: 'guest' };
-    setCurrentUser(guestData);
-    setAuthMode('guest');
-    localStorage.setItem('veyns_current_user', JSON.stringify(guestData));
-    localStorage.setItem('veyns_auth_mode', 'guest');
-    setStamps([]);
-    setFairPlayPenalty(null);
-    sessionStorage.removeItem('veyns_guest_order_history');
-  };
 
   const handleLogout = () => {
     void supabase.auth.signOut();
@@ -166,7 +154,6 @@ export function AuthGate() {
         loginError={loginError}
         setLoginError={setLoginError}
         loadUserStampsAndPenalties={loadUserStampsAndPenalties}
-        onContinueAsGuest={handleGuestLogin}
       />
     );
   }
