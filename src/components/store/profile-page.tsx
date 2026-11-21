@@ -3,12 +3,14 @@
 // Moved out of ordering-counter.tsx (Step 3). Look and behavior are unchanged.
 // StorePage owns the open flag and the order list; this file loads them from Supabase / local / session storage
 // and keeps them live when staff edit an order.
+// Step 5E-3: the cloud list is read through the gateway (GET /api/my-orders). Live updates still use the browser's realtime channel.
 import React, { useEffect } from 'react';
 import { History, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { formatPeso } from '@/lib/menu-data';
 import { supabase } from '@/lib/supabase';
+import { fetchMyOrders } from '@/lib/my-orders';
 
 // Same guest rule the ordering counter has always used.
 export function isGuestUser(currentUser: any) {
@@ -44,13 +46,16 @@ export function ProfilePage({
   const refreshOrderHistoryFromStorage = async () => {
     try {
       if (!isGuest) {
-        const { data: cloudOrders, error } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('user_id', currentUser.authUserId || currentUser.userId)
-          .order('created_at', { ascending: false });
+        // Step 5E-3: the orders now come from the gateway (GET /api/my-orders), not straight from the table.
+        // If the call fails, cloudOrders stays empty and the old local fallback below runs, as before.
+        let cloudOrders: any[] = [];
+        try {
+          cloudOrders = await fetchMyOrders();
+        } catch {
+          cloudOrders = [];
+        }
 
-        if (cloudOrders && cloudOrders.length > 0) {
+        if (cloudOrders.length > 0) {
           const formattedCloudOrders = cloudOrders.map((o: any) => ({
             name: o.customer_name,
             accountNickname: o.account_nickname || 'Guest',

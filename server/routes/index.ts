@@ -4,6 +4,7 @@ import { getServiceClient } from '../db/client.js';
 import type { RouteDef } from '../gateway/types.js';
 import { adminCreateCustomerRoute } from './adminCreateCustomer.js';
 import { healthRoutes } from './health.js';
+import { myOrdersRoute } from './myOrders.js';
 import { myProfileRoute } from './myProfile.js';
 import { orderGeocodeRoute } from './orderGeocode.js';
 import { placeOrderRoute } from './placeOrder.js';
@@ -14,4 +15,5 @@ export const routes: RouteDef[] = [
   orderGeocodeRoute(getServiceClient),        // 4C-3
   myProfileRoute(getServiceClient),           // 5D
   placeOrderRoute(getServiceClient),          // 5E-2
+  myOrdersRoute(getServiceClient),            // 5E-3
 ];
