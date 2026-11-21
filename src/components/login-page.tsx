@@ -497,8 +497,9 @@ export function ResetPasswordDialog({ onFinished }) {
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setResetError('');
-    if (newPassword.length < 8) {
-      setResetError('Password must be at least 8 characters long.');
+    // Step REC-2: same rule as sign-up (8+ characters, a number and a symbol).
+    if (!validatePasswordStrength(newPassword)) {
+      setResetError('Use at least 8 characters, including a number and a symbol.');
       return;
     }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
@@ -537,7 +538,7 @@ export function ResetPasswordDialog({ onFinished }) {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Minimum 8 characters"
+                  placeholder="Minimum 8 characters, with a number and a symbol"
                   required
                   className="w-full bg-[#04140f] border border-emerald-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-400 font-bold"
                 />
