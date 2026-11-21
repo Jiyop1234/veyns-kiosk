@@ -10,6 +10,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CreditCard, Star } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { fetchMyProfile } from '@/lib/my-profile';
 import { LoyaltyCard } from '@/components/store/loyalty-card';
 import { SOCIAL_LINKS, isSafeExternalUrl } from '@/lib/social-links';
 import frontImg from '@/assets/loyalty/loyalty-front.webp';
@@ -147,7 +148,7 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
     try {
       const { data, error } = await supabase.rpc('get_loyalty_status', { p_user_id: authId });
       if (error || !data) throw error || new Error('no loyalty data');
-      const { data: prof } = await supabase.from('profiles').select('created_at').eq('auth_user_id', authId).maybeSingle();
+      const prof = await fetchMyProfile(); // Step 5D: through the gateway
       if (!alive.current) return;
       setStatus({ ...data, member_since: prof?.created_at || null });
       setLoadError(false);

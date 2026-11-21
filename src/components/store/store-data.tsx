@@ -13,6 +13,7 @@ import { LoyaltyCard } from '@/components/store/loyalty-card';
 import { MenuPage } from '@/components/store/menu-page';
 import { Checkout } from '@/components/store/checkout';
 import { supabase } from '@/lib/supabase';
+import { fetchMyProfile } from '@/lib/my-profile';
 import { requestCustomerGeocode } from '@/lib/order-geocode';
 import { useTimeSlots, slotHasEnded, slotOrderBlock, isStoreOpenNow, todayKeyManila, useMinuteTick, STORE_OPEN_LABEL } from '@/lib/time-slots';
 
@@ -36,11 +37,7 @@ export function StoreData({ orderHistory, setOrderHistory, resetKey, currentUser
     try {
       const { data, error } = await supabase.rpc('get_loyalty_status', { p_user_id: currentUser.authUserId });
       if (!error && data) {
-        const { data: prof } = await supabase
-          .from('profiles')
-          .select('created_at')
-          .eq('auth_user_id', currentUser.authUserId)
-          .maybeSingle();
+        const prof = await fetchMyProfile(); // Step 5D: through the gateway
         const next = { ...data, member_since: prof?.created_at || null };
         if (notify) {
           if (next.weekly?.free_meal_state === 'unlocked' && loyaltyStatus?.weekly?.free_meal_state !== 'unlocked') {
@@ -128,9 +125,8 @@ export function StoreData({ orderHistory, setOrderHistory, resetKey, currentUser
 
   const loadUserStampsAndPenalties = async () => {
     if (!currentUser || isGuest || !currentUser.authUserId) { setStamps([]); setFairPlayPenalty(null); return; }
-    const { data: profile, error } = await supabase.from('profiles')
-      .select('stamps_data,penalty_data').eq('auth_user_id', currentUser.authUserId).single();
-    if (error || !profile) { setStamps(Array.from({ length: 12 }, () => ({ status: 'empty', date: '' }))); setFairPlayPenalty(null); return; }
+    const profile = await fetchMyProfile(); // Step 5D: through the gateway
+    if (!profile) { setStamps(Array.from({ length: 12 }, () => ({ status: 'empty', date: '' }))); setFairPlayPenalty(null); return; }
     setStamps(Array.from({ length: 12 }).map((_, idx) => profile.stamps_data?.[idx] || { status: 'empty', date: '' }));
     setFairPlayPenalty(profile.penalty_data || null);
   };

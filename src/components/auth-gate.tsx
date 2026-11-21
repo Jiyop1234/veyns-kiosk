@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { LoginPage } from '@/components/login-page';
 import { StorePage } from '@/components/store/store-page';
 import { clearOldBrowserCopies } from '@/lib/clear-old-browser-copies';
+import { fetchMyProfile } from '@/lib/my-profile';
 
 export function AuthGate() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
@@ -43,16 +44,15 @@ export function AuthGate() {
     };
   }, []);
 
-  // Load loyalty data only from the authenticated profile row.
+  // Load loyalty data only from the signed-in customer's own profile (served by /api/my-profile).
   const loadUserStampsAndPenalties = async (userObj: any) => {
     if (!userObj || userObj.type === 'guest' || !userObj.authUserId) {
       setStamps([]);
       setFairPlayPenalty(null);
       return;
     }
-    const { data: profile, error } = await supabase.from('profiles')
-      .select('stamps_data,penalty_data').eq('auth_user_id', userObj.authUserId).single();
-    if (error || !profile) {
+    const profile = await fetchMyProfile(); // Step 5D: through the gateway, not a direct table read
+    if (!profile) {
       setStamps(Array.from({ length: 12 }, () => ({ status: 'empty', date: '' })));
       setFairPlayPenalty(null);
       return;

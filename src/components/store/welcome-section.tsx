@@ -5,7 +5,7 @@
 // Step 8E: a see-through, shining 'Scroll down' text sits above the arrow (styles in home-page.css).
 // Step 8F: the section is exactly one screen minus the header (no scrolling to see 'Scroll down'), and the arrow shines instead of bouncing.
 import React, { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { fetchMyProfile } from '@/lib/my-profile';
 
 const NAME_WAIT_MS = 1500;
 
@@ -14,7 +14,7 @@ export function WelcomeSection({ currentUser }: { currentUser?: any }) {
   const [name, setName] = useState('Foodie');
   const [ready, setReady] = useState(isGuest);
 
-  // The nickname is profiles.name (own row only; the 'Users read own profile' policy allows it).
+  // The nickname is profiles.name. Step 5D: it comes from /api/my-profile (own row only, chosen by the login token).
   useEffect(() => {
     if (isGuest) {
       setName('Foodie');
@@ -25,11 +25,8 @@ export function WelcomeSection({ currentUser }: { currentUser?: any }) {
     const timer = window.setTimeout(() => live && setReady(true), NAME_WAIT_MS);
     (async () => {
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const userId = sessionData?.session?.user?.id;
-        if (!userId) return;
-        const { data } = await supabase.from('profiles').select('name').eq('auth_user_id', userId).maybeSingle();
-        const found = data?.name;
+        const prof = await fetchMyProfile();
+        const found = prof?.name;
         if (live && typeof found === 'string' && found.trim()) setName(found.trim());
       } catch {
         /* keep the fallback */
