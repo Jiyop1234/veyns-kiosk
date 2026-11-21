@@ -14,6 +14,7 @@ import { useCart } from '@/lib/cart';
 import { getOrderHistoryStorageKey, isGuestUser } from '@/components/store/profile-page';
 import { supabase } from '@/lib/supabase';
 import { requestCustomerGeocode } from '@/lib/order-geocode';
+import { placeOrder } from '@/lib/place-order';
 import { useTimeSlots, slotHasEnded, slotOrderBlock, isStoreOpenNow, todayKeyManila, useMinuteTick, STORE_OPEN_LABEL } from '@/lib/time-slots';
 
 export function Checkout({
@@ -468,30 +469,27 @@ export function Checkout({
     // Atomic server-side placement: order is numbered, priced, promo-validated and its slot reserved
     // in ONE database transaction. If anything fails nothing is saved (no orphan orders).
     // The idempotency key makes double-clicks / network retries return the same order.
-    const { data: orderDataRes, error: orderErr } = await supabase.rpc('place_order', {
-      p_order: {
-        name: payload.name,
-        email: payload.email,
-        phone: payload.phone,
-        fulfillment: payload.fulfillment,
-        location: payload.location,
-        landmark: payload.landmark,
-        orderType: payload.orderType,
-        scheduleInfo: payload.scheduleInfo,
-        deliveryFee: payload.deliveryFee,
-        deliveryOption: newOrder.deliveryOption,
-        deliveryLat: payload.deliveryLat,
-        deliveryLng: payload.deliveryLng,
-        promoCodesList: payload.promoCodesList,
-        items: payload.items,
-        dateKey: targetDateKey,
-        slotTime: targetSlotTime,
-        accountNickname: isGuest ? 'Guest' : (currentUser?.name || 'User'),
-        idempotencyKey: orderIdempotencyKeyRef.current
-      }
+    // Step 5E-2: the order goes through the gateway (POST /api/place-order) instead of straight to the database.
+    // The server fills in the customer from the login token and works out prices, fee and promos itself.
+    const orderDataRes = await placeOrder({
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone,
+      fulfillment: payload.fulfillment,
+      location: payload.location,
+      landmark: payload.landmark,
+      orderType: payload.orderType,
+      scheduleInfo: payload.scheduleInfo,
+      deliveryOption: newOrder.deliveryOption,
+      deliveryLat: payload.deliveryLat,
+      deliveryLng: payload.deliveryLng,
+      promoCodesList: payload.promoCodesList,
+      items: payload.items,
+      dateKey: targetDateKey,
+      slotTime: targetSlotTime,
+      idempotencyKey: orderIdempotencyKeyRef.current
     });
-
-    if (orderErr || !orderDataRes) throw new Error(orderErr?.message || 'Order could not be saved.');
+    if (!orderDataRes) throw new Error('Order could not be saved.');
     const placedKey = orderIdempotencyKeyRef.current; // the key of THIS order (a new one is issued below)
     orderIdempotencyKeyRef.current = (typeof crypto !== 'undefined' && (crypto as any).randomUUID) ? (crypto as any).randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
 
