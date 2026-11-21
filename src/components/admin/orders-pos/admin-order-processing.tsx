@@ -63,7 +63,6 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales, fit = false
 
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newPhone, setNewPhone] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<{ message: string; duplicate?: boolean } | null>(null);
   const [createNotice, setCreateNotice] = useState<{ sent: boolean; error?: string; email: string } | null>(null);
@@ -342,10 +341,8 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales, fit = false
     setCreateError(null); setCreateNotice(null);
     const name = newName.trim().replace(/\s+/g, ' ');
     const email = newEmail.trim().toLowerCase();
-    const phone = newPhone.trim();
     if (name.length < 2) { setCreateError({ message: "Enter the customer's full name." }); return; }
     if (!EMAIL_RE.test(email)) { setCreateError({ message: 'Enter a valid email address.' }); return; }
-    if (phone && !PHONE_RE.test(phone)) { setCreateError({ message: 'Enter a valid contact number (digits, +, -, spaces).' }); return; }
     if (creating) return;
     setCreating(true);
     try {
@@ -355,7 +352,7 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales, fit = false
       const res = await fetch('/api/admin-create-customer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ action: 'create', name, email, phone }),
+        body: JSON.stringify({ action: 'create', name, email }),
       });
       const body = await res.json().catch(() => null);
       if (!body) {
@@ -363,9 +360,9 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales, fit = false
         return;
       }
       if (!res.ok || !body.ok) { setCreateError({ message: body.error || 'The account could not be created.', duplicate: body.code === 'duplicate_email' }); return; }
-      chooseCustomer({ id: body.customer.id, auth_user_id: body.customer.authUserId, name: body.customer.name, identifier: body.customer.identifier }, phone);
+      chooseCustomer({ id: body.customer.id, auth_user_id: body.customer.authUserId, name: body.customer.name, identifier: body.customer.identifier });
       setCreateNotice({ sent: !!body.activationEmailSent, error: body.activationError, email });
-      setNewName(''); setNewEmail(''); setNewPhone('');
+      setNewName(''); setNewEmail('');
       onOrdersChanged && onOrdersChanged(); // refreshes the Customer Accounts list too
     } catch (e: any) {
       setCreateError({ message: 'Network error. The account may not have been created; search for the email before retrying.' });
@@ -668,7 +665,6 @@ export function AdminOrderProcessing({ onOrdersChanged, onViewSales, fit = false
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div><label className={labelCls}>Full name *</label><input value={newName} onChange={(e) => setNewName(e.target.value)} className={inputCls} placeholder="Juan Dela Cruz" /></div>
                     <div><label className={labelCls}>Email *</label><input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className={inputCls} placeholder="name@example.com" /></div>
-                    <div className="sm:col-span-2"><label className={labelCls}>Contact number</label><input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} className={inputCls} placeholder="09XX XXX XXXX" /></div>
                   </div>
                   {createError && (
                     <div className="rounded-xl border border-red-500/50 bg-red-500/10 p-3 text-xs text-red-200 space-y-2"><p className="flex items-start gap-2"><XCircle className="h-4 w-4 shrink-0" />{createError.message}</p>
