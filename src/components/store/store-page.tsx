@@ -5,6 +5,7 @@
 // App.tsx is only the auth gate and passes the auth-bridge props below.
 // Step B8: the header's cart icon now opens a cart drawer (cart-drawer.tsx); its Checkout button opens the same checkout as before.
 // Step 13B: the separate Extras page is gone. Extras is a category inside the menu now (menu-page.tsx).
+// Step 5E-4: the order list is only kept in memory. The old copies in the browser's local and session storage are gone.
 import React, { useState, useEffect } from 'react';
 import { SiteHeader } from '@/components/store/site-header';
 import { StoreData } from '@/components/store/store-data';
@@ -49,16 +50,6 @@ export function StorePage({
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
   const [resetTrigger, setResetTrigger] = useState(0);
   const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
-
-  // Guest order history lives in sessionStorage; restore it when the store opens.
-  useEffect(() => {
-    if (currentUser?.type !== 'guest') return;
-    try {
-      const sessionOrders = sessionStorage.getItem('veyns_guest_order_history');
-      if (sessionOrders) setOrderHistory(JSON.parse(sessionOrders));
-    } catch (e) { console.error(e); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // A password-recovery (or account activation) link was opened: show ONE dialog, "Set New Password",
   // then tell App it was handled so it does not reopen after a later logout/login.
@@ -116,14 +107,11 @@ export function StorePage({
     if (currentUser && currentUser.type !== 'guest') await loadUserStampsAndPenalties(currentUser);
   };
 
-  // One place that updates the order list and mirrors it to storage (used by checkout and My Order History).
-  const updateOrderHistory = (newHistory: any[]) => {
-    setOrderHistory(newHistory);
-    if (currentUser && currentUser.type === 'guest') {
-      sessionStorage.setItem('veyns_guest_order_history', JSON.stringify(newHistory));
-    } else if (currentUser && currentUser.type === 'regular') {
-      localStorage.setItem('veyns_order_history', JSON.stringify(newHistory));
-    }
+  // One place that updates the order list (used by checkout and My Order History).
+  // Step 5E-4: it no longer copies the list into the browser's storage; the server is the record (GET /api/my-orders).
+  // It takes a new list, or a function (previous list -> new list), like the setter of useState.
+  const updateOrderHistory = (next: any) => {
+    setOrderHistory(next);
   };
 
   return (

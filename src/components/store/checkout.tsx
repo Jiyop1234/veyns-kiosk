@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { formatPeso } from '@/lib/menu-data';
 import { getPromoStatus, getPromoEndMs } from '@/lib/promo-campaigns';
 import { useCart } from '@/lib/cart';
-import { getOrderHistoryStorageKey, isGuestUser } from '@/components/store/profile-page';
+import { isGuestUser } from '@/components/store/profile-page';
 import { supabase } from '@/lib/supabase';
 import { requestCustomerGeocode } from '@/lib/order-geocode';
 import { placeOrder } from '@/lib/place-order';
@@ -404,8 +404,6 @@ export function Checkout({
   useEffect(() => { void loadMyRedemptions(); }, [currentUser?.authUserId, isGuest, orderPlaced]);
   const [placedOrderDetails, setPlacedOrderDetails] = useState(null);
 
-  const userHistoryStorageKey = getOrderHistoryStorageKey(currentUser);
-
   useEffect(() => {
     if (resetKey !== undefined) {
       setAppliedPromos([]);
@@ -500,15 +498,9 @@ export function Checkout({
 
     const savedOrder = { ...newOrder, orderNumber: orderDataRes.order_number, items: orderDataRes.items, subtotal: Number(orderDataRes.subtotal || newOrder.subtotal), promoDiscount: Number(orderDataRes.promo_discount || 0), promoCode: orderDataRes.promo_code || null, promoCodesList: orderDataRes.promo_code ? String(orderDataRes.promo_code).split(',').map((c: string) => c.trim()) : [], deliveryDiscount: Number(orderDataRes.delivery_discount || 0), deliveryFee: Number(orderDataRes.delivery_fee || newOrder.deliveryFee), total: Number(orderDataRes.total || newOrder.total), deliveryFeePending: !!orderDataRes.delivery_fee_pending };
     
-    const prior = isGuest ? sessionStorage.getItem(userHistoryStorageKey) : localStorage.getItem(userHistoryStorageKey);
-    let previous: any[] = [];
-    try { previous = prior ? JSON.parse(prior) : []; } catch { previous = []; }
-    const updated = [savedOrder, ...previous];
-    setHistoryList(updated);
-    try {
-      if (isGuest) sessionStorage.setItem(userHistoryStorageKey, JSON.stringify(updated));
-      else localStorage.setItem(userHistoryStorageKey, JSON.stringify(updated));
-    } catch (e) { console.error('Unable to cache order history:', e); }
+    // Step 5E-4: put the new order at the top of the list on screen. It is no longer copied into the browser's storage;
+    // the server keeps the real history (GET /api/my-orders) and the list refreshes from it.
+    setHistoryList((previous: any) => [savedOrder, ...(Array.isArray(previous) ? previous : [])]);
     return savedOrder;
   };
 
