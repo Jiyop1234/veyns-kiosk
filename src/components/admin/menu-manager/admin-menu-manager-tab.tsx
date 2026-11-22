@@ -4,7 +4,9 @@
 // The component stays mounted (like the Slot Capacity tab), so the form state survives tab switches exactly as before.
 // Step B7: new look (stat cards, search / filters / sort, Bulk Select, item cards, Category Mix) and the Add / Edit form is now a side panel
 // (admin-menu-item-panel.tsx) instead of a pop-up. The state and handlers below are the original ones; the changes are listed in the B7 record.
-import React, { useMemo, useState } from 'react';
+// Step P5-B: photos are shrunk in the browser (max 1000 px, WebP) before upload and refused if still over 1 MB; an upload that fails now stops the save
+// with a message; the old picture file is deleted from the menu-images bucket when it is replaced or when its item is deleted (only if no other item uses it).
+import React, { useMemo, useRef, useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { menuImages } from '@/lib/menu-images';
 import { supabase } from '@/lib/supabase';
@@ -13,6 +15,88 @@ import { AdminMenuStatCards } from '@/components/admin/menu-manager/admin-menu-s
 import { AdminMenuCard } from '@/components/admin/menu-manager/admin-menu-card';
 import { AdminMenuCategoryMix } from '@/components/admin/menu-manager/admin-menu-category-mix';
 import { buildMenuSales } from '@/components/admin/menu-manager/admin-menu-sales';
+
+// --- Step P5-B: photo rules and helpers (outside the component, so they hold no screen state) ---
+const MENU_BUCKET = 'menu-images';
+const PHOTO_MAX_SIDE = 1000; // longest side in pixels after shrinking
+const PHOTO_MAX_INPUT_BYTES = 25 * 1024 * 1024; // a chosen photo larger than this is refused before it is opened
+const PHOTO_MAX_OUTPUT_BYTES = 1024 * 1024; // a photo still larger than this after shrinking is refused
+const PHOTO_QUALITIES = [0.8, 0.65, 0.5]; // tried in this order until the photo fits
+
+const canvasToBlob = (canvas: HTMLCanvasElement, type: string, quality: number) =>
+  new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+
+// Shrinks a chosen photo to at most 1000 px on its long side and saves it as WebP (JPEG if this browser cannot write WebP).
+async function shrinkMenuPhoto(file: File): Promise<{ blob: Blob; ext: string }> {
+  if (!file.type.startsWith('image/')) throw new Error('Please choose a photo (JPG, PNG or WebP).');
+  if (file.size > PHOTO_MAX_INPUT_BYTES) throw new Error('This photo is larger than 25 MB. Please choose a smaller one.');
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('This photo could not be read. Please use a JPG, PNG or WebP file.'));
+      el.src = objectUrl;
+    });
+    if (!img.naturalWidth || !img.naturalHeight) throw new Error('This photo could not be read. Please use a JPG, PNG or WebP file.');
+    const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+    const width = Math.max(1, Math.round(img.naturalWidth * scale));
+    const height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Your browser could not prepare the photo.');
+    ctx.drawImage(img, 0, 0, width, height);
+
+    let type = 'image/webp';
+    let blob = await canvasToBlob(canvas, type, PHOTO_QUALITIES[0]);
+    if (!blob || blob.type !== 'image/webp') {
+      // This browser cannot write WebP: use JPEG, with a white background behind any see-through area.
+      type = 'image/jpeg';
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+      blob = await canvasToBlob(canvas, type, PHOTO_QUALITIES[0]);
+    }
+    for (let i = 1; blob && blob.size > PHOTO_MAX_OUTPUT_BYTES && i < PHOTO_QUALITIES.length; i++) {
+      blob = await canvasToBlob(canvas, type, PHOTO_QUALITIES[i]);
+    }
+    if (!blob) throw new Error('The photo could not be shrunk.');
+    if (blob.size > PHOTO_MAX_OUTPUT_BYTES) throw new Error('This photo is still larger than 1 MB after shrinking. Please choose a simpler photo.');
+    return { blob, ext: type === 'image/webp' ? 'webp' : 'jpg' };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+// Gives the file name inside the menu-images bucket for one of OUR picture links.
+// Anything else (the bundled /assets/ pictures, other sites, odd names) gives '', so it is never deleted.
+function menuBucketPathFromUrl(url: any): string {
+  if (typeof url !== 'string') return '';
+  const marker = `/storage/v1/object/public/${MENU_BUCKET}/`;
+  const at = url.indexOf(marker);
+  if (at === -1) return '';
+  const raw = url.slice(at + marker.length).split('?')[0].split('#')[0];
+  let path = '';
+  try { path = decodeURIComponent(raw); } catch { return ''; }
+  return /^[A-Za-z0-9_.-]+$/.test(path) && !path.startsWith('.') ? path : '';
+}
+
+// Removes a picture file from the bucket, but only if it is one of ours and no menu item still points at it.
+// It never throws: a failed clean-up must not block saving or deleting an item.
+async function removeMenuPhotoIfUnused(url: any) {
+  try {
+    const path = menuBucketPathFromUrl(url);
+    if (!path) return;
+    const { data: stillUsed, error: checkError } = await supabase.from('menu_items').select('id').like('image_url', `%/${MENU_BUCKET}/${path}%`).limit(1);
+    if (checkError || (stillUsed && stillUsed.length > 0)) return;
+    const { error: removeError } = await supabase.storage.from(MENU_BUCKET).remove([path]);
+    if (removeError) console.warn('Could not remove the old menu photo:', removeError.message);
+  } catch (e) {
+    console.warn('Could not remove the old menu photo:', e);
+  }
+}
 
 export function AdminMenuManagerTab({ active, menuItems, orders, fit = false, fetchCloudData }: { active: boolean; menuItems: any[]; orders?: any[]; fit?: boolean; fetchCloudData: () => void }) {
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -40,31 +124,40 @@ export function AdminMenuManagerTab({ active, menuItems, orders, fit = false, fe
   // Dynamic Option Groups State for Menu Manager
   const [itemOptionGroups, setItemOptionGroups] = useState<any[]>([]);
   const [previewSelections, setPreviewSelections] = useState<{ [groupId: string]: string[] }>({});
+  const savingRef = useRef(false); // Step P5-B: ignores a second Save click while the first save (and its photo upload) is still running
 
-  // --- Upload menu photos to Supabase Storage ---
-  const uploadImageToSupabase = async (file: File) => {
+  // --- Upload a menu photo to Supabase Storage (shrunk first, see shrinkMenuPhoto) ---
+  const uploadImageToSupabase = async (file: File): Promise<{ url?: string; error?: string }> => {
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('menu-images').upload(fileName, file);
+      const { blob, ext } = await shrinkMenuPhoto(file);
+      const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${ext}`;
+      // Every upload gets a new file name, so the browser may keep the picture for a year (less repeat downloads).
+      const { error: uploadError } = await supabase.storage.from(MENU_BUCKET).upload(fileName, blob, { contentType: blob.type, cacheControl: '31536000' });
       if (uploadError) throw uploadError;
-      const { data } = supabase.storage.from('menu-images').getPublicUrl(fileName);
-      return data.publicUrl;
-    } catch (error) {
+      const { data } = supabase.storage.from(MENU_BUCKET).getPublicUrl(fileName);
+      return { url: data.publicUrl };
+    } catch (error: any) {
       console.error('Storage upload error:', error);
-      return null;
+      return { error: error?.message || 'The photo could not be uploaded.' };
     }
   };
 
   // --- Create or update a menu item and its dynamic option groups ---
-  const handleSaveNewOrEditedItem = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const saveNewOrEditedItem = async () => {
     if (!itemName || !itemPrice) return;
 
-    let imageUrl = editingItem ? editingItem.image : '';
+    const oldImageUrl = editingItem ? editingItem.image : '';
+    let imageUrl = oldImageUrl;
+    let newImageUrl = '';
     if (itemImageFile) {
-      const uploadedUrl = await uploadImageToSupabase(itemImageFile);
-      if (uploadedUrl) imageUrl = uploadedUrl;
+      const uploaded = await uploadImageToSupabase(itemImageFile);
+      if (!uploaded.url) {
+        // Step P5-B: before, a failed upload was ignored and the item was saved with its old picture. Now nothing is saved and the form stays open.
+        alert('The photo was not uploaded, so nothing was saved: ' + (uploaded.error || 'unknown error'));
+        return;
+      }
+      imageUrl = uploaded.url;
+      newImageUrl = uploaded.url;
     }
 
     const itemId = editingItem ? editingItem.id : itemName.toLowerCase().replace(/[^a-z0-9]/g, '_');
@@ -84,13 +177,22 @@ export function AdminMenuManagerTab({ active, menuItems, orders, fit = false, fe
       offer_in_popup: itemIsExtra ? true : itemOfferInPopup
     };
 
+    let saved = false;
     try {
       const { error: saveError } = await supabase.from('menu_items').upsert(newItemData, { onConflict: 'id' });
       if (saveError) throw saveError;
-      alert('Saved and synced!');
+      saved = true;
     } catch (err) {
       alert('Error saving to database: ' + (err?.message || 'unknown error'));
     }
+
+    // Step P5-B: tidy the bucket. A new photo that was not saved is removed again; after a good save the replaced old photo is removed.
+    // Both only happen when no menu item points at the file, and a failed clean-up never blocks the save.
+    if (newImageUrl) {
+      if (!saved) await removeMenuPhotoIfUnused(newImageUrl);
+      else if (oldImageUrl && oldImageUrl !== newImageUrl) await removeMenuPhotoIfUnused(oldImageUrl);
+    }
+    if (saved) alert('Saved and synced!');
 
     setEditingItem(null);
     setIsAddingNewItem(false);
@@ -107,6 +209,18 @@ export function AdminMenuManagerTab({ active, menuItems, orders, fit = false, fe
     setItemOptionGroups([]);
     setPreviewSelections({});
     fetchCloudData();
+  };
+
+  // Step P5-B: the form calls this one. It ignores a second click while a save is still running (a double click used to upload the photo twice).
+  const handleSaveNewOrEditedItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try {
+      await saveNewOrEditedItem();
+    } finally {
+      savingRef.current = false;
+    }
   };
 
   // --- Open the Add / Edit form (main item or extra) ---
@@ -138,9 +252,11 @@ export function AdminMenuManagerTab({ active, menuItems, orders, fit = false, fe
   // --- Delete a menu item after confirmation ---
   const handleDeleteMenuItem = async (id: string) => {
     if (!confirm('Are you sure you want to delete this menu item from the database?')) return;
+    const photoUrl = menuItems.find((m: any) => String(m.id) === String(id))?.image; // Step P5-B: remember its picture, to remove the file afterwards
     const { error } = await supabase.from('menu_items').delete().eq('id', id);
     if (error) { alert('Delete failed: ' + error.message); return; }
     fetchCloudData();
+    await removeMenuPhotoIfUnused(photoUrl);
   };
 
   // --- Step B7: hide or show several items at once (Bulk Select). It writes the same column the Hide / Show button writes. ---
