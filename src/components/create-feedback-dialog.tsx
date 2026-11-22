@@ -4,8 +4,10 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Star, X, ImagePlus, Loader2, Search, Check, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
-  FEEDBACK_BUCKET, MAX_PHOTOS, MAX_PHOTO_BYTES, MAX_COMMENT, getGuestToken, sniffImageType, ratingLabel,
+  FEEDBACK_BUCKET, MAX_PHOTOS, MAX_COMMENT, sniffImageType, ratingLabel,
 } from '@/lib/feedback';
+import { submitFeedback } from '@/lib/submit-feedback';
+import { shrinkFeedbackPhoto } from '@/lib/shrink-feedback-photo';
 
 type Photo = { id: string; file: File; preview: string; mime: string; ext: string; path?: string };
 
@@ -19,6 +21,7 @@ export function CreateFeedbackDialog({ open, onOpenChange, currentUser, onPublis
   const [comment, setComment] = useState('');
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [photoErrors, setPhotoErrors] = useState<string[]>([]);
+  const [preparing, setPreparing] = useState(false); // photos are being shrunk
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
@@ -26,8 +29,6 @@ export function CreateFeedbackDialog({ open, onOpenChange, currentUser, onPublis
   const submittingRef = useRef(false);          // blocks double-clicks even before React re-renders
   const submissionKey = useRef(crypto.randomUUID()); // idempotency key: same key => server never duplicates
   const fileInput = useRef<HTMLInputElement>(null);
-
-  const isGuest = !currentUser || currentUser.type === 'guest';
 
   // Food list comes from the real catalog
   useEffect(() => {
@@ -53,12 +54,21 @@ export function CreateFeedbackDialog({ open, onOpenChange, currentUser, onPublis
     if (!files) return;
     const errs: string[] = [];
     const next: Photo[] = [];
-    for (const file of Array.from(files)) {
-      if (photos.length + next.length >= MAX_PHOTOS) { errs.push(`Only ${MAX_PHOTOS} photos are allowed per post.`); break; }
-      if (file.size > MAX_PHOTO_BYTES) { errs.push(`"${file.name}" is larger than 5 MB.`); continue; }
-      const type = await sniffImageType(file);
-      if (!type) { errs.push(`"${file.name}" is not a JPEG, PNG or WebP image.`); continue; }
-      next.push({ id: crypto.randomUUID(), file, preview: URL.createObjectURL(file), mime: type.mime, ext: type.ext });
+    setPreparing(true);
+    try {
+      for (const file of Array.from(files)) {
+        if (photos.length + next.length >= MAX_PHOTOS) { errs.push(`Only ${MAX_PHOTOS} photos are allowed per post.`); break; }
+        const type = await sniffImageType(file); // real file type, not just the name (JPEG, PNG or WebP only)
+        if (!type) { errs.push(`"${file.name}" is not a JPEG, PNG or WebP image.`); continue; }
+        try {
+          const small = await shrinkFeedbackPhoto(file); // long side 1200 px, WebP, 1 MB or less
+          next.push({ id: crypto.randomUUID(), file: small.file, preview: URL.createObjectURL(small.file), mime: small.mime, ext: small.ext });
+        } catch (e: any) {
+          errs.push(e?.message || `"${file.name}" could not be prepared.`);
+        }
+      }
+    } finally {
+      setPreparing(false);
     }
     setPhotos((p) => [...p, ...next]);
     setPhotoErrors(errs);
@@ -103,17 +113,15 @@ export function CreateFeedbackDialog({ open, onOpenChange, currentUser, onPublis
         ph.path = path;
         setPhotos((cur) => cur.map((c) => (c.id === ph.id ? { ...c, path } : c)));
       }
-      // 2) create the post (server re-validates everything)
+      // 2) create the post through the gateway (the server re-validates everything)
       setProgress('Publishing…');
-      const { data, error: rpcErr } = await supabase.rpc('submit_feedback', {
-        p_submission_key: submissionKey.current,
-        p_rating: rating,
-        p_comment: comment,
-        p_item_ids: selected,
-        p_photos: uploaded.map((p) => ({ path: p.path })),
-        p_guest_token: isGuest ? getGuestToken() : null,
+      const data = await submitFeedback({
+        submissionKey: submissionKey.current,
+        rating,
+        comment,
+        itemIds: selected,
+        photoPaths: uploaded.map((p) => p.path as string),
       });
-      if (rpcErr || !data?.id) throw new Error(rpcErr?.message || 'The post could not be saved.');
       // 3) only now is it a success
       reset();
       onPublished?.(data);
@@ -132,7 +140,7 @@ export function CreateFeedbackDialog({ open, onOpenChange, currentUser, onPublis
         <div className="border-b border-emerald-800/60 px-4 py-3">
           <DialogTitle className="text-base font-extrabold text-white">Create a Post</DialogTitle>
           <DialogDescription className="text-xs text-emerald-300/80">
-            Posting as <span className="font-bold text-lime-300">{isGuest ? 'Guest' : currentUser?.name || 'Customer'}</span>
+            Posting as <span className="font-bold text-lime-300">{currentUser?.name || 'Customer'}</span>
           </DialogDescription>
         </div>
 
@@ -201,9 +209,9 @@ export function CreateFeedbackDialog({ open, onOpenChange, currentUser, onPublis
           {/* PHOTOS */}
           <section>
             <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-xs font-extrabold text-emerald-100">Photos <span className="font-normal text-emerald-300/70">(optional, up to {MAX_PHOTOS}, 5 MB each)</span></label>
-              <button type="button" disabled={photos.length >= MAX_PHOTOS || submitting} onClick={() => fileInput.current?.click()} className="inline-flex items-center gap-1 rounded-lg border border-emerald-800/60 px-2.5 py-1.5 text-[11px] font-extrabold text-emerald-200 hover:border-lime-400/50 disabled:opacity-40 cursor-pointer">
-                <ImagePlus width={14} height={14} /> Add photos
+              <label className="text-xs font-extrabold text-emerald-100">Photos <span className="font-normal text-emerald-300/70">(optional, up to {MAX_PHOTOS}; big photos are made smaller automatically)</span></label>
+              <button type="button" disabled={photos.length >= MAX_PHOTOS || submitting || preparing} onClick={() => fileInput.current?.click()} className="inline-flex items-center gap-1 rounded-lg border border-emerald-800/60 px-2.5 py-1.5 text-[11px] font-extrabold text-emerald-200 hover:border-lime-400/50 disabled:opacity-40 cursor-pointer">
+                {preparing ? <Loader2 className="animate-spin" width={14} height={14} /> : <ImagePlus width={14} height={14} />} {preparing ? 'Preparing…' : 'Add photos'}
               </button>
             </div>
             <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => addFiles(e.target.files)} />
@@ -237,7 +245,7 @@ export function CreateFeedbackDialog({ open, onOpenChange, currentUser, onPublis
           <span className="text-[11px] text-emerald-300/70">{progress}</span>
           <div className="flex gap-2">
             <button type="button" disabled={submitting} onClick={() => onOpenChange(false)} className="rounded-xl border border-emerald-800/60 px-4 py-2 text-xs font-extrabold text-emerald-200 disabled:opacity-50 cursor-pointer">Cancel</button>
-            <button type="button" onClick={publish} disabled={submitting} className="inline-flex items-center gap-2 rounded-xl bg-lime-400 px-5 py-2 text-xs font-extrabold text-black shadow-lg hover:bg-lime-300 disabled:opacity-60 cursor-pointer">
+            <button type="button" onClick={publish} disabled={submitting || preparing} className="inline-flex items-center gap-2 rounded-xl bg-lime-400 px-5 py-2 text-xs font-extrabold text-black shadow-lg hover:bg-lime-300 disabled:opacity-60 cursor-pointer">
               {submitting && <Loader2 className="animate-spin" width={14} height={14} />} Publish
             </button>
           </div>

@@ -22,6 +22,7 @@ export interface RouteContext {
   query: Record<string, string>;
   body: Record<string, unknown>; // already parsed, size-limited and validated
   identity: Identity | null;     // null only on 'public' routes, and on 'optional' routes when the caller is anonymous
+  ip?: string;                   // caller IP as the gateway read it (5F-2). Pass it on only where a database limit needs it; never log it.
 }
 
 export interface RouteResult {
