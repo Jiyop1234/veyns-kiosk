@@ -174,7 +174,7 @@ export function createGateway(deps: GatewayDeps) {
 
       // ---- run the route under a timeout ----
       const result = await withTimeout(
-        route.handle({ requestId, method, path: route.path, query: readQuery(req), body, identity }),
+        route.handle({ requestId, method, path: route.path, query: readQuery(req), body, identity, ip }),
         route.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       );
       return send(result.status, result.body);

@@ -4,8 +4,9 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Star, X, ImagePlus, Loader2, Search, Check, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
-  FEEDBACK_BUCKET, MAX_PHOTOS, MAX_PHOTO_BYTES, MAX_COMMENT, getGuestToken, sniffImageType, ratingLabel,
+  FEEDBACK_BUCKET, MAX_PHOTOS, MAX_PHOTO_BYTES, MAX_COMMENT, sniffImageType, ratingLabel,
 } from '@/lib/feedback';
+import { submitFeedback } from '@/lib/submit-feedback';
 
 type Photo = { id: string; file: File; preview: string; mime: string; ext: string; path?: string };
 
@@ -26,8 +27,6 @@ export function CreateFeedbackDialog({ open, onOpenChange, currentUser, onPublis
   const submittingRef = useRef(false);          // blocks double-clicks even before React re-renders
   const submissionKey = useRef(crypto.randomUUID()); // idempotency key: same key => server never duplicates
   const fileInput = useRef<HTMLInputElement>(null);
-
-  const isGuest = !currentUser || currentUser.type === 'guest';
 
   // Food list comes from the real catalog
   useEffect(() => {
@@ -103,17 +102,15 @@ export function CreateFeedbackDialog({ open, onOpenChange, currentUser, onPublis
         ph.path = path;
         setPhotos((cur) => cur.map((c) => (c.id === ph.id ? { ...c, path } : c)));
       }
-      // 2) create the post (server re-validates everything)
+      // 2) create the post through the gateway (the server re-validates everything)
       setProgress('Publishing…');
-      const { data, error: rpcErr } = await supabase.rpc('submit_feedback', {
-        p_submission_key: submissionKey.current,
-        p_rating: rating,
-        p_comment: comment,
-        p_item_ids: selected,
-        p_photos: uploaded.map((p) => ({ path: p.path })),
-        p_guest_token: isGuest ? getGuestToken() : null,
+      const data = await submitFeedback({
+        submissionKey: submissionKey.current,
+        rating,
+        comment,
+        itemIds: selected,
+        photoPaths: uploaded.map((p) => p.path as string),
       });
-      if (rpcErr || !data?.id) throw new Error(rpcErr?.message || 'The post could not be saved.');
       // 3) only now is it a success
       reset();
       onPublished?.(data);
@@ -132,7 +129,7 @@ export function CreateFeedbackDialog({ open, onOpenChange, currentUser, onPublis
         <div className="border-b border-emerald-800/60 px-4 py-3">
           <DialogTitle className="text-base font-extrabold text-white">Create a Post</DialogTitle>
           <DialogDescription className="text-xs text-emerald-300/80">
-            Posting as <span className="font-bold text-lime-300">{isGuest ? 'Guest' : currentUser?.name || 'Customer'}</span>
+            Posting as <span className="font-bold text-lime-300">{currentUser?.name || 'Customer'}</span>
           </DialogDescription>
         </div>
 
