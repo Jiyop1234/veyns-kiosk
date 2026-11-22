@@ -8,7 +8,7 @@ import { formatPeso } from '@/lib/menu-data';
 import { getPromoStatus, getPromoEndMs } from '@/lib/promo-campaigns';
 import { menuImages } from '@/lib/menu-images';
 import { useCart } from '@/lib/cart';
-import { getOrderHistoryStorageKey } from '@/components/store/profile-page';
+import { isGuestUser } from '@/components/store/profile-page';
 import { LoyaltyCard } from '@/components/store/loyalty-card';
 import { MenuPage } from '@/components/store/menu-page';
 import { Checkout } from '@/components/store/checkout';
@@ -26,7 +26,8 @@ export function StoreData({ orderHistory, setOrderHistory, resetKey, currentUser
   const [fairPlayPenalty, setFairPlayPenalty] = useState<any>(null);
 
   // SECTION 5: Customer type and ordering-time eligibility checks.
-  const isGuest = !currentUser || currentUser.role === 'guest' || (currentUser.name && currentUser.name.toLowerCase().includes('guest')) || (currentUser.identifier && currentUser.identifier.toLowerCase().includes('guest'));
+  // Step 5E-4: same guest rule as the rest of the store (no longer guesses from the word "guest" in a name or email).
+  const isGuest = isGuestUser(currentUser);
 
   // --- Phase 3: Milestone loyalty status, wallet claiming, Platinum weekly claims ---
   const [loyaltyStatus, setLoyaltyStatus] = useState<any>(null);

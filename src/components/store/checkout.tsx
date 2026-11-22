@@ -11,9 +11,10 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { formatPeso } from '@/lib/menu-data';
 import { getPromoStatus, getPromoEndMs } from '@/lib/promo-campaigns';
 import { useCart } from '@/lib/cart';
-import { getOrderHistoryStorageKey, isGuestUser } from '@/components/store/profile-page';
+import { isGuestUser } from '@/components/store/profile-page';
 import { supabase } from '@/lib/supabase';
 import { requestCustomerGeocode } from '@/lib/order-geocode';
+import { placeOrder } from '@/lib/place-order';
 import { useTimeSlots, slotHasEnded, slotOrderBlock, isStoreOpenNow, todayKeyManila, useMinuteTick, STORE_OPEN_LABEL } from '@/lib/time-slots';
 
 export function Checkout({
@@ -403,8 +404,6 @@ export function Checkout({
   useEffect(() => { void loadMyRedemptions(); }, [currentUser?.authUserId, isGuest, orderPlaced]);
   const [placedOrderDetails, setPlacedOrderDetails] = useState(null);
 
-  const userHistoryStorageKey = getOrderHistoryStorageKey(currentUser);
-
   useEffect(() => {
     if (resetKey !== undefined) {
       setAppliedPromos([]);
@@ -468,30 +467,27 @@ export function Checkout({
     // Atomic server-side placement: order is numbered, priced, promo-validated and its slot reserved
     // in ONE database transaction. If anything fails nothing is saved (no orphan orders).
     // The idempotency key makes double-clicks / network retries return the same order.
-    const { data: orderDataRes, error: orderErr } = await supabase.rpc('place_order', {
-      p_order: {
-        name: payload.name,
-        email: payload.email,
-        phone: payload.phone,
-        fulfillment: payload.fulfillment,
-        location: payload.location,
-        landmark: payload.landmark,
-        orderType: payload.orderType,
-        scheduleInfo: payload.scheduleInfo,
-        deliveryFee: payload.deliveryFee,
-        deliveryOption: newOrder.deliveryOption,
-        deliveryLat: payload.deliveryLat,
-        deliveryLng: payload.deliveryLng,
-        promoCodesList: payload.promoCodesList,
-        items: payload.items,
-        dateKey: targetDateKey,
-        slotTime: targetSlotTime,
-        accountNickname: isGuest ? 'Guest' : (currentUser?.name || 'User'),
-        idempotencyKey: orderIdempotencyKeyRef.current
-      }
+    // Step 5E-2: the order goes through the gateway (POST /api/place-order) instead of straight to the database.
+    // The server fills in the customer from the login token and works out prices, fee and promos itself.
+    const orderDataRes = await placeOrder({
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone,
+      fulfillment: payload.fulfillment,
+      location: payload.location,
+      landmark: payload.landmark,
+      orderType: payload.orderType,
+      scheduleInfo: payload.scheduleInfo,
+      deliveryOption: newOrder.deliveryOption,
+      deliveryLat: payload.deliveryLat,
+      deliveryLng: payload.deliveryLng,
+      promoCodesList: payload.promoCodesList,
+      items: payload.items,
+      dateKey: targetDateKey,
+      slotTime: targetSlotTime,
+      idempotencyKey: orderIdempotencyKeyRef.current
     });
-
-    if (orderErr || !orderDataRes) throw new Error(orderErr?.message || 'Order could not be saved.');
+    if (!orderDataRes) throw new Error('Order could not be saved.');
     const placedKey = orderIdempotencyKeyRef.current; // the key of THIS order (a new one is issued below)
     orderIdempotencyKeyRef.current = (typeof crypto !== 'undefined' && (crypto as any).randomUUID) ? (crypto as any).randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2);
 
@@ -502,15 +498,9 @@ export function Checkout({
 
     const savedOrder = { ...newOrder, orderNumber: orderDataRes.order_number, items: orderDataRes.items, subtotal: Number(orderDataRes.subtotal || newOrder.subtotal), promoDiscount: Number(orderDataRes.promo_discount || 0), promoCode: orderDataRes.promo_code || null, promoCodesList: orderDataRes.promo_code ? String(orderDataRes.promo_code).split(',').map((c: string) => c.trim()) : [], deliveryDiscount: Number(orderDataRes.delivery_discount || 0), deliveryFee: Number(orderDataRes.delivery_fee || newOrder.deliveryFee), total: Number(orderDataRes.total || newOrder.total), deliveryFeePending: !!orderDataRes.delivery_fee_pending };
     
-    const prior = isGuest ? sessionStorage.getItem(userHistoryStorageKey) : localStorage.getItem(userHistoryStorageKey);
-    let previous: any[] = [];
-    try { previous = prior ? JSON.parse(prior) : []; } catch { previous = []; }
-    const updated = [savedOrder, ...previous];
-    setHistoryList(updated);
-    try {
-      if (isGuest) sessionStorage.setItem(userHistoryStorageKey, JSON.stringify(updated));
-      else localStorage.setItem(userHistoryStorageKey, JSON.stringify(updated));
-    } catch (e) { console.error('Unable to cache order history:', e); }
+    // Step 5E-4: put the new order at the top of the list on screen. It is no longer copied into the browser's storage;
+    // the server keeps the real history (GET /api/my-orders) and the list refreshes from it.
+    setHistoryList((previous: any) => [savedOrder, ...(Array.isArray(previous) ? previous : [])]);
     return savedOrder;
   };
 
