@@ -7,12 +7,15 @@
 // Everything on the card is sized in cqw (1% of the card width) so the layout scales like a picture.
 // Step 12A: smoother flip (see home-page.css), a shining 'Tap to flip' text instead of the button box, and no stamp counter.
 // Step 12B: the text says 'Tap to flip' on touch screens and 'Click to flip' where a mouse is the main input (decided by CSS, see home-page.css).
+// Step 5G-3d: the old Loyalty Card pop-up is gone from this card. On phones the back now shows the claimed codes, the Food/Delivery
+// choice and a short renew timer; tapping a code copies it. 'How this works' opens a short text under the card instead of a pop-up.
+// (The Menu page keeps its own Loyalty Card pop-up, which is where milestone rewards are claimed until P14.)
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CreditCard, Star } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { fetchMyProfile } from '@/lib/my-profile';
-import { claimLoyaltyReward, claimPlatinumDiscount } from '@/lib/loyalty-claims';
-import { LoyaltyCard } from '@/components/store/loyalty-card';
+import { claimLoyaltyReward, claimPlatinumDiscount as claimPlatinumDiscountApi } from '@/lib/loyalty-claims';
+import { copyText } from '@/lib/copy-code';
 import { SOCIAL_LINKS, isSafeExternalUrl } from '@/lib/social-links';
 import frontImg from '@/assets/loyalty/loyalty-front.webp';
 import backSilverImg from '@/assets/loyalty/loyalty-back-silver.webp';
@@ -85,29 +88,54 @@ function FreeMealPanel({ state, weekly, onClaim, style, compact }: any) {
   );
 }
 
-function VoucherCards({ slots, onClaim, target, style }: any) {
-  if (!slots.length) return null;
-  const card = { background: '#111a07', border: '0.3cqw solid #5f8f1a', borderRadius: '2.4cqw', padding: '1.2cqw', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.9cqw', minWidth: 0 };
+// A claimed code: tapping it copies it (no separate Copy button). Taps here never flip the card (the card ignores buttons).
+function TapCode({ code, compact }: any) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<any>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const onTap = async (e: any) => {
+    e.stopPropagation();
+    let ok = false;
+    try { ok = await copyText(code); } catch { ok = false; }
+    if (!ok) { alert(`Your code: ${code}`); return; } // copying was refused: show the code so it can be typed
+    setCopied(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), 1600);
+  };
   return (
-    <div style={abs({ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5cqw', ...style })}>
+    <button type="button" onClick={onTap} aria-label={`Copy code ${code}`}
+      style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3cqw', color: '#fff', width: '100%', minWidth: 0 }}>
+      <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: compact ? 'max(10px, 3.3cqw)' : 'max(9px, 2.6cqw)', fontWeight: 900, letterSpacing: '0.06em', wordBreak: 'break-all' }}>{code}</span>
+      <span aria-live="polite" style={{ fontSize: compact ? 'max(7px, 2cqw)' : 'max(7px, 1.8cqw)', fontWeight: 800, color: copied ? '#bef264' : '#bae6fd' }}>{copied ? '✓ Copied!' : 'Tap to copy'}</span>
+    </button>
+  );
+}
+
+function VoucherCards({ slots, onClaim, target, style, compact }: any) {
+  if (!slots.length) return null;
+  const card = { background: '#111a07', border: '0.3cqw solid #5f8f1a', borderRadius: '2.4cqw', padding: '1.2cqw', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: compact ? '0.6cqw' : '0.9cqw', minWidth: 0 };
+  const small = compact ? 'max(7px, 2.1cqw)' : 'max(7px, 1.7cqw)';
+  const foot = compact ? 'max(6px, 1.8cqw)' : 'max(6px, 1.5cqw)';
+  return (
+    <div style={abs({ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: compact ? '2cqw' : '1.5cqw', ...style })}>
       {slots.map((sl: any) =>
         sl.kind === 'available' ? (
           <div key={sl.key} style={card}>
-            <span style={{ fontSize: '3.6cqw', fontWeight: 900, color: '#bef264', lineHeight: 1 }}>10% OFF</span>
-            <span style={{ fontSize: 'max(7px, 1.9cqw)', color: '#e5e7eb', fontWeight: 600 }}>Ready to claim</span>
-            <button type="button" onClick={() => onClaim(target)} style={{ background: '#f1f5f9', color: INK, fontWeight: 800, fontSize: 'max(8px, 2.3cqw)', borderRadius: '1.4cqw', padding: '1cqw 0', cursor: 'pointer' }}>Claim code</button>
+            <span style={{ fontSize: compact ? '4.4cqw' : '3.6cqw', fontWeight: 900, color: '#bef264', lineHeight: 1 }}>10% OFF</span>
+            <span style={{ fontSize: compact ? 'max(7px, 2.3cqw)' : 'max(7px, 1.9cqw)', color: '#e5e7eb', fontWeight: 600 }}>Ready to claim</span>
+            <button type="button" onClick={() => onClaim(target)} style={{ background: '#f1f5f9', color: INK, fontWeight: 800, fontSize: compact ? 'max(8px, 2.8cqw)' : 'max(8px, 2.3cqw)', borderRadius: '1.4cqw', padding: '1cqw 0', cursor: 'pointer' }}>Claim code</button>
           </div>
         ) : sl.kind === 'code' ? (
           <div key={sl.key} style={{ ...card, border: '0.3cqw solid rgba(56,189,248,0.6)', background: '#06131a' }}>
-            <span style={{ fontSize: 'max(7px, 1.7cqw)', fontWeight: 800, color: '#bae6fd', textTransform: 'uppercase' }}>{sl.target === 'delivery' ? 'Delivery fee' : 'Food'} · 10% OFF</span>
-            <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 'max(9px, 2.6cqw)', fontWeight: 900, color: '#fff', letterSpacing: '0.06em', wordBreak: 'break-all' }}>{sl.promo_code}</span>
-            <span style={{ fontSize: 'max(6px, 1.5cqw)', color: '#cbd5e1' }}>Type at checkout · single-use</span>
+            <span style={{ fontSize: small, fontWeight: 800, color: '#bae6fd', textTransform: 'uppercase' }}>{sl.target === 'delivery' ? 'Delivery fee' : 'Food'} · 10% OFF</span>
+            <TapCode code={sl.promo_code} compact={compact} />
+            <span style={{ fontSize: foot, color: '#cbd5e1' }}>Type at checkout · single-use</span>
           </div>
         ) : (
           <div key={sl.key} style={{ ...card, border: '0.3cqw solid #475569', background: '#0a0a0a', opacity: 0.85 }}>
-            <span style={{ fontSize: 'max(7px, 1.7cqw)', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase' }}>{sl.target === 'delivery' ? 'Delivery fee' : 'Food'} · 10% OFF</span>
-            <span style={{ fontSize: '3cqw', fontWeight: 900, color: '#cbd5e1' }}>USED ✓</span>
-            <span style={{ fontSize: 'max(6px, 1.5cqw)', color: '#94a3b8' }}>Renews Monday</span>
+            <span style={{ fontSize: small, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase' }}>{sl.target === 'delivery' ? 'Delivery fee' : 'Food'} · 10% OFF</span>
+            <span style={{ fontSize: compact ? '3.6cqw' : '3cqw', fontWeight: 900, color: '#cbd5e1' }}>USED ✓</span>
+            <span style={{ fontSize: foot, color: '#94a3b8' }}>Renews Monday</span>
           </div>
         )
       )}
@@ -136,7 +164,7 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
   const [loadError, setLoadError] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const [target, setTarget] = useState<'subtotal' | 'delivery'>('subtotal');
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [showHow, setShowHow] = useState(false); // the 'How this works' text under the card
   const [now, setNow] = useState(Date.now());
   const [seen, setSeen] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
@@ -160,9 +188,8 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
     if (alive.current) setLoading(false);
   }, [canLoad, authId]);
 
-  // Load on arrival, after the customer places an order, and when the full card opens.
+  // Load on arrival and after the customer places an order.
   useEffect(() => { void loadStatus(); }, [loadStatus, orderHistory?.length]);
-  useEffect(() => { if (dialogOpen) void loadStatus(); }, [dialogOpen]);
   // Staff complete orders while the page is open: refresh when the customer comes back to this tab.
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === 'visible') void loadStatus(); };
@@ -192,18 +219,19 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
   const ordersThisWeek = Math.min(weekly?.qualifying_orders || 0, 3);
   const fmState: string = weekly?.free_meal_state || 'locked';
 
-  // The renew countdown only ticks while the back (or the full card) is on screen.
+  // The renew countdown only ticks while the back is on screen.
   useEffect(() => {
-    if (!(isPlatDia && (flipped || dialogOpen))) return;
+    if (!(isPlatDia && flipped)) return;
     setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [isPlatDia, flipped, dialogOpen]);
+  }, [isPlatDia, flipped]);
 
   const resetAt = weekly?.next_reset_at ? new Date(weekly.next_reset_at).getTime() : null;
   const msLeft = resetAt ? Math.max(0, resetAt - now) : 0;
   const d = Math.floor(msLeft / 86400000), h = Math.floor((msLeft % 86400000) / 3600000), m = Math.floor((msLeft % 3600000) / 60000), s = Math.floor((msLeft % 60000) / 1000);
   const countdown = `${d}d ${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+  const shortCountdown = `${d}d ${h}h ${m}m`; // phones: no seconds, so it fits
   const voucherSlots: any[] = [
     ...((weekly?.slots || []).map((sl: any, i: number) => ({ ...sl, kind: sl.used ? 'used' : 'code', key: 's' + i }))),
     ...Array.from({ length: Math.max(0, weekly?.claims_remaining || 0) }).map((_, i) => ({ kind: 'available', key: 'a' + i })),
@@ -219,7 +247,7 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
     refreshVouchers();
   };
   const claimPlatinumDiscount = async (t: 'subtotal' | 'delivery' = 'subtotal') => {
-    const { data, error } = await claimPlatinumDiscount(t);
+    const { data, error } = await claimPlatinumDiscountApi(t); // the helper, renamed on import so it is not this function itself
     if (error || !data?.success) { alert(error?.message || data?.message || 'No 10% voucher left this week.'); return; }
     alert(`Your Platinum 10% code for ${data.target === 'delivery' ? 'DELIVERY FEE' : 'FOOD'}: ${data.promo_code} — single-use, valid until Monday 12:00 AM (${data.claims_remaining} voucher(s) left this week).`);
     await loadStatus();
@@ -277,12 +305,12 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
   // ---- the grey (Platinum) and cyan (Diamond) backs: full layout (card wide enough) and compact layout (phones)
   const tierWord = isDiamond ? 'DIAMOND' : 'PLATINUM';
   const titleStyle = { fontSize: '7.5cqw', lineHeight: 0.85, letterSpacing: '-0.045em', fontWeight: 800, color: INK };
-  const useOn = (
-    <div style={abs({ left: '14.6cqw', top: '25.2cqw', display: 'flex', alignItems: 'center', gap: '0.6cqw' })}>
-      <span style={{ fontSize: '2.3cqw', fontWeight: 800, color: INK, letterSpacing: '-0.02em', marginRight: '0.4cqw' }}>Use on:</span>
+  const useOnAt = (left: string, top: string, big?: boolean) => (
+    <div style={abs({ left, top, display: 'flex', alignItems: 'center', gap: '0.6cqw' })}>
+      <span style={{ fontSize: big ? '2.9cqw' : '2.3cqw', fontWeight: 800, color: INK, letterSpacing: '-0.02em', marginRight: '0.4cqw' }}>Use on:</span>
       {[['subtotal', 'Food'], ['delivery', 'Delivery']].map(([key, label]) => (
         <button key={key} type="button" onClick={() => setTarget(key)} aria-pressed={target === key}
-          style={{ fontSize: '2.2cqw', fontWeight: 800, textTransform: 'uppercase', color: target === key ? '#fff' : INK, background: target === key ? INK : 'transparent', borderRadius: '99px', padding: '0.4cqw 1.1cqw', cursor: 'pointer' }}>{label}</button>
+          style={{ fontSize: big ? '2.7cqw' : '2.2cqw', fontWeight: 800, textTransform: 'uppercase', color: target === key ? '#fff' : INK, background: target === key ? INK : 'transparent', borderRadius: '99px', padding: big ? '0.6cqw 1.5cqw' : '0.4cqw 1.1cqw', cursor: 'pointer' }}>{label}</button>
       ))}
     </div>
   );
@@ -304,7 +332,7 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
         )}
         {weekly && (
           <>
-            {useOn}
+            {useOnAt('14.6cqw', '25.2cqw')}
             <VoucherCards slots={voucherSlots} onClaim={claimPlatinumDiscount} target={target} style={{ left: '14.6cqw', top: '30.1cqw', width: '70.8cqw', height: '17.7cqw' }} />
             <RenewBar countdown={countdown} style={{ left: '14.6cqw', top: '48.8cqw', width: '70.8cqw', height: '7.9cqw' }} />
           </>
@@ -320,10 +348,13 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
             <FreeMealPanel compact state={fmState} weekly={weekly} onClaim={claimReward} style={{ left: '74cqw', top: '7cqw', width: '20cqw', height: '24cqw' }} />
           </>
         )}
-        {weekly && <RenewBar countdown={countdown} fontSize="max(9px, 3.2cqw)" style={{ left: '7cqw', top: '38cqw', width: '86cqw', height: '8cqw' }} />}
-        <button type="button" onClick={() => setDialogOpen(true)} style={abs({ left: '7cqw', top: '49cqw', width: '86cqw', height: '8cqw', background: INK, color: '#fff', borderRadius: '2.2cqw', fontSize: 'max(10px, 3.3cqw)', fontWeight: 800, cursor: 'pointer' })}>
-          See all vouchers
-        </button>
+        {weekly && (
+          <>
+            {useOnAt('7cqw', '24.6cqw', true)}
+            <VoucherCards compact slots={voucherSlots} onClaim={claimPlatinumDiscount} target={target} style={{ left: '7cqw', top: '32.5cqw', width: '86cqw', height: '17cqw' }} />
+            <RenewBar countdown={shortCountdown} fontSize="max(9px, 3.2cqw)" style={{ left: '7cqw', top: '51.5cqw', width: '86cqw', height: '7cqw' }} />
+          </>
+        )}
       </div>
     </>
   );
@@ -373,8 +404,18 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
               <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-200">
                 <CreditCard className="size-4 shrink-0 text-lime-400" /> {memberSince}
               </span>
-              <button type="button" onClick={() => setDialogOpen(true)} className="cursor-pointer font-display text-sm font-extrabold uppercase tracking-tight text-white hover:text-lime-300">How this works</button>
+              <button type="button" onClick={() => setShowHow((v) => !v)} aria-expanded={showHow} className="cursor-pointer font-display text-sm font-extrabold uppercase tracking-tight text-white hover:text-lime-300">How this works</button>
             </div>
+            {showHow && (
+              <div role="region" aria-label="How the loyalty card works" className="mt-3 space-y-1.5 rounded-2xl border border-emerald-800/60 bg-[#061c16] p-3 text-[12px] leading-snug text-emerald-100">
+                <p className="font-extrabold uppercase tracking-wide text-lime-400">How it works</p>
+                {isPlatinum && <p>• 2-week Platinum trial — afterwards you return to Block 2 and can climb back to Platinum anytime.</p>}
+                {isPlatDia && <p>• 2× single-use 10% OFF codes per week (food or delivery fee). They renew every Monday 12:00 AM Manila time and never stack. Tap a code to copy it, then type it at checkout.</p>}
+                {isPlatinum && <p>• FREE MEAL: order 3 times within a week to unlock a one-time voucher, then tap the gift circle to claim it.</p>}
+                {!isPlatDia && <p>• Fill the circles on your card. Milestone circles earn a reward: 10% OFF, 25% OFF, 50% OFF or a FREE MEAL.</p>}
+                {!isPlatDia && <p>• Claim your milestone rewards in the Loyalty Card on the Menu page, then type the code at checkout.</p>}
+              </div>
+            )}
             {loadError && (
               <p role="status" className="mt-2 px-1 text-[11px] text-amber-300">
                 Couldn’t load your stamps. <button type="button" onClick={() => void loadStatus()} className="cursor-pointer font-bold underline">Try again</button>
@@ -395,17 +436,6 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
         )}
       </div>
 
-      {/* The existing full Loyalty Card (rules, vouchers, claims). It is the same component the menu uses. */}
-      <LoyaltyCard
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        loyaltyStatus={status}
-        loyaltyLoading={loading}
-        stamps={[]}
-        nowTimestamp={now}
-        onClaimReward={claimReward}
-        onClaimPlatinumDiscount={claimPlatinumDiscount}
-      />
     </section>
   );
 }

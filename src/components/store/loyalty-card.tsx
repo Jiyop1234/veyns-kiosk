@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { CreditCard, Star, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { CopyCodeButton } from '@/components/store/copy-code-button';
 
 export function LoyaltyCard({
   open,
@@ -102,6 +103,7 @@ export function LoyaltyCard({
                   <div key={sl.key} className="rounded-xl border border-sky-400/60 bg-sky-400/10 p-2.5 text-center space-y-1">
                     <p className="text-[9px] uppercase font-bold text-sky-200">{sl.target === 'delivery' ? 'Delivery Fee' : 'Food'} · 10% OFF</p>
                     <p className="font-mono text-[13px] font-black text-white tracking-wider">{sl.promo_code}</p>
+                    <CopyCodeButton code={sl.promo_code} className="w-full border border-sky-400/60 text-sky-200 hover:bg-sky-400/10 font-extrabold py-1 rounded-lg text-[10px] cursor-pointer" />
                     <p className="text-[9px] text-slate-300">Type at checkout · single-use</p>
                   </div>
                 ) : (
@@ -311,7 +313,7 @@ export function LoyaltyCard({
                           <p className="font-bold text-lime-400 text-[11px] font-mono">{v.promo_code}</p>
                           <p className="text-[9px] text-emerald-300">{String(v.reward_type).replace(/_/g, ' ')} • single-use • type at checkout</p>
                         </div>
-                        <Ticket className="size-4 text-lime-400" />
+                        <div className="flex items-center gap-2"><CopyCodeButton code={v.promo_code} className="border border-lime-400/60 text-lime-300 hover:bg-lime-400/10 font-extrabold px-2 py-1 rounded-lg text-[10px] cursor-pointer" /><Ticket className="size-4 text-lime-400" /></div>
                       </div>
                     ))}
                   </div>
