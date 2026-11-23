@@ -11,7 +11,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CreditCard, Star } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { fetchMyProfile } from '@/lib/my-profile';
-import { claimLoyaltyReward, claimPlatinumDiscount } from '@/lib/loyalty-claims';
+import { claimLoyaltyReward, claimPlatinumDiscount as claimPlatinumDiscountApi } from '@/lib/loyalty-claims';
 import { LoyaltyCard } from '@/components/store/loyalty-card';
 import { SOCIAL_LINKS, isSafeExternalUrl } from '@/lib/social-links';
 import frontImg from '@/assets/loyalty/loyalty-front.webp';
@@ -219,7 +219,7 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
     refreshVouchers();
   };
   const claimPlatinumDiscount = async (t: 'subtotal' | 'delivery' = 'subtotal') => {
-    const { data, error } = await claimPlatinumDiscount(t);
+    const { data, error } = await claimPlatinumDiscountApi(t); // the helper, renamed on import so it is not this function itself
     if (error || !data?.success) { alert(error?.message || data?.message || 'No 10% voucher left this week.'); return; }
     alert(`Your Platinum 10% code for ${data.target === 'delivery' ? 'DELIVERY FEE' : 'FOOD'}: ${data.promo_code} — single-use, valid until Monday 12:00 AM (${data.claims_remaining} voucher(s) left this week).`);
     await loadStatus();
