@@ -2,7 +2,8 @@
 // Checkout — the whole checkout dialog and everything behind it (Step 5).
 // Moved out of ordering-counter.tsx. Look and behavior are unchanged.
 // Owns: delivery/pickup, scheduling and slot capacity, the delivery map and fee, promo/voucher codes and discounts,
-// the milestone auto-discount, placing the order through the Supabase RPC, and the confirmation screen.
+// placing the order through the Supabase RPC, and the confirmation screen.
+// Step P14-2: no milestone auto-discount any more. A milestone reward is claimed as a voucher and typed here like any other code.
 // OrderingCounter keeps the data this file only receives as props: the promo list, loyalty stamps, the clock tick, and the open flag.
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { ArrowRight, Camera, Check, CreditCard, Facebook, Instagram, MapPin, Minus, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, History, Award, AlertTriangle, XCircle, Clock, Navigation, Calendar, UserPlus, Ticket, X, PlusCircle } from 'lucide-react';
@@ -139,38 +140,6 @@ export function Checkout({
   useLayoutEffect(() => {
     if (open) setOrderPlaced(false);
   }, [open]);
-
-    // --- Phase 3b: card flip state + milestone auto-apply preview ---
-  const [milestonePreview, setMilestonePreview] = useState<any>(null);
-  const loadMilestonePreview = async () => {
-    if (!currentUser || isGuest || !currentUser.authUserId) { setMilestonePreview(null); return; }
-    try {
-      const { data } = await supabase.rpc('preview_milestone_reward', { p_user_id: currentUser.authUserId });
-      setMilestonePreview(data?.applies ? data : null);
-    } catch (e) { console.error('Milestone preview failed:', e); setMilestonePreview(null); }
-  };
-  useEffect(() => {
-    const cartCount = lines.reduce((sum: number, l: any) => sum + (l.qty || 0), 0);
-    if (cartCount > 0) { void loadMilestonePreview(); }
-    else { setMilestonePreview(null); setAppliedPromos((prev) => prev.filter((p) => !p.code.startsWith('MILESTONE-'))); }
-  }, [lines, currentUser]);
-  useEffect(() => {
-    if (!milestonePreview?.applies) return;
-    setAppliedPromos((prev) => {
-      if (prev.some((p) => p.code === milestonePreview.code_label)) return prev;
-      return [...prev, {
-        code: milestonePreview.code_label,
-        type: milestonePreview.discount_type === 'peso' ? 'peso' : 'percentage',
-        discountValue: Number(milestonePreview.discount_value),
-        targetType: 'subtotal',
-        createdAt: Date.now(),
-        expiryDurationMs: 0,
-        virtualMilestone: true
-      }];
-    });
-  });
-
-
 
   const [promoInput, setPromoInput] = useState('');
   const [appliedPromos, setAppliedPromos] = useState<any[]>([]); // Stacking multiple vouchers

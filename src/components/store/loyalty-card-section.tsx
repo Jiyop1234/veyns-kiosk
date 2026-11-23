@@ -9,7 +9,8 @@
 // Step 12B: the text says 'Tap to flip' on touch screens and 'Click to flip' where a mouse is the main input (decided by CSS, see home-page.css).
 // Step 5G-3d: the old Loyalty Card pop-up is gone from this card. On phones the back now shows the claimed codes, the Food/Delivery
 // choice and a short renew timer; tapping a code copies it. 'How this works' opens a short text under the card instead of a pop-up.
-// (The Menu page keeps its own Loyalty Card pop-up, which is where milestone rewards are claimed until P14.)
+// Step P14-2: milestone rewards are claimed here with a Claim button (under the card), through the same gateway route. A claimed voucher never expires;
+// its code is shown under the card (tap to copy) until it is used. The checkout no longer applies a milestone discount by itself.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CreditCard, Star } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -111,6 +112,30 @@ function TapCode({ code, compact }: any) {
   );
 }
 
+// Step P14-2: '10%_off' -> '10% OFF', 'free_meal' / 'weekly_free_meal' -> 'FREE MEAL'.
+const rewardLabel = (t?: string) => (/free_meal/.test(String(t || '')) ? 'FREE MEAL' : String(t || 'reward').replace(/_/g, ' ').toUpperCase());
+
+// A voucher code under the card: tapping it copies it (same behaviour as the codes on the back of the card).
+function CodeChip({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<any>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const onTap = async () => {
+    let ok = false;
+    try { ok = await copyText(code); } catch { ok = false; }
+    if (!ok) { alert(`Your code: ${code}`); return; }
+    setCopied(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), 1600);
+  };
+  return (
+    <button type="button" onClick={onTap} aria-label={`Copy code ${code}`} className="cursor-pointer text-left">
+      <span className="block font-mono text-sm font-black tracking-wider text-white">{code}</span>
+      <span aria-live="polite" className={`block text-[10px] font-bold ${copied ? 'text-lime-300' : 'text-sky-200'}`}>{copied ? '✓ Copied!' : 'Tap to copy'}</span>
+    </button>
+  );
+}
+
 function VoucherCards({ slots, onClaim, target, style, compact }: any) {
   if (!slots.length) return null;
   const card = { background: '#111a07', border: '0.3cqw solid #5f8f1a', borderRadius: '2.4cqw', padding: '1.2cqw', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: compact ? '0.6cqw' : '0.9cqw', minWidth: 0 };
@@ -165,6 +190,7 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
   const [flipped, setFlipped] = useState(false);
   const [target, setTarget] = useState<'subtotal' | 'delivery'>('subtotal');
   const [showHow, setShowHow] = useState(false); // the 'How this works' text under the card
+  const [claimingId, setClaimingId] = useState<string | null>(null); // the reward being claimed right now (blocks double taps)
   const [now, setNow] = useState(Date.now());
   const [seen, setSeen] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
@@ -178,8 +204,17 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
       const { data, error } = await supabase.rpc('get_loyalty_status', { p_user_id: authId });
       if (error || !data) throw error || new Error('no loyalty data');
       const prof = await fetchMyProfile(); // Step 5D: through the gateway
+      // Which of the claimed vouchers were already used (a voucher never expires now, so it stays listed until used).
+      let usedCodes: string[] = [];
+      const claimedCodes = (data.rewards || []).filter((r: any) => r.status === 'claimed' && r.promo_code).map((r: any) => r.promo_code);
+      if (claimedCodes.length > 0) {
+        try {
+          const { data: promoRows } = await supabase.from('promos').select('code, usage_count').in('code', claimedCodes);
+          usedCodes = (promoRows || []).filter((p: any) => (p.usage_count || 0) > 0).map((p: any) => String(p.code).toUpperCase());
+        } catch { usedCodes = []; }
+      }
       if (!alive.current) return;
-      setStatus({ ...data, member_since: prof?.created_at || null });
+      setStatus({ ...data, member_since: prof?.created_at || null, used_codes: usedCodes });
       setLoadError(false);
     } catch (e) {
       console.error('Loyalty card load failed:', e);
@@ -237,14 +272,26 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
     ...Array.from({ length: Math.max(0, weekly?.claims_remaining || 0) }).map((_, i) => ({ kind: 'available', key: 'a' + i })),
   ];
 
+  // ---- rewards under the card (Step P14-2): rewards to claim, and claimed vouchers not used yet
+  const wallet: any[] = status?.rewards || [];
+  const usedSet = new Set<string>(status?.used_codes || []);
+  const rewardsToClaim = wallet.filter((r: any) => r.status === 'unclaimed' && r.reward_type !== 'weekly_free_meal'); // the Platinum free meal has its own gift circle
+  const myVouchers = wallet.filter((r: any) => r.status === 'claimed' && r.promo_code && !usedSet.has(String(r.promo_code).toUpperCase()));
+
   // ---- claims: through the gateway (Step 5G-3), same messages as store-data.tsx
   const refreshVouchers = () => { try { window.dispatchEvent(new Event('storage')); } catch { /* checkout list also refreshes by itself */ } };
   const claimReward = async (rewardId: string) => {
-    const { data, error } = await claimLoyaltyReward(rewardId);
-    if (error || !data?.success) { alert(error?.message || data?.message || 'Unable to claim reward.'); return; }
-    alert(`Reward claimed! Voucher code: ${data.promo_code} (single-use, valid 7 days). It appears in your checkout voucher list.`);
-    await loadStatus();
-    refreshVouchers();
+    if (claimingId) return;
+    setClaimingId(rewardId);
+    try {
+      const { data, error } = await claimLoyaltyReward(rewardId);
+      if (error || !data?.success) { alert(error?.message || data?.message || 'Unable to claim reward.'); return; }
+      alert(`Reward claimed! Voucher code: ${data.promo_code} (single-use, never expires). Use it on your next order: tap the code under your card to copy it, then type it at checkout.`);
+      await loadStatus();
+      refreshVouchers();
+    } finally {
+      if (alive.current) setClaimingId(null);
+    }
   };
   const claimPlatinumDiscount = async (t: 'subtotal' | 'delivery' = 'subtotal') => {
     const { data, error } = await claimPlatinumDiscountApi(t); // the helper, renamed on import so it is not this function itself
@@ -413,7 +460,34 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
                 {isPlatDia && <p>• 2× single-use 10% OFF codes per week (food or delivery fee). They renew every Monday 12:00 AM Manila time and never stack. Tap a code to copy it, then type it at checkout.</p>}
                 {isPlatinum && <p>• FREE MEAL: order 3 times within a week to unlock a one-time voucher, then tap the gift circle to claim it.</p>}
                 {!isPlatDia && <p>• Fill the circles on your card. Milestone circles earn a reward: 10% OFF, 25% OFF, 50% OFF or a FREE MEAL.</p>}
-                {!isPlatDia && <p>• Claim your milestone rewards in the Loyalty Card on the Menu page, then type the code at checkout.</p>}
+                {!isPlatDia && <p>• When your order is completed and you reach a milestone, tap Claim under the card. The card moves on to the next milestone right away.</p>}
+                {!isPlatDia && <p>• A claimed voucher is single-use and never expires. Use it on your next order: tap the code to copy it, then type it at checkout.</p>}
+              </div>
+            )}
+            {(rewardsToClaim.length > 0 || myVouchers.length > 0) && (
+              <div role="region" aria-label="Your rewards" className="mt-3 space-y-2 rounded-2xl border border-lime-400/30 bg-[#061c16] p-3 text-[12px] text-emerald-100">
+                <p className="font-extrabold uppercase tracking-wide text-lime-400">Your rewards</p>
+                {rewardsToClaim.map((r: any) => (
+                  <div key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-lime-400/40 bg-[#0a2a1f] p-2.5">
+                    <div>
+                      <p className="text-base font-black leading-none text-lime-300">{rewardLabel(r.reward_type)}</p>
+                      <p className="mt-1 text-[10px] text-emerald-200">Ready to claim · never expires</p>
+                    </div>
+                    <button type="button" disabled={claimingId === r.id} onClick={() => void claimReward(r.id)}
+                      className="cursor-pointer rounded-lg bg-lime-400 px-4 py-2 text-[11px] font-extrabold text-black hover:bg-lime-300 disabled:cursor-wait disabled:opacity-60">
+                      {claimingId === r.id ? 'Claiming…' : 'Claim'}
+                    </button>
+                  </div>
+                ))}
+                {myVouchers.map((r: any) => (
+                  <div key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-sky-400/40 bg-[#06131a] p-2.5">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase text-sky-200">{rewardLabel(r.reward_type)} · single-use</p>
+                      <CodeChip code={r.promo_code} />
+                    </div>
+                    <p className="text-right text-[10px] leading-snug text-slate-300">Never expires<br />Use on your next order</p>
+                  </div>
+                ))}
               </div>
             )}
             {loadError && (
