@@ -12,6 +12,7 @@ import { CreditCard, Star } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { fetchMyProfile } from '@/lib/my-profile';
 import { claimLoyaltyReward, claimPlatinumDiscount as claimPlatinumDiscountApi } from '@/lib/loyalty-claims';
+import { CopyCodeButton } from '@/components/store/copy-code-button';
 import { LoyaltyCard } from '@/components/store/loyalty-card';
 import { SOCIAL_LINKS, isSafeExternalUrl } from '@/lib/social-links';
 import frontImg from '@/assets/loyalty/loyalty-front.webp';
@@ -101,6 +102,7 @@ function VoucherCards({ slots, onClaim, target, style }: any) {
           <div key={sl.key} style={{ ...card, border: '0.3cqw solid rgba(56,189,248,0.6)', background: '#06131a' }}>
             <span style={{ fontSize: 'max(7px, 1.7cqw)', fontWeight: 800, color: '#bae6fd', textTransform: 'uppercase' }}>{sl.target === 'delivery' ? 'Delivery fee' : 'Food'} · 10% OFF</span>
             <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 'max(9px, 2.6cqw)', fontWeight: 900, color: '#fff', letterSpacing: '0.06em', wordBreak: 'break-all' }}>{sl.promo_code}</span>
+            <CopyCodeButton code={sl.promo_code} style={{ background: 'transparent', color: '#bae6fd', border: '0.3cqw solid rgba(56,189,248,0.6)', fontWeight: 800, fontSize: 'max(7px, 1.8cqw)', borderRadius: '1.2cqw', padding: '0.5cqw 0', cursor: 'pointer' }} />
             <span style={{ fontSize: 'max(6px, 1.5cqw)', color: '#cbd5e1' }}>Type at checkout · single-use</span>
           </div>
         ) : (
