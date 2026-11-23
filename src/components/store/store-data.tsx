@@ -48,7 +48,7 @@ export function StoreData({ orderHistory, setOrderHistory, resetKey, currentUser
           const prevCodes = (loyaltyStatus?.rewards || []).map((r: any) => r.promo_code).filter(Boolean);
           (next.rewards || []).forEach((r: any) => {
             if (r.promo_code && !prevCodes.includes(r.promo_code)) {
-              alert(`🎉 You earned a ${String(r.reward_type).replace(/_/g, ' ')} voucher: ${r.promo_code} — type it at checkout! (single-use, 14 days)`);
+              alert(`🎉 You earned a ${String(r.reward_type).replace(/_/g, ' ')} voucher: ${r.promo_code} — type it at checkout! (single-use, never expires)`);
             }
           });
         }
@@ -62,7 +62,7 @@ export function StoreData({ orderHistory, setOrderHistory, resetKey, currentUser
   const handleClaimReward = async (rewardId: string) => {
     const { data, error } = await claimLoyaltyReward(rewardId); // Step 5G-3: through the gateway
     if (error || !data?.success) { alert(error?.message || data?.message || 'Unable to claim reward.'); return; }
-    alert(`Reward claimed! Voucher code: ${data.promo_code} (single-use, valid 7 days). It appears in your checkout voucher list.`);
+    alert(`Reward claimed! Voucher code: ${data.promo_code} (single-use, never expires). Use it on your next order: type it at checkout. It is also listed in your Loyalty Card.`);
     await loadLoyaltyStatus();
     await loadPromosFromCloud();
   };
