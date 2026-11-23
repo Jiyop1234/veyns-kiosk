@@ -11,6 +11,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CreditCard, Star } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { fetchMyProfile } from '@/lib/my-profile';
+import { claimLoyaltyReward, claimPlatinumDiscount } from '@/lib/loyalty-claims';
 import { LoyaltyCard } from '@/components/store/loyalty-card';
 import { SOCIAL_LINKS, isSafeExternalUrl } from '@/lib/social-links';
 import frontImg from '@/assets/loyalty/loyalty-front.webp';
@@ -208,17 +209,17 @@ export function LoyaltyCardSection({ currentUser, orderHistory, onOpenSignUp }: 
     ...Array.from({ length: Math.max(0, weekly?.claims_remaining || 0) }).map((_, i) => ({ kind: 'available', key: 'a' + i })),
   ];
 
-  // ---- claims: same RPCs and messages as store-data.tsx
+  // ---- claims: through the gateway (Step 5G-3), same messages as store-data.tsx
   const refreshVouchers = () => { try { window.dispatchEvent(new Event('storage')); } catch { /* checkout list also refreshes by itself */ } };
   const claimReward = async (rewardId: string) => {
-    const { data, error } = await supabase.rpc('claim_loyalty_reward', { p_reward_id: rewardId });
+    const { data, error } = await claimLoyaltyReward(rewardId);
     if (error || !data?.success) { alert(error?.message || data?.message || 'Unable to claim reward.'); return; }
     alert(`Reward claimed! Voucher code: ${data.promo_code} (single-use, valid 7 days). It appears in your checkout voucher list.`);
     await loadStatus();
     refreshVouchers();
   };
   const claimPlatinumDiscount = async (t: 'subtotal' | 'delivery' = 'subtotal') => {
-    const { data, error } = await supabase.rpc('claim_platinum_weekly_discount', { p_target: t });
+    const { data, error } = await claimPlatinumDiscount(t);
     if (error || !data?.success) { alert(error?.message || data?.message || 'No 10% voucher left this week.'); return; }
     alert(`Your Platinum 10% code for ${data.target === 'delivery' ? 'DELIVERY FEE' : 'FOOD'}: ${data.promo_code} — single-use, valid until Monday 12:00 AM (${data.claims_remaining} voucher(s) left this week).`);
     await loadStatus();

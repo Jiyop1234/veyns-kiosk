@@ -14,6 +14,7 @@ import { MenuPage } from '@/components/store/menu-page';
 import { Checkout } from '@/components/store/checkout';
 import { supabase } from '@/lib/supabase';
 import { fetchMyProfile } from '@/lib/my-profile';
+import { claimLoyaltyReward, claimPlatinumDiscount } from '@/lib/loyalty-claims';
 import { requestCustomerGeocode } from '@/lib/order-geocode';
 import { useTimeSlots, slotHasEnded, slotOrderBlock, isStoreOpenNow, todayKeyManila, useMinuteTick, STORE_OPEN_LABEL } from '@/lib/time-slots';
 
@@ -59,14 +60,14 @@ export function StoreData({ orderHistory, setOrderHistory, resetKey, currentUser
 
   useEffect(() => { if (showLoyaltyModal) loadLoyaltyStatus(); }, [showLoyaltyModal]);
   const handleClaimReward = async (rewardId: string) => {
-    const { data, error } = await supabase.rpc('claim_loyalty_reward', { p_reward_id: rewardId });
+    const { data, error } = await claimLoyaltyReward(rewardId); // Step 5G-3: through the gateway
     if (error || !data?.success) { alert(error?.message || data?.message || 'Unable to claim reward.'); return; }
     alert(`Reward claimed! Voucher code: ${data.promo_code} (single-use, valid 7 days). It appears in your checkout voucher list.`);
     await loadLoyaltyStatus();
     await loadPromosFromCloud();
   };
   const handleClaimPlatinumDiscount = async (target: 'subtotal' | 'delivery' = 'subtotal') => {
-    const { data, error } = await supabase.rpc('claim_platinum_weekly_discount', { p_target: target });
+    const { data, error } = await claimPlatinumDiscount(target); // Step 5G-3: through the gateway
     if (error || !data?.success) { alert(error?.message || data?.message || 'No 10% voucher left this week.'); return; }
     alert(`Your Platinum 10% code for ${data.target === 'delivery' ? 'DELIVERY FEE' : 'FOOD'}: ${data.promo_code} — single-use, valid until Monday 12:00 AM (${data.claims_remaining} voucher(s) left this week).`);
     await loadLoyaltyStatus();
