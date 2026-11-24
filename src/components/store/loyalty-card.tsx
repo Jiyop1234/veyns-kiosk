@@ -1,6 +1,7 @@
 // @ts-nocheck
 // LoyaltyCard — the Milestone Loyalty Card dialog (Silver / Platinum / Diamond) + Rewards Wallet.
 // Moved out of ordering-counter.tsx (Step 2). Look and behavior are unchanged.
+// Step P14-2: milestone rewards show a Claim button here; claimed vouchers never expire; the old 'applies automatically' and '1-week expiry' texts are gone.
 // ordering-counter.tsx still loads the loyalty data and runs the claim handlers;
 // this file only draws the dialog and owns its two display-only states (card flip, Platinum target).
 import React, { useState, useEffect } from 'react';
@@ -62,6 +63,8 @@ export function LoyaltyCard({
           const nextEntry = Object.entries(milestoneRewards[block] || {}).find(([p]) => Number(p) > pos);
           const wallet: any[] = loyaltyStatus.rewards || [];
           const activeVouchers = wallet.filter((w: any) => w.status === 'claimed' && w.promo_code);
+          const rewardsToClaim = wallet.filter((w: any) => w.status === 'unclaimed' && w.reward_type !== 'weekly_free_meal'); // the Platinum free meal has its own gift circle
+          const rewardName = (t: string) => (/free_meal/.test(String(t || '')) ? 'FREE MEAL' : String(t || 'reward').replace(/_/g, ' ').toUpperCase());
           const weekly = loyaltyStatus.weekly;
           const platExp = loyaltyStatus.platinum_expires_at ? new Date(loyaltyStatus.platinum_expires_at) : null;
 
@@ -299,11 +302,26 @@ export function LoyaltyCard({
                   ) : (
                     <>
                       <p>• 1 stamp per completed order per day (Manila time). Reach stamp 35 to unlock Platinum.</p>
-                      <p>• Percentage rewards apply automatically to the order that completes them — nothing to claim.</p>
-                      <p>• FREE MEAL rewards arrive as single-use vouchers with a 1-week expiry — type the code at checkout. FREE MEAL covers 1 item entirely (e.g., use it on Pork Sugba for ₱99 or Buldak Loaded for ₱179 — both become free).</p>
+                      <p>• When your order is completed and you reach a milestone, tap Claim to get your voucher. The card moves on to the next milestone right away.</p>
+                      <p>• Claimed vouchers are single-use and never expire — use one on your next order by typing the code at checkout. FREE MEAL covers 1 item entirely (e.g., use it on Pork Sugba for ₱99 or Buldak Loaded for ₱179 — both become free).</p>
                     </>
                   )}
                 </div>
+                {rewardsToClaim.length > 0 && (
+                  <div className="space-y-1.5 pt-2 border-t border-emerald-900/60">
+                    <p className="font-extrabold text-lime-400 uppercase tracking-wider text-[10px]">Rewards ready to claim</p>
+                    {rewardsToClaim.map((r: any) => (
+                      <div key={r.id} className="flex items-center justify-between bg-[#061d16] border border-lime-400/40 rounded-xl p-2.5">
+                        <div>
+                          <p className="font-black text-lime-300 text-sm leading-none">{rewardName(r.reward_type)}</p>
+                          <p className="text-[9px] text-emerald-300 mt-1">never expires • single-use • use on your next order</p>
+                        </div>
+                        <button type="button" onClick={() => onClaimReward(r.id)}
+                          className="bg-lime-400 hover:bg-lime-500 text-black font-extrabold px-3 py-1.5 rounded-lg text-[11px] cursor-pointer">Claim</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {activeVouchers.length > 0 && (
                   <div className="space-y-1.5 pt-2 border-t border-emerald-900/60">
                     <p className="font-extrabold text-lime-400 uppercase tracking-wider text-[10px]">Your Active Vouchers</p>
@@ -311,7 +329,7 @@ export function LoyaltyCard({
                       <div key={v.id} className="flex items-center justify-between bg-[#061d16] border border-lime-400/40 rounded-xl p-2.5">
                         <div>
                           <p className="font-bold text-lime-400 text-[11px] font-mono">{v.promo_code}</p>
-                          <p className="text-[9px] text-emerald-300">{String(v.reward_type).replace(/_/g, ' ')} • single-use • type at checkout</p>
+                          <p className="text-[9px] text-emerald-300">{String(v.reward_type).replace(/_/g, ' ')} • single-use • never expires • type at checkout</p>
                         </div>
                         <div className="flex items-center gap-2"><CopyCodeButton code={v.promo_code} className="border border-lime-400/60 text-lime-300 hover:bg-lime-400/10 font-extrabold px-2 py-1 rounded-lg text-[10px] cursor-pointer" /><Ticket className="size-4 text-lime-400" /></div>
                       </div>
