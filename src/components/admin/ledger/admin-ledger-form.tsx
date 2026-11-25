@@ -1,4 +1,4 @@
-// VEYNS Admin, Ledger: Add / Edit Transaction form (Step B10a).
+// VEYNS Admin, Ledger: Add / Edit Transaction form (Step B10a; saves through the gateway since Step 6B-4).
 
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
@@ -9,7 +9,7 @@ import type { LedgerEntry, LedgerEntryInput, LedgerKind } from './admin-ledger-t
 
 type Props = {
   editing: LedgerEntry | null;
-  onSubmit: (input: LedgerEntryInput, editingId: string | null) => void;
+  onSubmit: (input: LedgerEntryInput, editingId: string | null) => Promise<{ ok: boolean; error?: string }>;
   onCancelEdit: () => void;
   fill?: boolean; // true on a large screen: the form fills its column; the fields scroll inside it if the window is short
 };
@@ -28,6 +28,7 @@ export function AdminLedgerForm({ editing, onSubmit, onCancelEdit, fill = false 
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const resetFields = () => {
     setKind('income');
@@ -67,8 +68,9 @@ export function AdminLedgerForm({ editing, onSubmit, onCancelEdit, fill = false 
     if (!list.includes(category)) setCategory('');
   };
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (saving) return;
     const occurredAt = fromInputValue(when);
     const centavos = parsePesoToCentavos(amount);
     if (occurredAt === null) return setError('Choose a valid date and time.');
@@ -77,9 +79,13 @@ export function AdminLedgerForm({ editing, onSubmit, onCancelEdit, fill = false 
     if (centavos === null) return setError('Enter an amount greater than 0 (up to 2 decimals).');
 
     setError('');
-    onSubmit({ kind, occurredAt, description: description.trim(), category, amountCentavos: centavos, notes: notes.trim() }, editing ? editing.id : null);
-    setNotice(editing ? 'Transaction updated.' : 'Transaction added.');
-    if (!editing) resetFields();
+    setSaving(true);
+    const wasEditing = Boolean(editing);
+    const result = await onSubmit({ kind, occurredAt, description: description.trim(), category, amountCentavos: centavos, notes: notes.trim() }, editing ? editing.id : null);
+    setSaving(false);
+    if (!result.ok) return setError(result.error || 'Could not save. Please try again.');
+    setNotice(wasEditing ? 'Transaction updated.' : 'Transaction added.');
+    if (!wasEditing) resetFields();
   };
 
   const kindButton = (value: LedgerKind, active: boolean) =>
@@ -174,10 +180,11 @@ export function AdminLedgerForm({ editing, onSubmit, onCancelEdit, fill = false 
 
       <button
         type="submit"
-        className="mt-2 flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-lime-400 px-4 py-3 text-sm font-semibold text-black hover:bg-lime-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        disabled={saving}
+        className="mt-2 flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-lime-400 px-4 py-3 text-sm font-semibold text-black hover:bg-lime-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-60"
       >
         <Save className="h-4 w-4" aria-hidden="true" />
-        {editing ? 'Save Changes' : 'Save Transaction'}
+        {saving ? 'Saving...' : editing ? 'Save Changes' : 'Save Transaction'}
       </button>
     </form>
   );
