@@ -1,8 +1,9 @@
-// VEYNS Admin, Inventory: one dialog for the stock actions (Step B12b): add stock, record waste, edit an ingredient, new ingredient.
+// VEYNS Admin, Inventory: one dialog for the stock actions (Steps B12b, 6C-3): add stock, record waste, edit an ingredient, new ingredient.
 // Amounts are typed freely: add only what you really added (half a pack is fine). No lists to choose from.
 // The parent renders it only while it is open, so the fields always start from the chosen ingredient.
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import type { InventoryWriteResult } from '@/lib/admin-inventory-api';
 import { formatQty } from './admin-inventory-calc';
 import { SECTIONS } from './admin-inventory-types';
 import type { Ingredient, IngredientInput, Section } from './admin-inventory-types';
@@ -13,9 +14,9 @@ type Props = {
   state: InventoryDialogState;
   ingredients: Ingredient[];
   onClose: () => void;
-  onRestock: (id: string, amount: number, paid?: number) => boolean;
-  onWaste: (id: string, amount: number) => boolean;
-  onSave: (input: IngredientInput, id: string | null) => string | null;
+  onRestock: (id: string, amount: number, paid?: number) => Promise<InventoryWriteResult>;
+  onWaste: (id: string, amount: number) => Promise<InventoryWriteResult>;
+  onSave: (input: IngredientInput, id: string | null) => Promise<InventoryWriteResult>;
 };
 
 const num = (s: string): number => (s.trim() === '' ? NaN : Number(s));
@@ -35,21 +36,33 @@ export function AdminInventoryDialog({ state, ingredients, onClose, onRestock, o
   const [stock, setStock] = useState(ing ? String(ing.stock) : '');
   const [par, setPar] = useState(ing ? String(ing.par) : '');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const editing = state.mode === 'edit' || state.mode === 'new';
   const typed = num(amount);
 
+  // Sends to the server and waits. The dialog closes only when the database accepted it; otherwise its message shows here.
+  const finish = async (pending: Promise<InventoryWriteResult>) => {
+    setSaving(true);
+    setError('');
+    const r = await pending;
+    if (r.ok) onClose();
+    else {
+      setError(r.error);
+      setSaving(false);
+    }
+  };
+
   const submit = () => {
+    if (saving) return;
     if (state.mode === 'restock' || state.mode === 'waste') {
       if (!ing) return;
       if (!(typed > 0)) { setError('Type an amount greater than 0.'); return; }
       if (state.mode === 'restock') {
         const p = paid.trim() === '' ? undefined : num(paid);
         if (p !== undefined && !(p >= 0)) { setError('The amount paid must be 0 or more, or left empty.'); return; }
-        if (onRestock(ing.id, typed, p)) onClose();
-        else setError('This could not be saved.');
-      } else if (onWaste(ing.id, typed)) onClose();
-      else setError('There is no stock of this ingredient to remove.');
+        void finish(onRestock(ing.id, typed, p));
+      } else void finish(onWaste(ing.id, typed));
       return;
     }
     const p = num(price), k = num(packs), b = num(bought);
@@ -62,9 +75,7 @@ export function AdminInventoryDialog({ state, ingredients, onClose, onRestock, o
     if (!(b > 0)) { setError('Type the total amount bought, in the unit above.'); return; }
     if (!(s >= 0)) { setError('Type the stock on hand (0 or more).'); return; }
     if (!(pr >= 0)) { setError('The par level must be 0 or more.'); return; }
-    const err = onSave({ name, category, unit, stock: s, par: pr, price: p, packs: k, amount: b }, state.mode === 'edit' ? state.id : null);
-    if (err) setError(err);
-    else onClose();
+    void finish(onSave({ name, category, unit, stock: s, par: pr, price: p, packs: k, amount: b }, state.mode === 'edit' ? state.id : null));
   };
 
   const title = state.mode === 'new' ? 'New ingredient' : !ing ? 'Ingredient' : state.mode === 'restock' ? `Add stock: ${ing.name}` : state.mode === 'waste' ? `Record waste: ${ing.name}` : `Edit ${ing.name}`;
@@ -73,7 +84,7 @@ export function AdminInventoryDialog({ state, ingredients, onClose, onRestock, o
     <Dialog open onOpenChange={(open: boolean) => { if (!open) onClose(); }}>
       <DialogContent className={`w-full rounded-3xl bg-[#141817] p-5 text-white ${editing ? 'max-w-md' : 'max-w-sm'}`}>
         <DialogTitle className="font-display text-lg font-extrabold text-white">{title}</DialogTitle>
-        <DialogDescription className="text-xs text-zinc-400">Sample data: this is not saved to the database yet.</DialogDescription>
+        <DialogDescription className="text-xs text-zinc-400">Saved to the inventory database.</DialogDescription>
         <div className="space-y-3 text-xs">
           {(state.mode === 'restock' || state.mode === 'waste') && ing && (
             <>
@@ -141,7 +152,7 @@ export function AdminInventoryDialog({ state, ingredients, onClose, onRestock, o
           {error && <p className="rounded-lg bg-red-400/10 px-3 py-2 text-red-300">{error}</p>}
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={onClose} className="flex-1 rounded-xl bg-white/[0.08] py-2 text-xs font-bold text-zinc-200 hover:bg-white/[0.14] focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400">Cancel</button>
-            <button type="button" onClick={submit} className="flex-1 rounded-xl bg-lime-400 py-2 text-xs font-extrabold text-black hover:bg-lime-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400">Save</button>
+            <button type="button" onClick={submit} disabled={saving} className="flex-1 rounded-xl bg-lime-400 py-2 text-xs font-extrabold text-black hover:bg-lime-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
           </div>
         </div>
       </DialogContent>

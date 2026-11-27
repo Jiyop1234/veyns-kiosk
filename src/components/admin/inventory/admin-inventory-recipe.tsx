@@ -1,10 +1,11 @@
-// VEYNS Admin, Inventory: the Recipe costing sheet (Step B12b), laid out like the owner's Excel sheet for Pork Sugba.
+// VEYNS Admin, Inventory: the Recipe costing sheet (Steps B12b, 6C-3), laid out like the owner's Excel sheet for Pork Sugba.
 // Lines are grouped Marinade / Garnish / Sauce / Packaging / Utilities. For each line: price, what was bought, how much is used,
 // and "for (bowls)": the amount used is enough for that many bowls (1 = per bowl, 20 = per batch, 50 = the sauce batch).
 // Cost per bowl of a line = overall cost x used / unit bought / bowls served. Bowls yielded and selling price are edited at the bottom.
 // The outer component picks the recipe and cooks; the sheet below it is keyed so its draft always starts from the saved recipe.
 import { Fragment, useState } from 'react';
 import { Flame, Plus, UtensilsCrossed, X } from 'lucide-react';
+import type { InventoryWriteResult } from '@/lib/admin-inventory-api';
 import { bowlsFor, byIdMap, costPerBowl, formatQty, lineCost, overallCost, peso2, sectionTotals } from './admin-inventory-calc';
 import { SECTIONS } from './admin-inventory-types';
 import type { Dish, Ingredient, RecipeLine, RecipePatch, Section } from './admin-inventory-types';
@@ -14,7 +15,7 @@ const input = 'h-7 rounded-md bg-white/[0.08] px-1.5 text-xs text-white focus:ou
 
 type DraftLine = { ingredientId: string; section: Section; used: string; serves: string };
 
-function RecipeSheet({ dish, ingredients, limitId, fill, onSave }: { dish: Dish; ingredients: Ingredient[]; limitId: string | null; fill: boolean; onSave: (dishId: string, patch: RecipePatch) => void }) {
+function RecipeSheet({ dish, ingredients, limitId, fill, onSave }: { dish: Dish; ingredients: Ingredient[]; limitId: string | null; fill: boolean; onSave: (dishId: string, patch: RecipePatch) => Promise<InventoryWriteResult> }) {
   const byId = byIdMap(ingredients);
   const fromSaved = (): DraftLine[] => dish.lines.map((l) => ({ ingredientId: l.ingredientId, section: l.section, used: String(l.used), serves: String(l.serves) }));
   const [lines, setLines] = useState<DraftLine[]>(fromSaved);
@@ -23,6 +24,8 @@ function RecipeSheet({ dish, ingredients, limitId, fill, onSave }: { dish: Dish;
   const [adding, setAdding] = useState<Section | null>(null);
   const [addName, setAddName] = useState('');
   const [addError, setAddError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const nums: RecipeLine[] = lines.map((l) => ({ ingredientId: l.ingredientId, section: l.section, used: num(l.used), serves: num(l.serves) }));
   const bowlsN = num(bowls);
@@ -48,6 +51,7 @@ function RecipeSheet({ dish, ingredients, limitId, fill, onSave }: { dish: Dish;
     setPrice(String(dish.price));
     setAdding(null);
     setAddError('');
+    setSaveError('');
   };
   const addLine = () => {
     const sec = adding;
@@ -60,7 +64,15 @@ function RecipeSheet({ dish, ingredients, limitId, fill, onSave }: { dish: Dish;
     setAddError('');
     setAdding(null);
   };
-  const save = () => onSave(dish.id, { lines: nums, bowls: bowlsN, price: priceN });
+  // The sheet is rebuilt from the database after a good save (it is keyed by the saved recipe); a refusal shows its message here.
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError('');
+    const r = await onSave(dish.id, { lines: nums, bowls: bowlsN, price: priceN });
+    setSaving(false);
+    if (!r.ok) setSaveError(r.error);
+  };
 
   return (
     <>
@@ -159,13 +171,14 @@ function RecipeSheet({ dish, ingredients, limitId, fill, onSave }: { dish: Dish;
           <span className="block text-lg font-extrabold leading-8 text-white">{peso2(profit)}</span>
         </div>
       </div>
+      {saveError && <p className="mt-2 shrink-0 rounded-lg bg-red-400/10 px-3 py-2 text-xs text-red-300">{saveError}</p>}
       <div className="mt-2 flex shrink-0 flex-wrap items-center justify-between gap-2 text-xs">
         <p className="text-zinc-400">
           Food cost <strong className="text-lime-300">{pct.toFixed(1)}%</strong> · cost of one batch <strong className="text-white">{peso2(batchCost)}</strong>
         </p>
         <div className="flex gap-2">
           <button type="button" disabled={!changed} onClick={reset} className="rounded-lg bg-white/[0.08] px-3 py-1.5 text-xs font-bold text-zinc-200 hover:bg-white/[0.14] focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 disabled:opacity-35">Cancel</button>
-          <button type="button" disabled={!changed || !valid} onClick={save} className="rounded-lg bg-lime-400 px-3 py-1.5 text-xs font-extrabold text-black hover:bg-lime-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 disabled:opacity-35">Save Recipe</button>
+          <button type="button" disabled={!changed || !valid || saving} onClick={() => void save()} className="rounded-lg bg-lime-400 px-3 py-1.5 text-xs font-extrabold text-black hover:bg-lime-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 disabled:opacity-35">{saving ? 'Saving...' : 'Save Recipe'}</button>
         </div>
       </div>
     </>
@@ -178,9 +191,9 @@ type Props = {
   onSelect: (id: string) => void;
   ingredients: Ingredient[];
   fill: boolean;
-  onSave: (dishId: string, patch: RecipePatch) => void;
-  onCook: (dishId: string, count: number) => void;
-  onAddDish: (name: string) => string;
+  onSave: (dishId: string, patch: RecipePatch) => Promise<InventoryWriteResult>;
+  onCook: (dishId: string, count: number) => Promise<InventoryWriteResult>;
+  onAddDish: (name: string) => Promise<InventoryWriteResult>;
 };
 
 export function AdminInventoryRecipe({ dishes, selectedId, onSelect, ingredients, fill, onSave, onCook, onAddDish }: Props) {
@@ -188,17 +201,33 @@ export function AdminInventoryRecipe({ dishes, selectedId, onSelect, ingredients
   const dish = dishes.find((d) => d.id === selectedId);
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState('');
 
   const info = dish ? bowlsFor(dish, byId) : { bowls: 0, limitId: null as string | null };
   const limit = info.limitId ? byId.get(info.limitId) : undefined;
   const batch = dish ? Math.max(1, Math.round(dish.bowls)) : 1;
 
-  const addNew = () => {
+  const addNew = async () => {
     const n = newName.trim();
-    if (!n) return;
-    onSelect(onAddDish(n));
+    if (!n || busy) return;
+    setBusy(true);
+    setActionError('');
+    const r = await onAddDish(n);
+    setBusy(false);
+    if (!r.ok) { setActionError(r.error); return; }
+    if (r.id) onSelect(r.id);
     setNewName('');
     setNewOpen(false);
+  };
+
+  const cookNow = async (count: number) => {
+    if (!dish || busy) return;
+    setBusy(true);
+    setActionError('');
+    const r = await onCook(dish.id, count);
+    setBusy(false);
+    if (!r.ok) setActionError(r.error);
   };
 
   const cookBtn = 'flex items-center gap-1 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-extrabold text-black hover:bg-amber-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 disabled:cursor-not-allowed disabled:opacity-35';
@@ -223,9 +252,10 @@ export function AdminInventoryRecipe({ dishes, selectedId, onSelect, ingredients
       {newOpen && (
         <div className="mb-2 flex shrink-0 items-center gap-2">
           <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Recipe name, e.g. Pork Sisig" aria-label="New recipe name" autoFocus className={`${input} w-56`} />
-          <button type="button" onClick={addNew} className="rounded-md bg-lime-400 px-3 py-1 text-[11px] font-extrabold text-black hover:bg-lime-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400">Create</button>
+          <button type="button" disabled={busy} onClick={() => void addNew()} className="rounded-md bg-lime-400 px-3 py-1 text-[11px] font-extrabold text-black hover:bg-lime-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400 disabled:opacity-50">{busy ? 'Saving...' : 'Create'}</button>
         </div>
       )}
+      {actionError && <p className="mb-2 shrink-0 rounded-lg bg-red-400/10 px-3 py-2 text-xs text-red-300">{actionError}</p>}
       {dish ? (
         <>
           <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl bg-white/[0.04] px-3 py-2">
@@ -235,8 +265,8 @@ export function AdminInventoryRecipe({ dishes, selectedId, onSelect, ingredients
               {dish.lines.length === 0 && <> · add ingredients below</>}
             </p>
             <div className="flex gap-2">
-              <button type="button" disabled={info.bowls < 1} onClick={() => onCook(dish.id, 1)} className={cookBtn}><Flame className="h-3.5 w-3.5" aria-hidden="true" />Cook 1 bowl</button>
-              <button type="button" disabled={info.bowls < batch} onClick={() => onCook(dish.id, batch)} className={cookBtn}><Flame className="h-3.5 w-3.5" aria-hidden="true" />Cook 1 batch ({batch})</button>
+              <button type="button" disabled={info.bowls < 1 || busy} onClick={() => void cookNow(1)} className={cookBtn}><Flame className="h-3.5 w-3.5" aria-hidden="true" />Cook 1 bowl</button>
+              <button type="button" disabled={info.bowls < batch || busy} onClick={() => void cookNow(batch)} className={cookBtn}><Flame className="h-3.5 w-3.5" aria-hidden="true" />Cook 1 batch ({batch})</button>
             </div>
           </div>
           <RecipeSheet
