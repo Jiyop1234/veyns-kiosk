@@ -5,6 +5,7 @@ import type { RouteDef } from '../gateway/types.js';
 import { adminCreateCustomerRoute } from './adminCreateCustomer.js';
 import { adminInventoryRoutes } from './adminInventory.js';
 import { adminLedgerRoutes } from './adminLedger.js';
+import { adminSlotCapacityRoutes } from './adminSlotCapacity.js';
 import { feedbackRoute } from './feedback.js';
 import { healthRoutes } from './health.js';
 import { claimLoyaltyRewardRoute, claimPlatinumDiscountRoute } from './loyaltyClaims.js';
@@ -25,4 +26,5 @@ export const routes: RouteDef[] = [
   claimPlatinumDiscountRoute(getServiceClient), // 5G-3
   ...adminLedgerRoutes(getServiceClient),     // 6B-3
   ...adminInventoryRoutes(getServiceClient),  // 6C-2
+  ...adminSlotCapacityRoutes(getServiceClient), // 6D-2
 ];

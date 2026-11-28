@@ -4,6 +4,8 @@
 // Step B4: new look (stat cards, one table row per time window, slot owners panel beside it, time windows in their own tab, no page scroll on a large screen).
 // The state and every function from "Time window manager" to handleDeleteSlot are the A4 code, unchanged; only `view` (which tab is open) and `fit` are new.
 // Step B4b: 7-day charts on the stat cards and the Global Actions (Copy previous day, Holiday mode, Reset to default). They save through the same admin_set_slot_capacity function the Save button uses, one call per window.
+// Step 6D-3: every save (capacity, Global Actions, transfer, add / rename / remove a time window) now goes through the gateway routes
+// (src/lib/admin-slot-capacity-api.ts) instead of calling the database functions from the browser. Reading is unchanged.
 // The tab body shows only when `active` is true, but this component stays mounted, so its state (selected date, messages,
 // open panels and dialogs) is kept when you switch tabs, exactly like before.
 import { useState } from 'react';
@@ -11,6 +13,7 @@ import { CalendarDays, Clock, Gauge, Plus, Utensils, PackageCheck } from 'lucide
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/lib/supabase';
+import { addTimeSlot, deleteTimeSlot, renameTimeSlot, setSlotCapacity, transferSlot } from '@/lib/admin-slot-capacity-api';
 import { todayManila, slotHasEnded, to12h, slotTo24 } from '@/components/admin/admin-slot-times';
 import { AdminSlotCapacityRow, ADMIN_SLOT_ROW_GRID } from '@/components/admin/slot-capacity/admin-slot-capacity-row';
 import { AdminSlotCapacityOwnersPanel } from '@/components/admin/slot-capacity/admin-slot-capacity-owners-panel';
@@ -59,11 +62,9 @@ export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fe
   const handleUpdateSlotCapacity = async (dateKey: string, slotTime: string, maxBowls: number, maxSlots: number, isFullyBooked: boolean) => {
     // The database owns booked_bowls / booked_count (derived from real reservations). The browser only sends the
     // cap and the manual "closed" flag, through a staff-only RPC, so a stale screen can never overwrite live counts.
-    const { data, error } = await supabase.rpc('admin_set_slot_capacity', {
-      p_date_key: dateKey, p_slot_time: slotTime, p_max_bowls: maxBowls, p_max_slots: maxSlots, p_closed: isFullyBooked
-    });
-    if (error || data?.success === false) {
-      alert(error?.message || data?.message || 'Error updating slot capacity.');
+    const r = await setSlotCapacity(dateKey, slotTime, maxBowls, maxSlots, isFullyBooked);
+    if (!r.ok) {
+      alert(r.error || 'Error updating slot capacity.');
       fetchCloudData();
       return;
     }
@@ -107,13 +108,8 @@ export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fe
       return;
     }
     try {
-      const { data, error } = await supabase.rpc('admin_transfer_slot', {
-        p_reservation_id: reservationId,
-        p_new_date_key: newDateKey,
-        p_new_slot_time: newSlotTime
-      });
-      if (error) throw error;
-      if (data && data.success === false) throw new Error(data.message || 'Transfer failed.');
+      const r = await transferSlot(reservationId, newDateKey, newSlotTime);
+      if (!r.ok) throw new Error(r.error || 'Transfer failed.');
       alert('Slot successfully transferred!');
       setTransferringReservation(null);
       if (inspectingSlot) {
@@ -136,9 +132,9 @@ export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fe
     const next = `${to12h(v.start)} - ${to12h(v.end)}`;
     if (next === oldLabel) { slotFlash('ok', 'No change: that is already the current time.'); return; }
     setSlotMgmtBusy(true);
-    const { data, error } = await supabase.rpc('admin_rename_time_slot', { p_old_label: oldLabel, p_new_label: next });
+    const r = await renameTimeSlot(oldLabel, next);
     setSlotMgmtBusy(false);
-    if (error || data?.success === false) { slotFlash('err', error?.message || data?.message || 'Could not change the time slot.'); return; }
+    if (!r.ok) { slotFlash('err', r.error || 'Could not change the time slot.'); return; }
     setSlotEdits((p) => { const n = { ...p }; delete n[oldLabel]; return n; });
     slotFlash('ok', `Time slot changed to ${next}. Today's and upcoming bookings moved with it.`);
     fetchCloudData();
@@ -147,17 +143,17 @@ export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fe
     if (!newSlotStart || !newSlotEnd || newSlotStart >= newSlotEnd) { slotFlash('err', 'The end time must be after the start time.'); return; }
     const label = `${to12h(newSlotStart)} - ${to12h(newSlotEnd)}`;
     setSlotMgmtBusy(true);
-    const { data, error } = await supabase.rpc('admin_add_time_slot', { p_label: label });
+    const r = await addTimeSlot(label);
     setSlotMgmtBusy(false);
-    if (error || data?.success === false) { slotFlash('err', error?.message || data?.message || 'Could not add the time slot.'); return; }
+    if (!r.ok) { slotFlash('err', r.error || 'Could not add the time slot.'); return; }
     slotFlash('ok', `Added ${label}.`);
   };
   const handleDeleteSlot = async (label: string) => {
     if (!window.confirm(`Remove the ${label} time slot? Customers will no longer be able to book it.`)) return;
     setSlotMgmtBusy(true);
-    const { data, error } = await supabase.rpc('admin_delete_time_slot', { p_label: label });
+    const r = await deleteTimeSlot(label);
     setSlotMgmtBusy(false);
-    if (error || data?.success === false) { slotFlash('err', error?.message || data?.message || 'Could not remove the time slot.'); return; }
+    if (!r.ok) { slotFlash('err', r.error || 'Could not remove the time slot.'); return; }
     slotFlash('ok', `Removed ${label}.`);
     fetchCloudData();
   };
@@ -183,10 +179,8 @@ export function AdminSlotCapacityTab({ active, timeSlotsList, slotCapacities, fe
     const failed: { slotTime: string; message: string }[] = [];
     setBulkBusy(true);
     for (const item of todo) {
-      const { data, error } = await supabase.rpc('admin_set_slot_capacity', {
-        p_date_key: bulkPlan.dateKey, p_slot_time: item.slotTime, p_max_bowls: item.to.maxBowls, p_max_slots: item.to.maxSlots, p_closed: item.to.isFullyBooked
-      });
-      if (error || data?.success === false) failed.push({ slotTime: item.slotTime, message: error?.message || data?.message || 'Could not update this slot.' });
+      const r = await setSlotCapacity(bulkPlan.dateKey, item.slotTime, item.to.maxBowls, item.to.maxSlots, item.to.isFullyBooked);
+      if (!r.ok) failed.push({ slotTime: item.slotTime, message: r.error || 'Could not update this slot.' });
       else done.push({ slotTime: item.slotTime });
     }
     setBulkBusy(false);
