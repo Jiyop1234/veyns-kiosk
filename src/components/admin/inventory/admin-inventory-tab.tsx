@@ -1,9 +1,9 @@
-// VEYNS Admin, Inventory: the Inventory screen (Steps B12 and B12b).
+// VEYNS Admin, Inventory: the Inventory screen (Steps B12, B12b, 6C-3).
 // Two layouts share the same panels:
 // - fit (large screen, set by the dashboard): the page does not scroll. Heading and stat cards on top; below them
 //   Ingredient Stock (with a short list of recent stock movements under it) | Recipe costing. Tables scroll inside their panels.
 // - normal (smaller screens): the same panels stacked; the page scrolls.
-// Data comes from useAdminInventoryData (sample data for now).
+// Data comes from useAdminInventoryData: read from the database, written through the gateway.
 
 import { useMemo, useState } from 'react';
 import { Package, RefreshCw } from 'lucide-react';
@@ -19,8 +19,8 @@ import { AdminInventoryStatCards } from './admin-inventory-stat-cards';
 type Props = { active?: boolean; fit?: boolean };
 
 export function AdminInventoryTab({ active = true, fit = false }: Props) {
-  const { ingredients, dishes, ledger, restock, waste, saveIngredient, cook, saveRecipe, addDish, resetSample } = useAdminInventoryData();
-  const [selectedDishId, setSelectedDishId] = useState<string>(dishes[0]?.id ?? '');
+  const { ingredients, dishes, ledger, loading, loadError, reload, restock, waste, saveIngredient, cook, saveRecipe, addDish } = useAdminInventoryData();
+  const [selectedDishId, setSelectedDishId] = useState<string>('');
   const [dialog, setDialog] = useState<InventoryDialogState | null>(null);
 
   const stats = useMemo(() => inventoryStats(ingredients, dishes), [ingredients, dishes]);
@@ -53,12 +53,11 @@ export function AdminInventoryTab({ active = true, fit = false }: Props) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="mx-auto w-fit max-w-full rounded-xl bg-amber-400/10 px-3 py-1.5 text-xs text-amber-200">
-            Sample data: this screen is not connected to the database yet. What you add or change here is not saved, and a reload brings the sample back.
-          </p>
+          {loading && <p className="mx-auto w-fit max-w-full rounded-xl bg-white/[0.06] px-3 py-1.5 text-xs text-zinc-300">Loading the inventory...</p>}
+          {loadError && <p className="mx-auto w-fit max-w-full rounded-xl bg-red-400/10 px-3 py-1.5 text-xs text-red-300">{loadError}</p>}
         </div>
 
-        <button type="button" onClick={resetSample} aria-label="Reset sample data" title="Reset sample data" className="ml-auto flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12] focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400">
+        <button type="button" onClick={() => void reload()} aria-label="Refresh inventory" title="Refresh from the database" className="ml-auto flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12] focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400">
           <RefreshCw className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>

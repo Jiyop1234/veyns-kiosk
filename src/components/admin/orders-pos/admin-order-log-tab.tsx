@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingBag, Eye, Pencil, Trash2, Percent, Search } from 'lucide-react';
+import { ShoppingBag, Eye, Pencil, Trash2, Percent, Search, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatPeso } from '@/lib/menu-data';
 import { supabase } from '@/lib/supabase';
@@ -13,6 +13,7 @@ import { AdminOrderDeleteDialog } from '@/components/admin/orders-pos/admin-orde
 import { AdminOrderInvoiceDialog } from '@/components/admin/orders-pos/admin-order-invoice-dialog';
 import { AdminOrderRescheduleDialog } from '@/components/admin/orders-pos/admin-order-reschedule-dialog';
 import { AdminOrderEditPanel } from '@/components/admin/orders-pos/admin-order-edit-panel';
+import { AdminOrderHistoryDialog } from '@/components/admin/orders-pos/admin-order-history-dialog';
 
 // Step A8c: order log, all order state, handlers and helpers, and the five order dialogs moved unchanged from employee-dashboard.tsx.
 // The summary cards are passed in as children by the dashboard (they live in admin/sales-analytics/).
@@ -86,6 +87,7 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
   const [deleteAck, setDeleteAck] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [statusMsg, setStatusMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [historyOrder, setHistoryOrder] = useState<any>(null); // Step 6A-3: the order whose History dialog is open
   // Orders & POS table: status chip and search box (view only; nothing is saved)
   const [posFilter, setPosFilter] = useState('all');
   const [posSearch, setPosSearch] = useState('');
@@ -582,25 +584,6 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
                 <ShoppingBag className="h-5 w-5 text-lime-400" />
                 <h3 className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Order Transactions Log</h3>
               </div>
-              {orders.length > 0 && (
-                <Button
-                  size="sm"
-                  onClick={async () => {
-                    if (!confirm('Are you sure you want to clear all sales logs? Customer order histories will remain untouched.')) return;
-                    try {
-                      const { error } = await supabase.rpc('admin_clear_sales_log');
-                      if (error) throw error;
-                      setOrders([]);
-                      alert('Sales transaction logs successfully cleared for admin.');
-                    } catch (err: any) {
-                      alert('Failed to clear sales logs: ' + (err?.message || 'Permission denied'));
-                    }
-                  }}
-                  className="bg-red-950 hover:bg-red-900 text-red-300 border border-red-800 font-extrabold text-xs px-3 py-1.5 rounded-xl cursor-pointer"
-                >
-                  Clear Sales Log
-                </Button>
-              )}
             </div>
             {statusMsg && (
               <div className={`rounded-xl border p-3 text-xs font-bold ${statusMsg.kind === 'ok' ? 'bg-lime-950/60 border-lime-500/40 text-lime-300' : 'bg-red-950/70 border-red-700 text-red-300'}`}>
@@ -631,7 +614,13 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
                   <tbody className="divide-y divide-emerald-950">
                     {orders.map((order, idx) => (
                       <tr key={idx} className="hover:bg-[#071F19]/50 transition-colors">
-                        <td className="p-3 font-extrabold text-lime-400">{order.orderNumber}</td>
+                        <td className="p-3 font-extrabold text-lime-400">
+                          {order.orderNumber}
+                          <button type="button" onClick={() => setHistoryOrder(order)} aria-label={`History of order ${order.orderNumber}`}
+                            className="mt-1 flex cursor-pointer items-center gap-1 text-[10px] font-bold text-sky-300 hover:text-sky-200">
+                            <History className="h-3 w-3" />History
+                          </button>
+                        </td>
                         <td className="p-3">
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5">
@@ -728,6 +717,9 @@ export function AdminOrderLogTab({ active, orders, setOrders, slotCapacities, ti
           </div>
         </div>
       )}
+
+      {/* Order history (read-only, from the database audit table) */}
+      <AdminOrderHistoryDialog order={historyOrder} onClose={() => setHistoryOrder(null)} />
 
       {/* PWD confirmation dialog */}
       <AdminOrderPwdDialog

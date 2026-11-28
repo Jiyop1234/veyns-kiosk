@@ -3,7 +3,7 @@
 // - fit (large screen, set by the dashboard): the page does not scroll. Heading and summary cards on top; below them three
 //   columns: Transaction History | Add Transaction form | Cash Flow, Top Categories and Quick Actions.
 // - normal (smaller screens): the stacked layout of Step B10a; the page scrolls.
-// Data comes from useAdminLedgerData (sample data for now).
+// Data comes from useAdminLedgerData (real entries from the database; changes go through the gateway, Step 6B-4).
 
 import { useMemo, useRef, useState } from 'react';
 import { ChevronRight, RefreshCw, Wallet } from 'lucide-react';
@@ -21,7 +21,7 @@ import type { LedgerEntry, LedgerEntryInput, LedgerPeriod } from './admin-ledger
 type Props = { active?: boolean; fit?: boolean };
 
 export function AdminLedgerTab({ active = true, fit = false }: Props) {
-  const { entries, addEntry, updateEntry, deleteEntry, resetSample } = useAdminLedgerData();
+  const { entries, loading, loadError, reload, addEntry, updateEntry, voidEntry } = useAdminLedgerData();
   const [period, setPeriod] = useState<LedgerPeriod>('month');
   const [editing, setEditing] = useState<LedgerEntry | null>(null);
   const formAnchor = useRef<HTMLDivElement>(null);
@@ -68,14 +68,19 @@ export function AdminLedgerTab({ active = true, fit = false }: Props) {
     showForm();
   };
 
-  const handleSubmit = (input: LedgerEntryInput, editingId: string | null) => {
-    if (editingId) updateEntry(editingId, input);
-    else addEntry(input);
-    setEditing(null);
+  const handleSubmit = async (input: LedgerEntryInput, editingId: string | null) => {
+    const result = editingId ? await updateEntry(editingId, input) : await addEntry(input);
+    if (result.ok) setEditing(null);
+    return result;
   };
 
-  const handleDelete = (id: string) => {
-    deleteEntry(id);
+  // "Delete" voids the entry: it disappears from the screen and the totals, and the database keeps the record.
+  const handleDelete = async (id: string) => {
+    const result = await voidEntry(id);
+    if (!result.ok) {
+      alert(result.error);
+      return;
+    }
     if (editing && editing.id === id) setEditing(null);
   };
 
@@ -155,9 +160,13 @@ export function AdminLedgerTab({ active = true, fit = false }: Props) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="mx-auto w-fit max-w-full rounded-xl bg-amber-400/10 px-3 py-1.5 text-xs text-amber-200">
-            Sample data: this screen is not connected to the database yet. What you add or change here is not saved, and a reload brings the sample back.
-          </p>
+          {loadError ? (
+            <p role="alert" className="mx-auto w-fit max-w-full rounded-xl bg-red-500/10 px-3 py-1.5 text-xs text-red-300">
+              Could not load the ledger: {loadError}
+            </p>
+          ) : loading ? (
+            <p className="mx-auto w-fit max-w-full rounded-xl bg-white/[0.06] px-3 py-1.5 text-xs text-zinc-300">Loading transactions...</p>
+          ) : null}
         </div>
 
         <div className="ml-auto flex items-center gap-2">
@@ -178,11 +187,10 @@ export function AdminLedgerTab({ active = true, fit = false }: Props) {
           <button
             type="button"
             onClick={() => {
-              resetSample();
-              setEditing(null);
+              void reload();
             }}
-            aria-label="Reset sample data"
-            title="Reset sample data"
+            aria-label="Refresh transactions"
+            title="Refresh transactions"
             className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.06] text-zinc-200 hover:bg-white/[0.12] focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400"
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />

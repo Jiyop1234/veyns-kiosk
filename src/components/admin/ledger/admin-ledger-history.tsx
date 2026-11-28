@@ -17,7 +17,7 @@ type Props = {
   editingId: string | null;
   onNew: () => void;
   onEdit: (entry: LedgerEntry) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void | Promise<void>; // voids the entry
   fill?: boolean; // true on a large screen: the panel fills its parent and shows as many rows as fit, without a page scroll
 };
 
@@ -207,7 +207,7 @@ export function AdminLedgerHistory({ entries, editingId, onNew, onEdit, onDelete
                   <td className={`${rowTone} rounded-r-xl px-3 ${cellY}`}>
                     {confirmId === e.id ? (
                       <div className="flex items-center justify-end gap-1.5 text-xs">
-                        <span className="text-zinc-300">Delete?</span>
+                        <span className="text-zinc-300">Void?</span>
                         <button
                           type="button"
                           onClick={() => {
@@ -227,7 +227,7 @@ export function AdminLedgerHistory({ entries, editingId, onNew, onEdit, onDelete
                         <button type="button" onClick={() => onEdit(e)} aria-label={`Edit ${e.description}`} title="Edit" className={iconButton}>
                           <Pencil className="h-4 w-4" aria-hidden="true" />
                         </button>
-                        <button type="button" onClick={() => setConfirmId(e.id)} aria-label={`Delete ${e.description}`} title="Delete" className={iconButton}>
+                        <button type="button" onClick={() => setConfirmId(e.id)} aria-label={`Void ${e.description}`} title="Void (remove from the ledger)" className={iconButton}>
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </button>
                       </div>
